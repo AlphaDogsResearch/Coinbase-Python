@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 
 from common.config_logging import to_stdout
 from common.interface_book import OrderBook
+from common.subscription.publisher import Publisher
 from gateways.binance.binance2 import BinanceGateway, ProductType
 
 if __name__ == '__main__':
@@ -36,7 +37,10 @@ if __name__ == '__main__':
     contract = 'BTCUSDT'
     binance = BinanceGateway(symbol=contract, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
     binance.connect()
+    publisherPort = 8080
+    publisher = Publisher(publisherPort,"Binance Publisher")
 
+    binance.register_depth_callback(publisher.depth_callback)
     while True:
         time.sleep(2)
 
