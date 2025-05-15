@@ -23,7 +23,7 @@ from dotenv import load_dotenv
 from common.config_logging import to_stdout
 from common.interface_book import OrderBook
 from common.subscription.publisher import Publisher
-from gateways.binance.binance2 import BinanceGateway, ProductType
+from gateways.binance.binance import BinanceGateway, ProductType
 
 if __name__ == '__main__':
     to_stdout()

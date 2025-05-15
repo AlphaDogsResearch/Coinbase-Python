@@ -1,14 +1,18 @@
+from engine.data.binance_market_data_handler import BinanceMarketDataHandler
 from strategies.simple_strategy import SimpleStrategy
 from portfolio.basic_portfolio_manager import BasicPortfolioManager
 from risk.basic_risk_manager import BasicRiskManager
 from execution.mock_executor import MockExecutor
-from data.mock_data_handler import MockDataHandler
+from data.mock_market_data_handler import MockDataHandler
 from orders.simple_order_manager import SimpleOrderManager
 from tracking.in_memory_tracker import InMemoryTracker
 
 def main():
     # Initialize components
-    data_handler = MockDataHandler()
+    start = True
+    subscriber_port = 8080
+    # data_handler = MockDataHandler()
+    data_handler = BinanceMarketDataHandler(subscriber_port)
     strategy = SimpleStrategy()
     portfolio_manager = BasicPortfolioManager(capital_fraction=0.1)
     risk_manager = BasicRiskManager(max_order_value=5000)
@@ -19,6 +23,7 @@ def main():
     # Simulate capital
     aum = 100000.0
 
+    data_handler.listen()
     # Step 1: Fetch market data
     market_data = data_handler.get_latest_data()
 
@@ -50,6 +55,9 @@ def main():
     # Final: Print current positions and PnL
     print("Positions:", tracker.get_positions())
     print("PnL:", tracker.get_pnl())
+
+    while start:
+        pass
 
 if __name__ == "__main__":
     main()
