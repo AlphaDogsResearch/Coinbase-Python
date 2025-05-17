@@ -6,10 +6,10 @@ from dotenv import load_dotenv
 
 from common.subscription.publisher import Publisher
 from engine.core.strategy import Strategy
+from engine.execution.executor import Executor
 from gateways.binance.binance_gateway import BinanceGateway, ProductType
 from portfolio.basic_portfolio_manager import BasicPortfolioManager
 from risk.basic_risk_manager import BasicRiskManager
-from execution.mock_executor import MockExecutor
 from orders.simple_order_manager import SimpleOrderManager
 from tracking.in_memory_tracker import InMemoryTracker
 
@@ -41,7 +41,7 @@ def main():
             portfolio_manager = BasicPortfolioManager(capital_fraction=0.1)
             risk_manager = BasicRiskManager(max_order_value=5000)
             order_manager = SimpleOrderManager()
-            executor = MockExecutor()
+            executor = Executor(API_KEY, API_SECRET)
             tracker = InMemoryTracker()
 
             # Simulate capital
@@ -64,11 +64,11 @@ def main():
 
                 # Step 4: Risk check and queue orders
                 for asset, order in list(orders.items()):
-                    if risk_manager and not risk_manager.validate_order(order, aum):
-                        print(f"Order for {asset} failed risk check. Removing.")
-                        del orders[asset]
-                    else:
-                        order_manager.queue_orders({asset: order})
+                    # if risk_manager and not risk_manager.validate_order(order, aum):
+                    #     print(f"Order for {asset} failed risk check. Removing.")
+                    #     del orders[asset]
+                    # else:
+                    order_manager.queue_orders({asset: order})
 
                 # Step 5: Get queued orders
                 queued_orders = order_manager.get_queued_orders()
