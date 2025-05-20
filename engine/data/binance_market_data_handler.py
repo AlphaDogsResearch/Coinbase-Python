@@ -1,3 +1,4 @@
+from common.interface_book import OrderBook
 from common.subscription.subscriber import Subscriber
 from engine.core.market_data_handler import MarketDataHandler
 
@@ -17,7 +18,7 @@ class BinanceMarketDataHandler(MarketDataHandler):
     def stop_listening(self):
         self.subscriber.close()
 
-    def handle_message(self, msg):
+    def handle_message(self, msg : OrderBook):
         print(f"[Callback] Got: {msg}")
 
     def get_latest_data(self) -> dict:

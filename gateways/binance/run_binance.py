@@ -47,6 +47,6 @@ if __name__ == '__main__':
         if binance.not_ready():
             logging.info("Not ready to trade")
         else:
-            orderBook = binance.get_order_book(contract)
-
-            logging.info('Depth: %s' % orderBook)
+            pass
+            # orderBook = binance.get_order_book(contract)
+            # logging.info('Depth: %s' % orderBook)

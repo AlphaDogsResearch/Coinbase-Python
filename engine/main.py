@@ -51,7 +51,7 @@ def main():
             # Process orderbook TODO
             market_data['ask'].append(market_order_book.get_best_ask())
             market_data['bid'].append(market_order_book.get_best_bid())
-            market_data['price'].append((market_order_book.get_best_bid() + market_order_book.get_best_ask()) / 2)
+            market_data['price'].append((market_order_book.get_best_mid()))
             print(market_data)
 
             # Step 2: Generate signals

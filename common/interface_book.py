@@ -27,6 +27,8 @@ class OrderBook:
             string += str(tier)
 
         return string
+    def get_best_mid(self):
+        return (self.bids[0].price + self.asks[0].price) / 2
 
     def get_best_bid(self):
         return self.bids[0].price

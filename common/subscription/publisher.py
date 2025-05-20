@@ -3,6 +3,9 @@ import logging
 import zmq
 import time
 
+from common.interface_book import OrderBook
+
+
 class Publisher:
     def __init__(self, port: int, name: str):
         self.name = name
@@ -13,13 +16,13 @@ class Publisher:
         print(f"[{self.name}] Bound to port {port}")
         time.sleep(1)  # Give time for subscribers to connect
 
-    def publish(self, message: str):
+    def publish(self, message: OrderBook):
         full_message = f"{self.name}: {message}"
-        self.socket.send_string(full_message)
-        print(f"[{self.name}] Published: {full_message}")
+        self.socket.send_pyobj(message)
+        print(f"[{self.name}] Published: {message}")
 
-    def depth_callback(self, exchange, book):
-        logging.info("Exchange %s " % exchange)
+    def depth_callback(self, exchange, book: OrderBook):
+        # logging.info("Exchange %s " % exchange)
         self.publish(book)
 
     def close(self):

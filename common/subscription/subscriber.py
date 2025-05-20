@@ -16,7 +16,7 @@ class Subscriber:
     def listen(self, callback=None):
         print(f"[{self.name}] Listening for messages...")
         while True:
-            msg = self.socket.recv_string()
+            msg = self.socket.recv_pyobj()
             if callback:
                 callback(msg)
             else:
