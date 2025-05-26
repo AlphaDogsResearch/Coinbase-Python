@@ -4,6 +4,12 @@ Binance gateway implementation using library https://github.com/sammchardy/pytho
 import asyncio
 import logging
 import sys
+import time
+from urllib.parse import urlencode
+import hmac
+import hashlib
+import requests
+
 from enum import Enum
 from threading import Thread
 from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
@@ -14,10 +20,18 @@ from common.callback_utils import assert_param_counts
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
 from common.interface_order import Trade, Side
 
-
 class ProductType(Enum):
     SPOT = 0
     FUTURE = 1  # USD_M, settle in USDT or BUSD
+
+def sign_url(secret: str, api_url, params: {}):
+    # create query string
+    query_string = urlencode(params)
+    # signature
+    signature = hmac.new(secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha256).hexdigest()
+
+    # url
+    return 'https://testnet.binancefuture.com' + api_url + "?" + query_string + "&signature=" + signature
 
 
 class BinanceGateway(GatewayInterface):
@@ -251,4 +265,58 @@ class BinanceGateway(GatewayInterface):
     def reconnect(self):
         """ A signals to reconnect """
         self._signal_reconnect = True
+
+    def place_orders(self, order: dict):
+        """
+        Place orders using the specified execution strategy.
+
+        :param order: A dictionary of order to be executed.
+        """
+
+        # order parameters
+        timestamp = int(time.time() * 1000)
+        self._signature = hmac.new(self._api_secret.encode("utf-8"), urlencode(order).encode("utf-8"), hashlib.sha256).hexdigest()
+
+        logging.info(
+            'Sending market order: Symbol: {}, Side: {}, Quantity: {}'.
+            format(order['symbol'], order['side'], order['quantity'])
+        )
+
+        # new order url
+        url = sign_url(self._api_secret, '/fapi/v1/order', order)
+
+        # POST order request
+        session = requests.Session()
+        session.headers.update(
+            {"Content-Type": "application/json;charset=utf-8", "X-MBX-APIKEY": self._api_key}
+        )
+        post_response = session.post(url=url, params={})
+        post_response_data = post_response.json()
+        logging.info(post_response_data)
+
+        return post_response_data
+
+    def query_order(self, symbol: str, order_id: str):
+        """
+        Query open orders for a given symbol.
+
+        :param symbol: The trading pair symbol to query.
+        :return: A list of open orders.
+        """
+        timestamp = int(time.time() * 1000)
+        if not self._has_keys():
+            logging.warning("Cannot query orders without API keys.")
+            return []
+
+        params = {
+            "symbol": symbol,
+            "orderId": order_id,
+            "timestamp": timestamp
+        }
+        url = sign_url(self._api_secret, '/fapi/v1/openOrders', params)
+
+        session = requests.Session()
+        session.headers.update({"X-MBX-APIKEY": self._api_key})
+        response = session.get(url=url)
+        return response.json() if response.status_code == 200 else []
 

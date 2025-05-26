@@ -13,15 +13,17 @@ class BasicPortfolioManager(PortfolioManager):
         allocation = aum * self.capital_fraction
         if signals > 0:
             orders[symbol] = Order(
-                asset=symbol,
+                symbol=symbol,
                 quantity= allocation / 1000,  # dummy quantity logic
-                order_type="market"
+                order_type="market",
+                side = "buy"
             )
         elif signals < 0:
             orders[symbol] = Order(
-                asset=symbol,
+                symbol=symbol,
                 quantity= -allocation / 1000,  # dummy quantity logic
-                order_type="market"
+                order_type="market",
+                side = "sell"
             )
         self.unplaced_orders[symbol] = orders[symbol]
         return orders

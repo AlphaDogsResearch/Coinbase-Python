@@ -41,7 +41,7 @@ def main():
             portfolio_manager = BasicPortfolioManager(capital_fraction=0.1)
             risk_manager = BasicRiskManager(max_order_value=5000)
             order_manager = SimpleOrderManager()
-            executor = Executor(API_KEY, API_SECRET)
+            executor = Executor(binance)
             tracker = InMemoryTracker()
 
             # Simulate capital
@@ -60,26 +60,25 @@ def main():
                 print("No signals generated.")
             else:
                 # Step 3: Portfolio manager calculates orders
-                orders = portfolio_manager.evaluate_signals(contract, signals, aum)
-
-                # Step 4: Risk check and queue orders
-                for asset, order in list(orders.items()):
-                    # if risk_manager and not risk_manager.validate_order(order, aum):
-                    #     print(f"Order for {asset} failed risk check. Removing.")
-                    #     del orders[asset]
-                    # else:
-                    order_manager.queue_orders({asset: order})
-
-                # Step 5: Get queued orders
-                queued_orders = order_manager.get_queued_orders()
-
+                order = portfolio_manager.evaluate_signals(contract, signals, aum)
+                # # Step 4: Risk check and queue orders
+                # for asset, order in list(orders.items()):
+                #     # if risk_manager and not risk_manager.validate_order(order, aum):
+                #     #     print(f"Order for {asset} failed risk check. Removing.")
+                #     #     del orders[asset]
+                #     # else:
+                #     order_manager.queue_orders({asset: order})
+                #
+                # # Step 5: Get queued orders
+                # queued_orders = order_manager.get_queued_orders()
+                print(order[contract]['symbol'], order[contract]['quantity'], order[contract]['side'])
                 # Step 6: Place orders
-                executor.place_orders(queued_orders)
+                executor.place_orders(order[contract]['symbol'], order[contract]['quantity'], order[contract]['side'])
 
                 # Step 7: Update position tracker (mock fill price assumed)
-                for asset, order in queued_orders.items():
-                    mock_fill_price = market_data["price"][-1] # Use the last price as fill price
-                    tracker.update_position(order, fill_price=mock_fill_price)
+                # for asset, order in queued_orders.items():
+                #     mock_fill_price = market_data["price"][-1] # Use the last price as fill price
+                # tracker.update_position(order, fill_price=)
 
                 # Final: Print current positions and PnL
                 print("Positions:", tracker.get_positions())

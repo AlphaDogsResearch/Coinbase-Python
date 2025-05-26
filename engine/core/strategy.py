@@ -6,7 +6,7 @@ import zmq
 
 class Strategy(ABC):
     def __init__(self):
-        self.sma_strategy = sma(short_window=50, long_window=200)
+        self.sma_strategy = sma(short_window=1, long_window=2)
         self.signals = []
         # Initialize the publisher
         # self.context = zmq.Context()
