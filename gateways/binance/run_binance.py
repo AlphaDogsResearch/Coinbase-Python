@@ -21,11 +21,13 @@ import time
 from dotenv import load_dotenv
 
 from common.config_logging import to_stdout
-from common.interface_book import OrderBook
-from common.subscription.publisher import Publisher
+from common.interface_order import OrderType, Side, Order
 from gateways.binance.binance_gateway import BinanceGateway, ProductType
+from gateways.binance.market_connection import MarketDataConnection
+from gateways.binance.order_connection import OrderConnection
 
 if __name__ == '__main__':
+    logging.info("Running Binance Gateway...")
     to_stdout()
 
     # read key and secret from environment variable file
@@ -37,10 +39,13 @@ if __name__ == '__main__':
     contract = 'BTCUSDT'
     binance = BinanceGateway(symbol=contract, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
     binance.connect()
-    publisherPort = 8080
-    publisher = Publisher(publisherPort,"Binance Publisher")
+    market_data_port = 8080
+    order_port = 8081
 
-    binance.register_depth_callback(publisher.depth_callback)
+    market_data_connection = MarketDataConnection(market_data_port,binance)
+
+    order_connection = OrderConnection(order_port, binance)
+
     while True:
         time.sleep(2)
 

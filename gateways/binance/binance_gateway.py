@@ -12,7 +12,13 @@ from binance.enums import FuturesType
 from gateways.gateway_interface import GatewayInterface, ReadyCheck
 from common.callback_utils import assert_param_counts
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
-from common.interface_order import Trade, Side
+from common.interface_order import Trade, Side, NewOrderSingle, OrderType
+
+import time
+from urllib.parse import urlencode
+import hmac
+import hashlib
+import requests
 
 
 class ProductType(Enum):
@@ -27,6 +33,8 @@ class BinanceGateway(GatewayInterface):
         self._exchange_name = name
         self._symbol = symbol
         self._product_type = product_type
+        # Base URLs
+        self.BASE_URL = 'https://testnet.binancefuture.com'
 
         # binance async client
         self._client = None
@@ -252,3 +260,55 @@ class BinanceGateway(GatewayInterface):
         """ A signals to reconnect """
         self._signal_reconnect = True
 
+    def check_side(self, order:NewOrderSingle):
+        return order.side == Side.BUY
+
+    def submit_order(self, new_order : NewOrderSingle):
+        orderType = new_order.type
+        side = True
+        if new_order.side == Side.SELL:
+            side = False
+
+        symbol = new_order.symbol
+        quantity = new_order.quantity
+        if orderType == OrderType.Market:
+            return self.send_market_order(self._api_key, self._api_secret, symbol, quantity, side)
+
+    def send_market_order(self,key: str, secret: str, symbol: str, quantity: float, side: bool):
+        # order parameters
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": symbol,
+            "side": "BUY" if side else "SELL",
+            "type": "MARKET",
+            "quantity": quantity,
+            'timestamp': timestamp
+        }
+
+        # create query string
+        query_string = urlencode(params)
+        logging.info('Query string: {}'.format(query_string))
+
+        # signature
+        signature = hmac.new(secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha256).hexdigest()
+
+        # url
+        url = self.BASE_URL + '/fapi/v1/order' + "?" + query_string + "&signature=" + signature
+
+        # post request
+        session = requests.Session()
+        session.headers.update(
+            {"Content-Type": "application/json;charset=utf-8", "X-MBX-APIKEY": key}
+        )
+        response = session.post(url=url, params={})
+
+        # get order id
+        response_map = response.json()
+
+        code = response_map.get('code')
+        msg = response_map.get('msg')
+        if code is not None:
+            logging.error("Error Code: %s Message: %s",code,msg)
+        order_id = response_map.get('orderId')
+
+        return order_id

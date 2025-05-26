@@ -1,7 +1,7 @@
 import string
 
-from core.portfolio_manager import PortfolioManager
-from core.order import Order
+from engine.core.portfolio_manager import PortfolioManager
+from engine.core.order import Order
 
 class BasicPortfolioManager(PortfolioManager):
     def __init__(self, capital_fraction=0.1):

@@ -14,7 +14,6 @@ class Publisher:
         self.socket = self.context.socket(zmq.PUB)
         self.socket.bind(f"tcp://*:{port}")
         print(f"[{self.name}] Bound to port {port}")
-        time.sleep(1)  # Give time for subscribers to connect
 
     def publish(self, message: OrderBook):
         full_message = f"{self.name}: {message}"
