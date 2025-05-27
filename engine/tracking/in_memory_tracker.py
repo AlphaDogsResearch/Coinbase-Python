@@ -7,7 +7,7 @@ class InMemoryTracker(PositionTracker):
         self.pnl = {}
 
     def update_position(self, order: Order, fill_price: float):
-        symbol = order.asset
+        symbol = order.symbol
         qty = order.quantity
         self.positions[symbol] = self.positions.get(symbol, 0) + qty
         self.pnl[symbol] = self.pnl.get(symbol, 0.0) + qty * fill_price

@@ -19,10 +19,8 @@ class RemoteMarketDataClient:
         self.listeners.append(callback)
 
     def on_event(self, book: OrderBook):
-        logging.info("[%s] Received Market Data: %s", self.name, book)
-
         for listener in self.listeners:
             try:
                 listener(book)
             except Exception as e:
-                logging.warning("Listener raised an exception: %s", e)
+                logging.warning(self.name+" Listener raised an exception: %s", e)

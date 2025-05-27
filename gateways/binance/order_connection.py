@@ -1,6 +1,6 @@
 import logging
 
-from common.interface_order import Order, NewOrderSingle
+from common.interface_order import Order, NewOrderSingle, Trade
 from common.subscription.single_pair_connection.single_pair import PairConnection
 
 from gateways.binance.binance_gateway import BinanceGateway
@@ -20,6 +20,8 @@ class OrderConnection:
         self.order_listener_server = PairConnection(port, True, "Binance Order Listener")
         self.order_listener_server.start_receiving(self.submit_order)
         self.gateway = gateway
+        # TODO add when we need trade
+        # self.gateway.register_market_trades_callback(self.on_trade_event)
 
     ## should change to event
     def submit_order(self, order: Order):
@@ -32,3 +34,8 @@ class OrderConnection:
                 self.order_listener_server.send(order_id)
             except:
                 print("Unable to send done trade order id back", order_id)
+
+    def on_trade_event(self,trade :Trade):
+        logging.info("Received Trade event %s" % trade)
+        self.order_listener_server.send_trade(trade)
+

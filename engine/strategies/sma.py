@@ -1,27 +1,55 @@
-import numpy as np
+import logging
+from typing import Callable, List
 
-class sma:
-    """
-    Simple Moving Average (SMA) strategy.
-    This strategy generates buy and sell signals based on the crossover of two moving averages.
-    """
+from engine.core.strategy import Strategy
 
-    def __init__(self, short_window=50, long_window=200):
+
+class SMAStrategy(Strategy):
+    def __init__(self, short_window: int, long_window: int):
+        super().__init__()
         self.short_window = short_window
         self.long_window = long_window
+        self.name = "SMA-"+str(self.short_window)+"-"+str(self.long_window)
+        self.prices = []
+        self.listeners: List[Callable[[int], None]] = []  # list of callbacks
+        self.signal = 0
 
-    def generate_signals(self, data):
-        """
-        Generate buy and sell signals based on the SMA crossover strategy.
+    def moving_average(self, window: int):
+        if len(self.prices) < window:
+            return None
+        return sum(self.prices[-window:]) / window
 
-        :param data: DataFrame containing the stock price data with a 'Close' column.
-        :return: DataFrame with buy/sell signals.
-        """
-        # Take the last x rows of data to calculate Long MA
-        longMA = sum(data[-self.long_window:])/self.long_window
+    def add_listener(self, callback: Callable[[int], None]):
+        self.listeners.append(callback)
 
-        # Take the last y rows of data to calculate Short MA
-        shortMA = sum(data[self.short_window:])/self.short_window
+    def on_signal(self,signal :int):
+        for listener in self.listeners:
+            try:
+                listener(signal)
+            except Exception as e:
+                logging.warning(self.name+" Listener raised an exception: %s", e)
 
-        # Generate 1 for buy signals and -1 for sell signals
-        return np.where(shortMA > longMA, 1, -1)
+    def update(self, price: float):
+        self.prices.append(price)
+
+        short_sma = self.moving_average(self.short_window)
+        long_sma = self.moving_average(self.long_window)
+
+        if short_sma is None or long_sma is None:
+            self.signal = 0
+        elif short_sma > long_sma:
+            if self.signal == 1:
+                return
+            self.signal = 1
+            self.on_signal(self.signal)
+            logging.info("%s changed signal to %s", self.name, self.signal)
+        elif short_sma < long_sma:
+            if self.signal == -1:
+                return
+            self.signal = -1
+            self.on_signal(self.signal)
+            logging.info("%s changed signal to %s",self.name,self.signal)
+        else:
+            self.signal = 0
+
+

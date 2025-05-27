@@ -50,7 +50,7 @@ class RemoteOrderClient:
             try:
                 listener(order_id)
             except Exception as e:
-                logging.warning("Listener raised an exception: %s", e)
+                logging.warning(self.name+" Listener raised an exception: %s", e)
 
     def stop(self):
         """Stop the sender thread cleanly."""

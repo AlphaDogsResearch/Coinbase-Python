@@ -6,7 +6,7 @@ import zmq
 import threading
 
 from common.interface_book import OrderBook
-from common.interface_order import Order
+from common.interface_order import Order, Trade
 
 
 class PairConnection:
@@ -80,12 +80,16 @@ class PairConnection:
 
     def send(self, message: str):
         """Send a message to the peer."""
-        print(f"[{self.name}] Sending: {message}")
+        print(f"[{self.name}] Sending Message: {message}")
         self.socket.send_string(message,flags=zmq.NOBLOCK)
+
+    def send_trade(self,trade:Trade):
+        print(f"[{self.name}] Sending Trade: {trade}")
+        self.socket.send_pyobj(trade,flags=zmq.NOBLOCK)
 
     def send_order(self, order: Order):
         """Send an order to the peer."""
-        print(f"[{self.name}] Sending: {order}")
+        print(f"[{self.name}] Sending Order: {order}")
         self.socket.send_pyobj(order,flags=zmq.NOBLOCK)
 
     def send_market_data(self, order_book: OrderBook):
@@ -95,6 +99,7 @@ class PairConnection:
             self.socket.send_pyobj(order_book,flags=zmq.NOBLOCK)
         except zmq.Again:
             print(f"Dropped message {order_book}")
+            time.sleep(1)
 
     def stop(self):
         """Stop the background receiver and clean up."""

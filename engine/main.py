@@ -9,6 +9,8 @@ from engine.execution.executor import Executor
 from engine.execution.submit_alternate_order import SubmitAlternateOrder
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
+from engine.strategies.sma import SMAStrategy
+from engine.strategies.strategy_manager import StrategyManager
 from gateways.binance.binance_gateway import BinanceGateway, ProductType
 from portfolio.basic_portfolio_manager import BasicPortfolioManager
 from risk.basic_risk_manager import BasicRiskManager
@@ -27,8 +29,16 @@ def main():
     # binance.register_depth_callback(publisher.depth_callback)
 
     remote_market_client = RemoteMarketDataClient()
-    submit_alternate_order = SubmitAlternateOrder(RemoteOrderClient())
-    submit_alternate_order.start()
+    remote_order_client = RemoteOrderClient()
+    strategy_manager = StrategyManager(remote_order_client)
+    sma_strategy = SMAStrategy(12,42)
+    strategy_manager.add_strategy("SMA-12-42",sma_strategy)
+    remote_market_client.add_listener(strategy_manager.on_market_data_event)
+
+
+
+    # submit_alternate_order = SubmitAlternateOrder(RemoteOrderClient())
+    # submit_alternate_order.start()
     while start:
         continue
         # time.sleep(2)
@@ -41,7 +51,7 @@ def main():
         #     portfolio_manager = BasicPortfolioManager(capital_fraction=0.1)
         #     risk_manager = BasicRiskManager(max_order_value=5000)
         #     order_manager = SimpleOrderManager()
-        #     executor = Executor(API_KEY, API_SECRET)
+        #     executor = Executor(binance)
         #     tracker = InMemoryTracker()
         #
         #     # Simulate capital
@@ -60,30 +70,30 @@ def main():
         #         print("No signals generated.")
         #     else:
         #         # Step 3: Portfolio manager calculates orders
-        #         orders = portfolio_manager.evaluate_signals(contract, signals, aum)
-        #
-        #         # Step 4: Risk check and queue orders
-        #         for asset, order in list(orders.items()):
-        #             # if risk_manager and not risk_manager.validate_order(order, aum):
-        #             #     print(f"Order for {asset} failed risk check. Removing.")
-        #             #     del orders[asset]
-        #             # else:
-        #             order_manager.queue_orders({asset: order})
-        #
-        #         # Step 5: Get queued orders
-        #         queued_orders = order_manager.get_queued_orders()
-        #
+        #         order = portfolio_manager.evaluate_signals(contract, signals, aum)
+        #         # # Step 4: Risk check and queue orders
+        #         # for asset, order in list(orders.items()):
+        #         #     # if risk_manager and not risk_manager.validate_order(order, aum):
+        #         #     #     print(f"Order for {asset} failed risk check. Removing.")
+        #         #     #     del orders[asset]
+        #         #     # else:
+        #         #     order_manager.queue_orders({asset: order})
+        #         #
+        #         # # Step 5: Get queued orders
+        #         # queued_orders = order_manager.get_queued_orders()
+        #         print(order[contract]['symbol'], order[contract]['quantity'], order[contract]['side'])
         #         # Step 6: Place orders
-        #         executor.place_orders(queued_orders)
+        #         executor.place_orders(order[contract]['symbol'], order[contract]['quantity'], order[contract]['side'])
         #
         #         # Step 7: Update position tracker (mock fill price assumed)
-        #         for asset, order in queued_orders.items():
-        #             mock_fill_price = market_data["price"][-1] # Use the last price as fill price
-        #             tracker.update_position(order, fill_price=mock_fill_price)
+        #         # for asset, order in queued_orders.items():
+        #         #     mock_fill_price = market_data["price"][-1] # Use the last price as fill price
+        #         # tracker.update_position(order, fill_price=)
         #
         #         # Final: Print current positions and PnL
         #         print("Positions:", tracker.get_positions())
         #         print("PnL:", tracker.get_pnl())
+
 
 if __name__ == "__main__":
     main()
