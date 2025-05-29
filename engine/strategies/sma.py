@@ -9,7 +9,7 @@ class SMAStrategy(Strategy):
         super().__init__()
         self.short_window = short_window
         self.long_window = long_window
-        self.name = "SMA-"+str(self.short_window)+"-"+str(self.long_window)
+        self.name = "SMA-" + str(self.short_window) + "-" + str(self.long_window)
         self.prices = []
         self.listeners: List[Callable[[int], None]] = []  # list of callbacks
         self.signal = 0
@@ -22,12 +22,12 @@ class SMAStrategy(Strategy):
     def add_listener(self, callback: Callable[[int], None]):
         self.listeners.append(callback)
 
-    def on_signal(self,signal :int):
+    def on_signal(self, signal: int):
         for listener in self.listeners:
             try:
                 listener(signal)
             except Exception as e:
-                logging.warning(self.name+" Listener raised an exception: %s", e)
+                logging.warning(self.name + " Listener raised an exception: %s", e)
 
     def update(self, price: float):
         self.prices.append(price)
@@ -41,15 +41,17 @@ class SMAStrategy(Strategy):
             if self.signal == 1:
                 return
             self.signal = 1
+            logging.info("%s changed signal to %d, current short %f current long %f", self.name, self.signal, short_sma,
+                         long_sma)
             self.on_signal(self.signal)
-            logging.info("%s changed signal to %s", self.name, self.signal)
+
         elif short_sma < long_sma:
             if self.signal == -1:
                 return
             self.signal = -1
+            logging.info("%s changed signal to %d, current short %f current long %f", self.name, self.signal, short_sma,
+                         long_sma)
             self.on_signal(self.signal)
-            logging.info("%s changed signal to %s",self.name,self.signal)
+
         else:
             self.signal = 0
-
-

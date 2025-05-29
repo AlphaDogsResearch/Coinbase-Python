@@ -4,6 +4,7 @@ import logging
 
 from dotenv import load_dotenv
 
+from common.config_logging import to_stdout
 from engine.core.strategy import Strategy
 from engine.execution.executor import Executor
 from engine.execution.submit_alternate_order import SubmitAlternateOrder
@@ -18,6 +19,7 @@ from orders.simple_order_manager import SimpleOrderManager
 from tracking.in_memory_tracker import InMemoryTracker
 
 def main():
+    to_stdout()
     logging.info("Running Engine...")
     start = True
     market_data = {'price': [], 'ask': [], 'bid': []}
@@ -28,17 +30,31 @@ def main():
     # publisher = Publisher(publisherPort, "Binance Publisher")
     # binance.register_depth_callback(publisher.depth_callback)
 
+    # initalise remote client
     remote_market_client = RemoteMarketDataClient()
     remote_order_client = RemoteOrderClient()
-    strategy_manager = StrategyManager(remote_order_client)
-    sma_strategy = SMAStrategy(12,42)
-    strategy_manager.add_strategy("SMA-12-42",sma_strategy)
+
+    # create executor
+    executor = Executor(remote_order_client)
+
+    # setup strategy manager
+    strategy_manager = StrategyManager(executor)
+
+
+    # add strategy
+    short_sma = 50
+    long_sma = 200
+    sma_strategy = SMAStrategy(short_sma,long_sma)
+    strategy_manager.add_strategy(sma_strategy)
+
+    # attach strategy manager listener to remote client
     remote_market_client.add_listener(strategy_manager.on_market_data_event)
 
 
+    tracker = InMemoryTracker()
 
-    # submit_alternate_order = SubmitAlternateOrder(RemoteOrderClient())
-    # submit_alternate_order.start()
+
+
     while start:
         continue
         # time.sleep(2)

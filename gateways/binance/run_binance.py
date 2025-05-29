@@ -21,7 +21,6 @@ import time
 from dotenv import load_dotenv
 
 from common.config_logging import to_stdout
-from common.interface_order import OrderType, Side, Order
 from gateways.binance.binance_gateway import BinanceGateway, ProductType
 from gateways.binance.market_connection import MarketDataConnection
 from gateways.binance.order_connection import OrderConnection
@@ -42,7 +41,7 @@ if __name__ == '__main__':
     market_data_port = 8080
     order_port = 8081
 
-    market_data_connection = MarketDataConnection(market_data_port,binance)
+    market_data_connection = MarketDataConnection(market_data_port, binance)
 
     order_connection = OrderConnection(order_port, binance)
 

@@ -62,7 +62,7 @@ class PairConnection:
 
                         try:
                             msg = self.socket.recv_pyobj()
-                            print(f"[{self.name}] Received: {msg}")
+                            # print(f"[{self.name}] Received: {msg}")
                             callback(msg)
                         except Exception as e:
                             if hasattr(e, 'message'):
