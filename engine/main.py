@@ -43,21 +43,21 @@ def main():
     # attach strategy manager listener to remote client
     remote_market_client.add_listener(strategy_manager.on_market_data_event)
 
-    # Generate price to test strategy (temp)
-    S0 = 1000
-    mu = 0.0002
-    sigma = 0.01
-    steps = 1000
-
-    price = S0
-    for _ in range(steps):
-        dt = 1
-        Z = random.gauss(0, 1)
-        price *= math.exp((mu - 0.5 * sigma**2) * dt + sigma * Z * math.sqrt(dt))
-        price = round(price, 4)
-        # print(f"price: {price}")
-
-        strategy_manager.on_event(price)
+    # # Generate price to test strategy (temp)
+    # S0 = 1000
+    # mu = 0.0002
+    # sigma = 0.01
+    # steps = 1000
+    #
+    # price = S0
+    # for _ in range(steps):
+    #     dt = 1
+    #     Z = random.gauss(0, 1)
+    #     price *= math.exp((mu - 0.5 * sigma**2) * dt + sigma * Z * math.sqrt(dt))
+    #     price = round(price, 4)
+    #     # print(f"price: {price}")
+    #
+    #     strategy_manager.on_event(price)
 
     tracker = InMemoryTracker()
 

@@ -30,6 +30,9 @@ class OrderBook:
     def get_best_mid(self):
         return (self.bids[0].price + self.asks[0].price) / 2
 
+    def get_spread(self):
+        return self.asks[0].price - self.bids[0].price
+
     def get_best_bid(self):
         return self.bids[0].price
 

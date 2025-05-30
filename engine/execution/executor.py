@@ -17,6 +17,10 @@ class Executor(TradeExecution):
     def on_signal(self, signal: int):
         print(f"TradeExecution on_signal: {signal}")
         # decide what to do with signal
+        if signal == 1:
+            self.place_orders("BTCUSDT", 0.001, Side.BUY)
+        elif signal == -1:
+            self.place_orders("BTCUSDT", 0.001, Side.SELL)
 
     def place_orders(self, symbol: str, quantity: float, side: Side):
         """
@@ -26,7 +30,7 @@ class Executor(TradeExecution):
         """
 
         order_id = self.id_generator.next()
-        order = Order(order_id, side, 0.1, "BTCUSDT", None, OrderType.Market)
+        order = Order(order_id, side, quantity, symbol, None, OrderType.Market)
         self.remote_order_client.submit_order(order)
 
     def query_order(self, symbol: str, order_id: str):
