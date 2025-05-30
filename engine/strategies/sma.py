@@ -41,16 +41,26 @@ class SMAStrategy(Strategy):
             if self.signal == 1:
                 return
             self.signal = 1
-            logging.info("%s changed signal to %d, current short %f current long %f", self.name, self.signal, short_sma,
-                         long_sma)
+            logging.info(
+                "%s changed signal to %d, current short %f current long %f",
+                self.name,
+                self.signal,
+                short_sma,
+                long_sma,
+            )
             self.on_signal(self.signal)
 
         elif short_sma < long_sma:
             if self.signal == -1:
                 return
             self.signal = -1
-            logging.info("%s changed signal to %d, current short %f current long %f", self.name, self.signal, short_sma,
-                         long_sma)
+            logging.info(
+                "%s changed signal to %d, current short %f current long %f",
+                self.name,
+                self.signal,
+                short_sma,
+                long_sma,
+            )
             self.on_signal(self.signal)
 
         else:

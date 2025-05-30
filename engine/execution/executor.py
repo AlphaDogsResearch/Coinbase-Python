@@ -14,6 +14,10 @@ class Executor(TradeExecution):
         self.remote_order_client = remote_order_client
         self.id_generator = OrderIdGenerator("STRAT")
 
+    def on_signal(self, signal: int):
+        print(f"TradeExecution on_signal: {signal}")
+        # decide what to do with signal
+
     def place_orders(self, symbol: str, quantity: float, side: Side):
         """
         Place orders using the specified execution strategy.
@@ -33,7 +37,6 @@ class Executor(TradeExecution):
         :return: The status of the order.
         """
 
-
     def place_and_query_order(self, symbol: str, quantity: float, side: bool):
         """
         Place an order and query its status.
@@ -44,7 +47,7 @@ class Executor(TradeExecution):
         :return: The status of the order.
         """
         order_response = self.place_orders(symbol, quantity, side)
-        order_id = order_response['orderId']
+        order_id = order_response["orderId"]
         if order_id:
             return self.query_order(symbol, order_id)
         else:

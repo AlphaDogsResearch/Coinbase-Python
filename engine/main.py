@@ -1,28 +1,22 @@
-import os
-import time
 import logging
 
-from dotenv import load_dotenv
 
 from common.config_logging import to_stdout
-from engine.core.strategy import Strategy
 from engine.execution.executor import Executor
-from engine.execution.submit_alternate_order import SubmitAlternateOrder
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.strategies.sma import SMAStrategy
 from engine.strategies.strategy_manager import StrategyManager
-from gateways.binance.binance_gateway import BinanceGateway, ProductType
-from portfolio.basic_portfolio_manager import BasicPortfolioManager
-from risk.basic_risk_manager import BasicRiskManager
-from orders.simple_order_manager import SimpleOrderManager
-from tracking.in_memory_tracker import InMemoryTracker
+from engine.tracking.in_memory_tracker import InMemoryTracker
+import random
+import math
+
 
 def main():
     to_stdout()
     logging.info("Running Engine...")
     start = True
-    market_data = {'price': [], 'ask': [], 'bid': []}
+    market_data = {"price": [], "ask": [], "bid": []}
     #
     # binance = BinanceGateway(symbol=contract, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
     # binance.connect()
@@ -40,20 +34,32 @@ def main():
     # setup strategy manager
     strategy_manager = StrategyManager(executor)
 
-
     # add strategy
     short_sma = 50
     long_sma = 200
-    sma_strategy = SMAStrategy(short_sma,long_sma)
+    sma_strategy = SMAStrategy(short_sma, long_sma)
     strategy_manager.add_strategy(sma_strategy)
 
     # attach strategy manager listener to remote client
     remote_market_client.add_listener(strategy_manager.on_market_data_event)
 
+    # Generate price to test strategy (temp)
+    S0 = 1000
+    mu = 0.0002
+    sigma = 0.01
+    steps = 1000
+
+    price = S0
+    for _ in range(steps):
+        dt = 1
+        Z = random.gauss(0, 1)
+        price *= math.exp((mu - 0.5 * sigma**2) * dt + sigma * Z * math.sqrt(dt))
+        price = round(price, 4)
+        # print(f"price: {price}")
+
+        strategy_manager.on_event(price)
 
     tracker = InMemoryTracker()
-
-
 
     while start:
         continue

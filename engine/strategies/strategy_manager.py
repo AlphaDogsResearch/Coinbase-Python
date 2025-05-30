@@ -29,12 +29,8 @@ class StrategyManager:
         best_mid = order_book.get_best_mid()
         self.on_event(best_mid)
 
-    # to be improved
     def on_signal(self, signal: int):
-        if signal == 1:
-            self.executor.place_orders("BTCUSDT", 0.1, Side.BUY)
-        elif signal == -1:
-            self.executor.place_orders("BTCUSDT", 0.1, Side.SELL)
+        self.executor.on_signal(signal=signal)
 
     def on_event(self, mid_price: float):
         for strategy_name, strategy in self.strategies.items():
