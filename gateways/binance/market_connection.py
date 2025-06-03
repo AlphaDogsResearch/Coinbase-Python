@@ -1,4 +1,5 @@
 from common.interface_book import OrderBook, VenueOrderBook
+from common.subscription.single_pair_connection.json_message import JsonMessenger
 from common.subscription.single_pair_connection.single_pair import PairConnection
 
 from gateways.binance.binance_gateway import BinanceGateway

@@ -1,5 +1,8 @@
 # A price tier in the order book
-class PriceLevel:
+from common.seriallization import Serializable
+
+
+class PriceLevel(Serializable):
     def __init__(self, price: float, size: float, quote_id: str = None):
         self.price = price
         self.size = size
@@ -10,7 +13,7 @@ class PriceLevel:
 
 
 # An order book with bid and ask sides
-class OrderBook:
+class OrderBook(Serializable):
     def __init__(self, timestamp: float, contract_name: str, bids: [PriceLevel], asks: [PriceLevel]):
         self.contract_name = contract_name
         self.timestamp = timestamp
@@ -18,15 +21,15 @@ class OrderBook:
         self.asks = asks
 
     def __str__(self):
-        string = ' Bids:'
+        string = f"[{self.contract_name} @ {self.timestamp}]"
+        string += ' Bids:'
         for tier in self.bids[:3]:
             string += str(tier)
-
-        string = string + ' Asks:'
+        string += ' Asks:'
         for tier in self.asks[:3]:
             string += str(tier)
-
         return string
+
     def get_best_mid(self):
         return (self.bids[0].price + self.asks[0].price) / 2
 

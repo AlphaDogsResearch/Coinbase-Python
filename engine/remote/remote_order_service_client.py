@@ -6,6 +6,7 @@ import time
 
 from common.interface_book import OrderBook
 from common.interface_order import Order
+from common.interface_req_res import WalletResponse, WalletRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
 
 
@@ -18,6 +19,7 @@ class RemoteOrderClient:
 
         self.remote_order_server = PairConnection(self.port, False, self.name)
         self.remote_order_server.start_receiving(self.on_event)
+        self.request_for_wallet()
 
         # Queue to hold orders to send
         self._order_queue = queue.Queue()
@@ -28,6 +30,10 @@ class RemoteOrderClient:
     def submit_order(self, order: Order):
         """Add an order to the sending queue."""
         self._order_queue.put(order)
+
+
+    def request_for_wallet(self):
+        self.remote_order_server.send_wallet_request(WalletRequest())
 
     def _send_orders_loop(self):
         """Background thread to send orders from the queue."""
@@ -43,7 +49,18 @@ class RemoteOrderClient:
         """Register a callback to receive OrderBook updates"""
         self.listeners.append(callback)
 
-    def on_event(self, order_id: str):
+    def on_event(self, obj:object):
+        if isinstance(obj, str):
+            self.received_order_id(obj)
+        elif isinstance(obj,WalletResponse):
+            self.received_wallet_response(obj)
+
+
+    def received_wallet_response(self,wallet_response:WalletResponse):
+        logging.info("Received Wallet Response %s" %wallet_response)
+
+
+    def received_order_id(self,order_id: str):
         logging.info("[%s] Received Order ID: %s", self.name, order_id)
 
         for listener in self.listeners:

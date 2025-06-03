@@ -1,6 +1,7 @@
 import logging
 
 from common.interface_order import Order, NewOrderSingle, Trade
+from common.interface_req_res import WalletRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
 
 from gateways.binance.binance_gateway import BinanceGateway
@@ -18,12 +19,18 @@ def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
 class OrderConnection:
     def __init__(self, port: int, gateway: BinanceGateway):
         self.order_listener_server = PairConnection(port, True, "Binance Order Listener")
-        self.order_listener_server.start_receiving(self.submit_order)
+        self.order_listener_server.start_receiving(self.on_event)
         self.gateway = gateway
         # TODO add when we need trade
         # self.gateway.register_market_trades_callback(self.on_trade_event)
 
-    ## should change to event
+
+    def on_event(self,obj :object):
+        if isinstance(obj, Order):
+            self.submit_order(obj)
+        elif isinstance(obj,WalletRequest):
+            self.get_and_send_wallet(obj)
+
     def submit_order(self, order: Order):
         logging.info("order %s " % order)
         new_order_single = convert_order_to_new_order_single(order)
@@ -38,4 +45,10 @@ class OrderConnection:
     def on_trade_event(self,trade :Trade):
         logging.info("Received Trade event %s" % trade)
         self.order_listener_server.send_trade(trade)
+
+    def get_and_send_wallet(self,wallet_request :WalletRequest):
+        balance = self.gateway._get_wallet_balances()
+        wallet_balance = wallet_request.handle(balance)
+        self.order_listener_server.send_wallet_response(wallet_balance)
+
 

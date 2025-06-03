@@ -2,6 +2,8 @@ import logging
 from typing import Callable, List
 
 from common.interface_book import OrderBook
+from common.subscription.messaging.dealer import Dealer
+from common.subscription.single_pair_connection.json_message import JsonMessenger
 from common.subscription.single_pair_connection.single_pair import PairConnection
 
 

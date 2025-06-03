@@ -7,6 +7,7 @@ import threading
 
 from common.interface_book import OrderBook
 from common.interface_order import Order, Trade
+from common.interface_req_res import WalletResponse, WalletRequest
 
 
 class PairConnection:
@@ -82,6 +83,14 @@ class PairConnection:
         """Send a message to the peer."""
         print(f"[{self.name}] Sending Message: {message}")
         self.socket.send_string(message,flags=zmq.NOBLOCK)
+
+    def send_wallet_response(self,wallet_response:WalletResponse):
+        print(f"[{self.name}] Sending Wallet Response: {wallet_response}")
+        self.socket.send_pyobj(wallet_response,flags=zmq.NOBLOCK)
+
+    def send_wallet_request(self, wallet_request:WalletRequest):
+        print(f"[{self.name}] Sending Wallet Request: {wallet_request}")
+        self.socket.send_pyobj(wallet_request, flags=zmq.NOBLOCK)
 
     def send_trade(self,trade:Trade):
         print(f"[{self.name}] Sending Trade: {trade}")

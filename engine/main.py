@@ -37,6 +37,7 @@ def main():
     # add strategy
     short_sma = 50
     long_sma = 200
+    amount = 0.001
     sma_strategy = SMAStrategy(short_sma, long_sma)
     strategy_manager.add_strategy(sma_strategy)
 

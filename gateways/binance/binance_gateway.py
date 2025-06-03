@@ -14,6 +14,7 @@ from enum import Enum
 from threading import Thread
 from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
 from binance import FuturesDepthCacheManager
+from binance.client import Client
 from binance.enums import FuturesType
 from gateways.gateway_interface import GatewayInterface, ReadyCheck
 from common.callback_utils import assert_param_counts
@@ -49,6 +50,11 @@ class BinanceGateway(GatewayInterface):
         self._product_type = product_type
         # Base URLs
         self.BASE_URL = 'https://testnet.binancefuture.com'
+
+        # Connect to Futures Testnet
+
+        self.api_client = Client(self._api_key, self._api_secret)
+        self.api_client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'  # Point to Futures Testnet
 
         # binance async client
         self._client = None
@@ -227,12 +233,46 @@ class BinanceGateway(GatewayInterface):
 
     def _get_positions(self):
         logging.info('REST - Getting position')
+        positions = self.api_client.futures_position_information()
+
+        for pos in positions:
+            symbol = pos['symbol']
+            position_amt = float(pos['positionAmt'])
+            entry_price = float(pos['entryPrice'])
+            unrealized_pnl = float(pos['unRealizedProfit'])
+            if position_amt != 0:
+                print(
+                    f"Symbol: {symbol}, Position Amount: {position_amt}, Entry Price: {entry_price}, Unrealized PnL: {unrealized_pnl}")
 
     def _get_wallet_balances(self):
         logging.info('REST - Getting wallet balances')
+        # Fetch account balance (Futures)
+        futures_balance = self.api_client.futures_account_balance()
+
+        wallet = {}
+
+        # Print non-zero balances
+        for asset in futures_balance:
+            asset_name = asset['asset']
+            balance = float(asset['balance'])
+            if balance != 0:
+                print(f"{asset_name}: {balance}")
+                wallet[asset_name] = balance
+
+        return wallet
 
     def _get_orders(self):
         logging.info('REST - Getting open orders')
+        open_orders = self.api_client.futures_get_open_orders()
+
+        for order in open_orders:
+            symbol = order['symbol']
+            order_id = order['orderId']
+            price = order['price']
+            qty = order['origQty']
+            side = order['side']
+            status = order['status']
+            print(f"Order ID: {order_id}, Symbol: {symbol}, Side: {side}, Qty: {qty}, Price: {price}, Status: {status}")
 
     #############################################
     ##               Interface                 ##
