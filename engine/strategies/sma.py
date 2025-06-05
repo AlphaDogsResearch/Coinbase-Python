@@ -11,7 +11,7 @@ class SMAStrategy(Strategy):
         self.long_window = long_window
         self.name = "SMA-" + str(self.short_window) + "-" + str(self.long_window)
         self.prices = []
-        self.listeners: List[Callable[[int], None]] = []  # list of callbacks
+        self.listeners: List[Callable[[int,float], None]] = []  # list of callbacks
         self.signal = 0
 
     def moving_average(self, window: int):
@@ -19,13 +19,13 @@ class SMAStrategy(Strategy):
             return None
         return sum(self.prices[-window:]) / window
 
-    def add_listener(self, callback: Callable[[int], None]):
+    def add_listener(self, callback: Callable[[int,float], None]):
         self.listeners.append(callback)
 
-    def on_signal(self, signal: int):
+    def on_signal(self, signal: int,price:float):
         for listener in self.listeners:
             try:
-                listener(signal)
+                listener(signal,price)
             except Exception as e:
                 logging.warning(self.name + " Listener raised an exception: %s", e)
 
@@ -48,7 +48,7 @@ class SMAStrategy(Strategy):
                 short_sma,
                 long_sma,
             )
-            self.on_signal(self.signal)
+            self.on_signal(self.signal,price)
 
         elif short_sma < long_sma:
             if self.signal == -1:
@@ -61,7 +61,7 @@ class SMAStrategy(Strategy):
                 short_sma,
                 long_sma,
             )
-            self.on_signal(self.signal)
+            self.on_signal(self.signal,price)
 
         else:
             self.signal = 0

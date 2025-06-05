@@ -2,27 +2,34 @@
 Executor class for executing orders using various strategies.
 """
 import logging
+import math
 
 from common.identifier import OrderIdGenerator
 from common.interface_order import Side, Order, OrderType
+from common.time_utils import current_milli_time
 from engine.core.trade_execution import TradeExecution
 from engine.remote.remote_order_service_client import RemoteOrderClient
 
 
 class Executor(TradeExecution):
-    def __init__(self, remote_order_client: RemoteOrderClient):
+    def __init__(self,order_type:OrderType, remote_order_client: RemoteOrderClient):
         self.remote_order_client = remote_order_client
         self.id_generator = OrderIdGenerator("STRAT")
+        self.order_type = order_type
 
-    def on_signal(self, signal: int):
-        print(f"TradeExecution on_signal: {signal}")
+    def on_signal(self, signal: int,price:float):
+        print(f"TradeExecution on_signal: {signal} price {price}")
         # decide what to do with signal
-        if signal == 1:
-            self.place_orders("BTCUSDT", 0.001, Side.BUY)
-        elif signal == -1:
-            self.place_orders("BTCUSDT", 0.001, Side.SELL)
+        #round to 1 dp
 
-    def place_orders(self, symbol: str, quantity: float, side: Side):
+        if signal == 1:
+            rounded_down_price = math.floor(price * 10) / 10
+            self.place_orders("BTCUSDT", 0.001, Side.BUY,rounded_down_price)
+        elif signal == -1:
+            rounded_up_price = math.ceil(price * 10) / 10
+            self.place_orders("BTCUSDT", 0.001, Side.SELL,rounded_up_price)
+
+    def place_orders(self, symbol: str, quantity: float, side: Side,price:float):
         """
         Place orders using the specified execution strategy.
 
@@ -30,7 +37,7 @@ class Executor(TradeExecution):
         """
 
         order_id = self.id_generator.next()
-        order = Order(order_id, side, quantity, symbol, None, OrderType.Market)
+        order = Order(order_id, side, quantity, symbol, current_milli_time(), self.order_type,price)
         self.remote_order_client.submit_order(order)
 
     def query_order(self, symbol: str, order_id: str):

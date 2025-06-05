@@ -7,7 +7,8 @@ import threading
 
 from common.interface_book import OrderBook
 from common.interface_order import Order, Trade
-from common.interface_req_res import WalletResponse, WalletRequest
+from common.interface_req_res import WalletResponse, WalletRequest, AccountResponse, AccountRequest, PositionResponse, \
+    PositionRequest
 
 
 class PairConnection:
@@ -91,6 +92,22 @@ class PairConnection:
     def send_wallet_request(self, wallet_request:WalletRequest):
         print(f"[{self.name}] Sending Wallet Request: {wallet_request}")
         self.socket.send_pyobj(wallet_request, flags=zmq.NOBLOCK)
+
+    def send_account_response(self, account_response: AccountResponse):
+        print(f"[{self.name}] Sending Account Response: {account_response}")
+        self.socket.send_pyobj(account_response, flags=zmq.NOBLOCK)
+
+    def send_account_request(self, account_request: AccountRequest):
+        print(f"[{self.name}] Sending Account Request: {account_request}")
+        self.socket.send_pyobj(account_request, flags=zmq.NOBLOCK)
+
+    def send_position_response(self, position_response: PositionResponse):
+        print(f"[{self.name}] Sending Position Response: {position_response}")
+        self.socket.send_pyobj(position_response, flags=zmq.NOBLOCK)
+
+    def send_position_request(self, position_request: PositionRequest):
+        print(f"[{self.name}] Sending Position Request: {position_request}")
+        self.socket.send_pyobj(position_request, flags=zmq.NOBLOCK)
 
     def send_trade(self,trade:Trade):
         print(f"[{self.name}] Sending Trade: {trade}")

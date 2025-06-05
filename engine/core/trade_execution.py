@@ -3,7 +3,7 @@ from .order import Order
 
 class TradeExecution(ABC):
     @abstractmethod
-    def place_orders(self, symbol: str, quantity: float, side: bool):
+    def place_orders(self, symbol: str, quantity: float, side: bool,price:float):
         """
         Send orders to the exchange or broker.
         """

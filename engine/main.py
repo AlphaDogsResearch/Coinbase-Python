@@ -2,6 +2,7 @@ import logging
 
 
 from common.config_logging import to_stdout
+from common.interface_order import OrderType
 from engine.execution.executor import Executor
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
@@ -29,7 +30,8 @@ def main():
     remote_order_client = RemoteOrderClient()
 
     # create executor
-    executor = Executor(remote_order_client)
+    order_type = OrderType.Limit
+    executor = Executor(order_type,remote_order_client)
 
     # setup strategy manager
     strategy_manager = StrategyManager(executor)

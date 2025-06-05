@@ -9,8 +9,8 @@ class Strategy:
     def update(self, price: float):
         raise NotImplementedError("Must implement update() in subclass")
 
-    def add_listener(self, callback: Callable[[int], None]):
+    def add_listener(self, callback: Callable[[int,float], None]):
         raise NotImplementedError("Must implement update() in subclass")
 
-    def on_signal(self,signal :int):
+    def on_signal(self, signal: int,price:float):
         raise NotImplementedError("Must implement update() in subclass")

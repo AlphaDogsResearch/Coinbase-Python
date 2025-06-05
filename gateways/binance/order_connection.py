@@ -1,7 +1,7 @@
 import logging
 
 from common.interface_order import Order, NewOrderSingle, Trade
-from common.interface_req_res import WalletRequest
+from common.interface_req_res import WalletRequest, AccountRequest, PositionRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
 
 from gateways.binance.binance_gateway import BinanceGateway
@@ -30,15 +30,20 @@ class OrderConnection:
             self.submit_order(obj)
         elif isinstance(obj,WalletRequest):
             self.get_and_send_wallet(obj)
+        elif isinstance(obj,AccountRequest):
+            self.get_account_info(obj)
+        elif isinstance(obj,PositionRequest):
+            self.get_position_info(obj)
 
     def submit_order(self, order: Order):
         logging.info("order %s " % order)
         new_order_single = convert_order_to_new_order_single(order)
         logging.info("Order Submitted %s", new_order_single)
         order_id = self.gateway.submit_order(new_order_single)
+        logging.info("Order ID %s",order_id)
         if order_id is not None:
             try:
-                self.order_listener_server.send(order_id)
+                self.order_listener_server.send(str(order_id))
             except:
                 print("Unable to send done trade order id back", order_id)
 
@@ -50,5 +55,19 @@ class OrderConnection:
         balance = self.gateway._get_wallet_balances()
         wallet_balance = wallet_request.handle(balance)
         self.order_listener_server.send_wallet_response(wallet_balance)
+
+    def get_account_info(self,account_request : AccountRequest):
+        account_info = self.gateway._get_account_info()
+        wallet_balance = account_info['totalWalletBalance']
+        margin_balance = account_info['totalMarginBalance']
+        unreal_pnl = account_info['totalUnrealizedProfit']
+        maint_margin = account_info['totalMaintMargin']
+        account = account_request.handle(wallet_balance,margin_balance,unreal_pnl,maint_margin)
+        self.order_listener_server.send_account_response(account)
+
+    def get_position_info(self,position_request : PositionRequest):
+        account_position = self.gateway._get_positions()
+        positions = position_request.handle(account_position)
+        self.order_listener_server.send_position_response(positions)
 
 

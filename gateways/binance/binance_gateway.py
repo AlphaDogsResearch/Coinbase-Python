@@ -2,34 +2,31 @@
 Binance gateway implementation using library https://github.com/sammchardy/python-binance
 """
 import asyncio
+import hashlib
+import hmac
 import logging
 import sys
 import time
-from urllib.parse import urlencode
-import hmac
-import hashlib
-import requests
-
 from enum import Enum
 from threading import Thread
+from urllib.parse import urlencode
+
+import requests
 from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
 from binance import FuturesDepthCacheManager
 from binance.client import Client
 from binance.enums import FuturesType
-from gateways.gateway_interface import GatewayInterface, ReadyCheck
+
 from common.callback_utils import assert_param_counts
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
 from common.interface_order import Trade, Side, NewOrderSingle, OrderType
+from gateways.gateway_interface import GatewayInterface, ReadyCheck
 
-import time
-from urllib.parse import urlencode
-import hmac
-import hashlib
-import requests
 
 class ProductType(Enum):
     SPOT = 0
     FUTURE = 1  # USD_M, settle in USDT or BUSD
+
 
 def sign_url(secret: str, api_url, params: {}):
     # create query string
@@ -58,11 +55,11 @@ class BinanceGateway(GatewayInterface):
 
         # binance async client
         self._client = None
-        self._bm = None         # binance socket manager
-        self._dcm = None        # depth cache, which implements the logic to manage a local order book
-        self._dws = None        # depth async WebSocket session
-        self._ts  = None        # trade socket
-        self._tws = None        # trade async WebSocket session
+        self._bm = None  # binance socket manager
+        self._dcm = None  # depth cache, which implements the logic to manage a local order book
+        self._dws = None  # depth async WebSocket session
+        self._ts = None  # trade socket
+        self._tws = None  # trade async WebSocket session
 
         # depth cache
         self._depth_cache = None
@@ -116,6 +113,7 @@ class BinanceGateway(GatewayInterface):
             self._get_positions()
             self._get_wallet_balances()
             self._get_orders()
+            self._get_account_info()
 
         self._ready_check.snapshot_ready = True
 
@@ -240,9 +238,22 @@ class BinanceGateway(GatewayInterface):
             position_amt = float(pos['positionAmt'])
             entry_price = float(pos['entryPrice'])
             unrealized_pnl = float(pos['unRealizedProfit'])
+            maint_margin = float(pos['maintMargin'])
             if position_amt != 0:
                 print(
-                    f"Symbol: {symbol}, Position Amount: {position_amt}, Entry Price: {entry_price}, Unrealized PnL: {unrealized_pnl}")
+                    f"Symbol: {symbol}, Position Amount: {position_amt}, Entry Price: {entry_price}, Unrealized PnL: {unrealized_pnl} Maintenance Margin {maint_margin}")
+
+        return positions
+
+    def _get_account_info(self):
+        logging.info('REST - Getting account info')
+        account_info = self.api_client.futures_account()
+        print(f"Total Wallet Balance     : {account_info['totalWalletBalance']}")
+        print(f"Total Margin Balance     : {account_info['totalMarginBalance']}")
+        print(f"Total Unrealized PnL     : {account_info['totalUnrealizedProfit']}")
+        print(f"Total Maintenance Margin : {account_info['totalMaintMargin']}")
+
+        return account_info
 
     def _get_wallet_balances(self):
         logging.info('REST - Getting wallet balances')
@@ -297,15 +308,18 @@ class BinanceGateway(GatewayInterface):
 
     """ register an execution callback function takes two arguments, 
         an order event: (exchange_name:str, event: OrderEvent, external: bool) """
+
     def register_execution_callback(self, callback):
         pass
 
     """ register a position callback whenever position is updated with fill info, takes three argument
             (exchange_name:str, contract_name:str, position: float """
+
     def register_position_callback(self, callback):
         pass
 
     """ register a callback to listen to market trades that takes one argument: [Trades] """
+
     def register_market_trades_callback(self, callback):
         assert_param_counts(callback, 1)
         self._market_trades_callbacks.append(callback)
@@ -314,24 +328,26 @@ class BinanceGateway(GatewayInterface):
         """ A signals to reconnect """
         self._signal_reconnect = True
 
-
-    def check_side(self, order:NewOrderSingle):
+    def check_side(self, order: NewOrderSingle):
         return order.side == Side.BUY
 
-    def submit_order(self, new_order : NewOrderSingle):
-        orderType = new_order.type
+    def submit_order(self, new_order: NewOrderSingle):
+        order_type = new_order.type
         side = True
         if new_order.side == Side.SELL:
             side = False
 
         symbol = new_order.symbol
         quantity = new_order.quantity
-        if orderType == OrderType.Market:
-            return self.send_market_order(self._api_key, self._api_secret, symbol, quantity, side)
+        order_type = new_order.type
+        price = new_order.price
+        return self.send_order(self._api_key, self._api_secret, symbol, quantity, side, order_type, price)
 
-    def send_market_order(self,key: str, secret: str, symbol: str, quantity: float, side: bool):
+    def send_order(self, key: str, secret: str, symbol: str, quantity: float, side: bool, order_type: OrderType,
+                   price: float):
         # order parameters
         timestamp = int(time.time() * 1000)
+
         params = {
             "symbol": symbol,
             "side": "BUY" if side else "SELL",
@@ -339,6 +355,17 @@ class BinanceGateway(GatewayInterface):
             "quantity": quantity,
             'timestamp': timestamp
         }
+
+        if order_type == OrderType.Limit:
+            params = {
+                "symbol": symbol,  # e.g. "BTCUSDT"
+                "side": "BUY" if side else "SELL",  # BUY or SELL
+                "type": "LIMIT",  # Order type
+                "timeInForce": "FOK",  # Time in Force (required for LIMIT) IOC/FOK/GTC
+                "quantity": quantity,  # Order quantity
+                "price": price,  # Limit price (must be string or float)
+                "timestamp": timestamp  # Current timestamp in ms
+            }
 
         # create query string
         query_string = urlencode(params)
@@ -363,7 +390,7 @@ class BinanceGateway(GatewayInterface):
         code = response_map.get('code')
         msg = response_map.get('msg')
         if code is not None:
-            logging.error("Error Code: %s Message: %s",code,msg)
+            logging.error("Error Code: %s Message: %s", code, msg)
         order_id = response_map.get('orderId')
 
         return order_id
@@ -377,7 +404,8 @@ class BinanceGateway(GatewayInterface):
 
         # order parameters
         timestamp = int(time.time() * 1000)
-        self._signature = hmac.new(self._api_secret.encode("utf-8"), urlencode(order).encode("utf-8"), hashlib.sha256).hexdigest()
+        self._signature = hmac.new(self._api_secret.encode("utf-8"), urlencode(order).encode("utf-8"),
+                                   hashlib.sha256).hexdigest()
 
         logging.info(
             'Sending market order: Symbol: {}, Side: {}, Quantity: {}'.
@@ -421,5 +449,3 @@ class BinanceGateway(GatewayInterface):
         session.headers.update({"X-MBX-APIKEY": self._api_key})
         response = session.get(url=url)
         return response.json() if response.status_code == 200 else []
-
-

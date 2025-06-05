@@ -29,8 +29,8 @@ class StrategyManager:
         best_mid = order_book.get_best_mid()
         self.on_event(best_mid)
 
-    def on_signal(self, signal: int):
-        self.executor.on_signal(signal=signal)
+    def on_signal(self, signal: int,price:float):
+        self.executor.on_signal(signal=signal,price=price)
 
     def on_event(self, mid_price: float):
         for strategy_name, strategy in self.strategies.items():

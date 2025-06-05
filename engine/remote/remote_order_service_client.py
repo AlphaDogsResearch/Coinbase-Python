@@ -1,13 +1,14 @@
 import logging
-from typing import Callable, List
-import threading
 import queue
+import threading
 import time
+from typing import Callable, List
 
-from common.interface_book import OrderBook
 from common.interface_order import Order
-from common.interface_req_res import WalletResponse, WalletRequest
+from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
+    PositionRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
+from engine.position.position_manager import PositionManager
 
 
 class RemoteOrderClient:
@@ -19,7 +20,14 @@ class RemoteOrderClient:
 
         self.remote_order_server = PairConnection(self.port, False, self.name)
         self.remote_order_server.start_receiving(self.on_event)
-        self.request_for_wallet()
+
+        self.position_manager = PositionManager()
+
+        # init request
+        self.init_request()
+
+        # tradable
+        self.tradable = True
 
         # Queue to hold orders to send
         self._order_queue = queue.Queue()
@@ -27,13 +35,37 @@ class RemoteOrderClient:
         self._sender_thread = threading.Thread(target=self._send_orders_loop, daemon=True)
         self._sender_thread.start()
 
+    def init_request(self):
+        # try for 10 times
+        count  = 0
+        while count < 10:
+            try:
+                count +=1
+                time.sleep(1)
+                # request for account
+                self.request_for_account()
+                # request for position
+                self.request_for_position()
+                break
+            except Exception as e:
+                logging.error(f"Error occurred,unable to send request: {e}")
+
+
+    def set_tradable_status(self, new_status):
+        logging.info("Setting Tradable Status OLD=%s NEW=%s", self.tradable, new_status)
+        self.tradable = new_status
+
     def submit_order(self, order: Order):
+        if not self.tradable:
+            logging.info("Unable to trade, Trading rights is turned off")
         """Add an order to the sending queue."""
         self._order_queue.put(order)
 
+    def request_for_account(self):
+        self.remote_order_server.send_account_request(AccountRequest())
 
-    def request_for_wallet(self):
-        self.remote_order_server.send_wallet_request(WalletRequest())
+    def request_for_position(self):
+        self.remote_order_server.send_position_request(PositionRequest())
 
     def _send_orders_loop(self):
         """Background thread to send orders from the queue."""
@@ -49,25 +81,34 @@ class RemoteOrderClient:
         """Register a callback to receive OrderBook updates"""
         self.listeners.append(callback)
 
-    def on_event(self, obj:object):
+    def on_event(self, obj: object):
         if isinstance(obj, str):
             self.received_order_id(obj)
-        elif isinstance(obj,WalletResponse):
+        elif isinstance(obj, WalletResponse):
             self.received_wallet_response(obj)
+        elif isinstance(obj, AccountResponse):
+            self.received_account_response(obj)
+        elif isinstance(obj, PositionResponse):
+            self.received_position_response(obj)
 
+    def received_wallet_response(self, wallet_response: WalletResponse):
+        logging.info("Received Wallet Response %s" % wallet_response)
 
-    def received_wallet_response(self,wallet_response:WalletResponse):
-        logging.info("Received Wallet Response %s" %wallet_response)
+    def received_account_response(self, account_response: AccountResponse):
+        logging.info("Received Account Response %s" % account_response)
 
+    def received_position_response(self, position_response: PositionResponse):
+        logging.info("Received Position Response %s" % position_response)
+        self.position_manager.add_position(position_response)
 
-    def received_order_id(self,order_id: str):
+    def received_order_id(self, order_id: str):
         logging.info("[%s] Received Order ID: %s", self.name, order_id)
 
         for listener in self.listeners:
             try:
                 listener(order_id)
             except Exception as e:
-                logging.warning(self.name+" Listener raised an exception: %s", e)
+                logging.warning(self.name + " Listener raised an exception: %s", e)
 
     def stop(self):
         """Stop the sender thread cleanly."""
