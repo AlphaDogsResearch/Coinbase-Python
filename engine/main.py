@@ -4,6 +4,8 @@ import logging
 from common.config_logging import to_stdout
 from common.interface_order import OrderType
 from engine.execution.executor import Executor
+from engine.margin.margin_info_manager import MarginInfoManager
+from engine.position.position_manager import PositionManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.strategies.sma import SMAStrategy
@@ -25,26 +27,31 @@ def main():
     # publisher = Publisher(publisherPort, "Binance Publisher")
     # binance.register_depth_callback(publisher.depth_callback)
 
+    margin_manager = MarginInfoManager()
+    position_manager = PositionManager(margin_manager)
+
     # initalise remote client
     remote_market_client = RemoteMarketDataClient()
-    remote_order_client = RemoteOrderClient()
+    remote_order_client = RemoteOrderClient(margin_manager,position_manager)
 
     # create executor
-    order_type = OrderType.Limit
+    order_type = OrderType.Market
     executor = Executor(order_type,remote_order_client)
 
     # setup strategy manager
     strategy_manager = StrategyManager(executor)
 
     # add strategy
-    short_sma = 50
-    long_sma = 200
+    short_sma = 10
+    long_sma = 20
     amount = 0.001
     sma_strategy = SMAStrategy(short_sma, long_sma)
     strategy_manager.add_strategy(sma_strategy)
 
     # attach strategy manager listener to remote client
-    remote_market_client.add_listener(strategy_manager.on_market_data_event)
+    remote_market_client.add_market_data_listener(strategy_manager.on_market_data_event)
+    # attach position manager listener to remote client
+    remote_market_client.add_mark_price_listener(position_manager.on_mark_price_event)
 
     # # Generate price to test strategy (temp)
     # S0 = 1000

@@ -4,9 +4,12 @@ import sys
 
 # Configure logging to console
 def to_stdout():
-    # logging configuration
     root = logging.getLogger()
     root.setLevel(logging.INFO)
+
+    # Clear existing handlers
+    root.handlers = []
+
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.INFO)
     log_formatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")

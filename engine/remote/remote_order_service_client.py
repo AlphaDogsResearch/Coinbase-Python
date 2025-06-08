@@ -4,24 +4,30 @@ import threading
 import time
 from typing import Callable, List
 
-from common.interface_order import Order
+from common.interface_order import Order, Trade, OrderEvent
 from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
-    PositionRequest
+    PositionRequest, MarginInfoRequest, MarginInfoResponse
 from common.subscription.single_pair_connection.single_pair import PairConnection
+from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position_manager import PositionManager
 
 
 class RemoteOrderClient:
-    def __init__(self):
+    def __init__(self,margin_manager:MarginInfoManager,position_manager:PositionManager):
         # make port configurable
         self.port = 8081
         self.name = "Remote Order Order Connection"
-        self.listeners: List[Callable[[str], None]] = []  # list of callbacks
+        self.order_event_listeners: List[Callable[[OrderEvent], None]] = []  # list of callbacks
 
         self.remote_order_server = PairConnection(self.port, False, self.name)
         self.remote_order_server.start_receiving(self.on_event)
 
-        self.position_manager = PositionManager()
+        self.margin_manager = margin_manager
+        self.position_manager = position_manager
+
+        self.add_listener(self.position_manager.on_order_event)
+        #init variable
+        self.trading_asset = ["BTCUSDT"]
 
         # init request
         self.init_request()
@@ -44,6 +50,8 @@ class RemoteOrderClient:
                 time.sleep(1)
                 # request for account
                 self.request_for_account()
+                # request for margin info
+                self.request_for_margin()
                 # request for position
                 self.request_for_position()
                 break
@@ -67,6 +75,10 @@ class RemoteOrderClient:
     def request_for_position(self):
         self.remote_order_server.send_position_request(PositionRequest())
 
+    def request_for_margin(self):
+        for asset in self.trading_asset:
+            self.remote_order_server.send_margin_info_request(MarginInfoRequest(asset))
+
     def _send_orders_loop(self):
         """Background thread to send orders from the queue."""
         while self._running:
@@ -77,19 +89,21 @@ class RemoteOrderClient:
             except queue.Empty:
                 continue  # no orders, loop again
 
-    def add_listener(self, callback: Callable[[str], None]):
+    def add_listener(self, callback: Callable[[OrderEvent], None]):
         """Register a callback to receive OrderBook updates"""
-        self.listeners.append(callback)
+        self.order_event_listeners.append(callback)
 
     def on_event(self, obj: object):
-        if isinstance(obj, str):
-            self.received_order_id(obj)
+        if isinstance(obj, OrderEvent):
+            self.received_order_event(obj)
         elif isinstance(obj, WalletResponse):
             self.received_wallet_response(obj)
         elif isinstance(obj, AccountResponse):
             self.received_account_response(obj)
         elif isinstance(obj, PositionResponse):
             self.received_position_response(obj)
+        elif isinstance(obj, MarginInfoResponse):
+            self.received_margin_info_response(obj)
 
     def received_wallet_response(self, wallet_response: WalletResponse):
         logging.info("Received Wallet Response %s" % wallet_response)
@@ -99,14 +113,19 @@ class RemoteOrderClient:
 
     def received_position_response(self, position_response: PositionResponse):
         logging.info("Received Position Response %s" % position_response)
-        self.position_manager.add_position(position_response)
+        self.position_manager.inital_position(position_response)
 
-    def received_order_id(self, order_id: str):
-        logging.info("[%s] Received Order ID: %s", self.name, order_id)
+    def received_margin_info_response(self, margin_info_response: MarginInfoResponse):
+        logging.info("Received Margin Response %s" % margin_info_response)
+        self.margin_manager.update_margin(margin_info_response)
 
-        for listener in self.listeners:
+
+    def received_order_event(self, order_event : OrderEvent):
+        logging.info("[%s] Received %s Order Event: \n %s", self.name,order_event.status, order_event)
+
+        for oe_listener in self.order_event_listeners:
             try:
-                listener(order_id)
+                oe_listener(order_event)
             except Exception as e:
                 logging.warning(self.name + " Listener raised an exception: %s", e)
 

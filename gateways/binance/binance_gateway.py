@@ -4,14 +4,17 @@ Binance gateway implementation using library https://github.com/sammchardy/pytho
 import asyncio
 import hashlib
 import hmac
+import json
 import logging
 import sys
+import threading
 import time
 from enum import Enum
 from threading import Thread
 from urllib.parse import urlencode
 
 import requests
+import websocket
 from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
 from binance import FuturesDepthCacheManager
 from binance.client import Client
@@ -19,7 +22,7 @@ from binance.enums import FuturesType
 
 from common.callback_utils import assert_param_counts
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
-from common.interface_order import Trade, Side, NewOrderSingle, OrderType
+from common.interface_order import Trade, Side, NewOrderSingle, OrderType, OrderEvent, ExecutionType
 from gateways.gateway_interface import GatewayInterface, ReadyCheck
 
 
@@ -74,6 +77,7 @@ class BinanceGateway(GatewayInterface):
 
         # callbacks
         self._depth_callbacks = []
+        self._mark_price_callbacks = []
         self._market_trades_callbacks = []
 
     def connect(self):
@@ -114,6 +118,8 @@ class BinanceGateway(GatewayInterface):
             self._get_wallet_balances()
             self._get_orders()
             self._get_account_info()
+            self._get_margin_tier_info()
+            self._start_websocket()
 
         self._ready_check.snapshot_ready = True
 
@@ -245,6 +251,50 @@ class BinanceGateway(GatewayInterface):
 
         return positions
 
+    def _get_margin_tier_info(self):
+        margin_data = self.api_client.futures_leverage_bracket()
+
+        return margin_data
+
+    def _start_websocket(self):
+
+        def on_message(ws, message):
+            data = json.loads(message)
+
+            # data information
+            # {
+            #     "p": "Mark Price – used for liquidation and PnL calculation",
+            #     "i": "Index Price – weighted average spot price from multiple exchanges",
+            #     "r": "Funding Rate – interest paid between longs/shorts at the next interval",
+            #     "P": "Estimated Settle Price",
+            #     "T": "Next Funding Time (UNIX ms)",
+            #     "E": "Event timestamp",
+            #     "e": "Event type",
+            #     "s": "Symbol"
+            # }
+
+            symbol = data['s']
+            mark_price = data['p']
+
+            logging.debug(f"Mark Price: {data['p']}")
+
+            if self._mark_price_callbacks:
+                for _cb in self._mark_price_callbacks:
+                    _cb(symbol, mark_price)
+
+        def on_open(ws):
+            print("Web socket connection opened")
+
+        def on_close(ws, code, reason):
+            print("Web socket connection closed")
+
+        url = f"wss://fstream.binance.com/ws/{self._symbol.lower()}@markPrice"
+
+        ws = websocket.WebSocketApp(url, on_message=on_message, on_open=on_open, on_close=on_close)
+        thread = threading.Thread(target=ws.run_forever, daemon=True)
+        thread.start()
+
+
     def _get_account_info(self):
         logging.info('REST - Getting account info')
         account_info = self.api_client.futures_account()
@@ -306,6 +356,11 @@ class BinanceGateway(GatewayInterface):
         assert_param_counts(callback, 2)
         self._depth_callbacks.append(callback)
 
+    def register_mark_price_callback(self,callback):
+        """ a depth callback function takes two argument: (symbol:str, price: float) """
+        assert_param_counts(callback, 2)
+        self._mark_price_callbacks.append(callback)
+
     """ register an execution callback function takes two arguments, 
         an order event: (exchange_name:str, event: OrderEvent, external: bool) """
 
@@ -332,7 +387,6 @@ class BinanceGateway(GatewayInterface):
         return order.side == Side.BUY
 
     def submit_order(self, new_order: NewOrderSingle):
-        order_type = new_order.type
         side = True
         if new_order.side == Side.SELL:
             side = False
@@ -341,14 +395,16 @@ class BinanceGateway(GatewayInterface):
         quantity = new_order.quantity
         order_type = new_order.type
         price = new_order.price
-        return self.send_order(self._api_key, self._api_secret, symbol, quantity, side, order_type, price)
+        client_id = new_order.client_id
+        return self.send_order(self._api_key, self._api_secret,client_id, symbol, quantity, side, order_type, price)
 
-    def send_order(self, key: str, secret: str, symbol: str, quantity: float, side: bool, order_type: OrderType,
+    def send_order(self, key: str, secret: str,client_id:str, symbol: str, quantity: float, side: bool, order_type: OrderType,
                    price: float):
         # order parameters
         timestamp = int(time.time() * 1000)
 
         params = {
+            "newClientOrderId":client_id,
             "symbol": symbol,
             "side": "BUY" if side else "SELL",
             "type": "MARKET",
@@ -358,6 +414,7 @@ class BinanceGateway(GatewayInterface):
 
         if order_type == OrderType.Limit:
             params = {
+                "newClientOrderId": client_id,
                 "symbol": symbol,  # e.g. "BTCUSDT"
                 "side": "BUY" if side else "SELL",  # BUY or SELL
                 "type": "LIMIT",  # Order type
@@ -384,16 +441,32 @@ class BinanceGateway(GatewayInterface):
         )
         response = session.post(url=url, params={})
 
-        # get order id
         response_map = response.json()
 
-        code = response_map.get('code')
-        msg = response_map.get('msg')
-        if code is not None:
-            logging.error("Error Code: %s Message: %s", code, msg)
-        order_id = response_map.get('orderId')
+        return response_map
 
-        return order_id
+    # external_order_id is binance order_id
+    def _get_filled_price(self,post_response_data:dict):
+        # GET filled price
+        timestamp = int(time.time() * 1000)
+        symbol = post_response_data['symbol']
+        order_id = post_response_data['orderId']
+
+        session = requests.Session()
+        session.headers.update(
+            {"Content-Type": "application/json;charset=utf-8", "X-MBX-APIKEY": self._api_key}
+        )
+
+        query_params = {
+            "symbol": symbol,
+            "orderId": order_id,
+            "timestamp": timestamp
+        }
+        url = sign_url(self._api_secret, '/fapi/v1/order', query_params)
+        get_response = session.get(url=url, params={})
+        get_response_data = get_response.json()
+
+        return get_response_data
 
     def place_orders(self, order: dict):
         """

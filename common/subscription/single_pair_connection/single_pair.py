@@ -6,9 +6,10 @@ import zmq
 import threading
 
 from common.interface_book import OrderBook
-from common.interface_order import Order, Trade
+from common.interface_order import Order, Trade, OrderEvent
+from common.interface_reference_point import MarkPrice
 from common.interface_req_res import WalletResponse, WalletRequest, AccountResponse, AccountRequest, PositionResponse, \
-    PositionRequest
+    PositionRequest, MarginInfoResponse, MarginInfoRequest
 
 
 class PairConnection:
@@ -57,20 +58,20 @@ class PairConnection:
                             continue  # incomplete message or malformed
                         identity, empty, payload = parts
                         msg = pickle.loads(payload)
-                        print(f"[{self.name}] Received from {identity}: {msg}")
+                        logging.info(f"[{self.name}] Received from {identity}: {msg}")
                         callback(msg)
                     else:
                         # DEALER or others receive single part pickled msg
 
                         try:
                             msg = self.socket.recv_pyobj()
-                            # print(f"[{self.name}] Received: {msg}")
+                            # logging.info(f"[{self.name}] Received: {msg}")
                             callback(msg)
                         except Exception as e:
                             if hasattr(e, 'message'):
-                                print(e.message)
+                                logging.info(e.message)
                             else:
-                                print(e)
+                                logging.info(e)
 
 
                 except zmq.Again:
@@ -82,49 +83,70 @@ class PairConnection:
 
     def send(self, message: str):
         """Send a message to the peer."""
-        print(f"[{self.name}] Sending Message: {message}")
+        logging.info(f"[{self.name}] Sending Message: {message}")
         self.socket.send_string(message,flags=zmq.NOBLOCK)
 
     def send_wallet_response(self,wallet_response:WalletResponse):
-        print(f"[{self.name}] Sending Wallet Response: {wallet_response}")
+        logging.info(f"[{self.name}] Sending Wallet Response: {wallet_response}")
         self.socket.send_pyobj(wallet_response,flags=zmq.NOBLOCK)
 
     def send_wallet_request(self, wallet_request:WalletRequest):
-        print(f"[{self.name}] Sending Wallet Request: {wallet_request}")
+        logging.info(f"[{self.name}] Sending Wallet Request: {wallet_request}")
         self.socket.send_pyobj(wallet_request, flags=zmq.NOBLOCK)
 
     def send_account_response(self, account_response: AccountResponse):
-        print(f"[{self.name}] Sending Account Response: {account_response}")
+        logging.info(f"[{self.name}] Sending Account Response: {account_response}")
         self.socket.send_pyobj(account_response, flags=zmq.NOBLOCK)
 
     def send_account_request(self, account_request: AccountRequest):
-        print(f"[{self.name}] Sending Account Request: {account_request}")
+        logging.info(f"[{self.name}] Sending Account Request: {account_request}")
         self.socket.send_pyobj(account_request, flags=zmq.NOBLOCK)
 
     def send_position_response(self, position_response: PositionResponse):
-        print(f"[{self.name}] Sending Position Response: {position_response}")
+        logging.info(f"[{self.name}] Sending Position Response: {position_response}")
         self.socket.send_pyobj(position_response, flags=zmq.NOBLOCK)
 
     def send_position_request(self, position_request: PositionRequest):
-        print(f"[{self.name}] Sending Position Request: {position_request}")
+        logging.info(f"[{self.name}] Sending Position Request: {position_request}")
         self.socket.send_pyobj(position_request, flags=zmq.NOBLOCK)
 
+    def send_margin_info_response(self, margin_info_response: MarginInfoResponse):
+        logging.info(f"[{self.name}] Sending Margin Info Response: {margin_info_response}")
+        self.socket.send_pyobj(margin_info_response, flags=zmq.NOBLOCK)
+
+    def send_margin_info_request(self, margin_info_request: MarginInfoRequest):
+        logging.info(f"[{self.name}] Sending Margin Info Request: {margin_info_request}")
+        self.socket.send_pyobj(margin_info_request, flags=zmq.NOBLOCK)
+
     def send_trade(self,trade:Trade):
-        print(f"[{self.name}] Sending Trade: {trade}")
+        logging.info(f"[{self.name}] Sending Trade: {trade}")
         self.socket.send_pyobj(trade,flags=zmq.NOBLOCK)
 
     def send_order(self, order: Order):
         """Send an order to the peer."""
-        print(f"[{self.name}] Sending Order: {order}")
+        logging.info(f"[{self.name}] Sending Order: {order}")
         self.socket.send_pyobj(order,flags=zmq.NOBLOCK)
 
-    def send_market_data(self, order_book: OrderBook):
+    def publish_order_event(self,order_event: OrderEvent):
+        logging.info(f"[{self.name}] Sending Order: {order_event}")
+        self.socket.send_pyobj(order_event,flags=zmq.NOBLOCK)
+
+    def publish_market_data_event(self, order_book: OrderBook):
         """Send a market data to the peer."""
-        print(f"[{self.name}] Sending Market Data: {order_book}")
+        logging.debug(f"[{self.name}] Sending Market Data: {order_book}")
         try:
             self.socket.send_pyobj(order_book,flags=zmq.NOBLOCK)
         except zmq.Again:
-            print(f"Dropped message {order_book}")
+            logging.warning(f"Dropped message {order_book}")
+            time.sleep(1)
+
+    def publish_mark_price(self, mark_price: MarkPrice):
+        """Send a mark price to the peer."""
+        logging.debug(f"[{self.name}] Sending Mark Price: {mark_price}")
+        try:
+            self.socket.send_pyobj(mark_price,flags=zmq.NOBLOCK)
+        except zmq.Again:
+            logging.warning(f"Dropped message {mark_price}")
             time.sleep(1)
 
     def stop(self):
