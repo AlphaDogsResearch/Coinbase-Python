@@ -1,4 +1,6 @@
 import logging
+import os
+from dotenv import load_dotenv
 
 from common.config_logging import to_stdout
 from common.interface_order import OrderType
@@ -8,6 +10,7 @@ from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.strategies.sma import SMAStrategy
 from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.in_memory_tracker import InMemoryTracker
+from engine.tracking.telegram_alert import telegramAlert
 
 
 def main():
@@ -19,6 +22,13 @@ def main():
     # initalise remote client
     remote_market_client = RemoteMarketDataClient()
     remote_order_client = RemoteOrderClient()
+
+    # Setup telegram Alert
+    dotenv_path = '../gateways/binance/vault/telegram_keys'
+    load_dotenv(dotenv_path=dotenv_path)
+    telegram_api_key = os.getenv('API_KEY')
+    telegram_user_id = os.getenv('USER_ID')
+    telegram_alert = telegramAlert(telegram_api_key, telegram_user_id)
 
     # create executor
     order_type = OrderType.Limit
