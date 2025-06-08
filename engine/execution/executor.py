@@ -21,7 +21,6 @@ class Executor(TradeExecution):
         print(f"TradeExecution on_signal: {signal} price {price}")
         # decide what to do with signal
         #round to 1 dp
-
         if signal == 1:
             rounded_down_price = math.floor(price * 10) / 10
             self.place_orders("BTCUSDT", 0.001, Side.BUY,rounded_down_price)

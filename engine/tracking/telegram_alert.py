@@ -1,4 +1,5 @@
-# === Sending message via Telegram ===
+
+
 def sendSellAlert(bot_message):
 
     tijd = datetime.datetime.now().strftime("%H:%M:%S")
