@@ -7,6 +7,7 @@ from common.interface_order import OrderType
 from engine.execution.executor import Executor
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
+from engine.risk.risk_manager import RiskManager
 from engine.strategies.sma import SMAStrategy
 from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.in_memory_tracker import InMemoryTracker
@@ -30,16 +31,19 @@ def main():
     telegram_user_id = os.getenv('USER_ID')
     telegram_alert = telegramAlert(telegram_api_key, telegram_user_id)
 
+    # setup risk manager
+    risk_manager = RiskManager() #TODO: Calculate portfolio var
+
     # create executor
     order_type = OrderType.Limit
-    executor = Executor(order_type,remote_order_client)
+    executor = Executor(order_type,remote_order_client, risk_manager)
 
     # setup strategy manager
     strategy_manager = StrategyManager(executor)
 
     # add strategy
-    short_sma = 2
-    long_sma = 5
+    short_sma = 50
+    long_sma = 200
     amount = 0.001
     sma_strategy = SMAStrategy(short_sma, long_sma)
     strategy_manager.add_strategy(sma_strategy)
