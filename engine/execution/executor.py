@@ -9,19 +9,21 @@ from common.interface_order import Side, Order, OrderType
 from common.time_utils import current_milli_time
 from engine.core.trade_execution import TradeExecution
 from engine.remote.remote_order_service_client import RemoteOrderClient
+from engine.risk.risk_manager import RiskManager
 
 
 class Executor(TradeExecution):
-    def __init__(self,order_type:OrderType, remote_order_client: RemoteOrderClient):
+    def __init__(self,order_type:OrderType, remote_order_client: RemoteOrderClient, risk_manager: RiskManager):
         self.remote_order_client = remote_order_client
         self.id_generator = OrderIdGenerator("STRAT")
         self.order_type = order_type
+        self.risk_manager = risk_manager
 
     def on_signal(self, signal: int,price:float):
         print(f"TradeExecution on_signal: {signal} price {price}")
         # decide what to do with signal
         #round to 1 dp
-
+        var_signal = self.risk_manager.get_portfolio_var_assessment() #TODO: Handle var signal
         if signal == 1:
             rounded_down_price = math.floor(price * 10) / 10
             self.place_orders("BTCUSDT", 0.001, Side.BUY,rounded_down_price)
