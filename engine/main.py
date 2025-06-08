@@ -1,6 +1,5 @@
 import logging
 
-
 from common.config_logging import to_stdout
 from common.interface_order import OrderType
 from engine.execution.executor import Executor
@@ -9,8 +8,6 @@ from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.strategies.sma import SMAStrategy
 from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.in_memory_tracker import InMemoryTracker
-import random
-import math
 
 
 def main():
