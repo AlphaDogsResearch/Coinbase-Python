@@ -38,8 +38,8 @@ def main():
     strategy_manager = StrategyManager(executor)
 
     # add strategy
-    short_sma = 50
-    long_sma = 200
+    short_sma = 2
+    long_sma = 5
     amount = 0.001
     sma_strategy = SMAStrategy(short_sma, long_sma)
     strategy_manager.add_strategy(sma_strategy)
@@ -47,7 +47,7 @@ def main():
     # attach strategy manager listener to remote client
     remote_market_client.add_listener(strategy_manager.on_market_data_event)
 
-    tracker = InMemoryTracker()
+    tracker = InMemoryTracker(telegram_alert)
 
     while start:
         continue

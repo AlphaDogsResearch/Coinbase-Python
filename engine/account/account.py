@@ -4,12 +4,12 @@ from engine.tracking.telegram_alert import telegramAlert
 
 
 class Account:
-    def __init__(self, wallet_balance: float, margin_balance: float, unrealised_pnl: float, maint_margin: float, alert_message: telegramAlert):
+    def __init__(self, wallet_balance: float, margin_balance: float, unrealised_pnl: float, maint_margin: float, alert: telegramAlert):
         self.wallet_balance = wallet_balance
         self.margin_balance = margin_balance
         self.unrealised_pnl = unrealised_pnl
         self.maint_margin = maint_margin
-        self.alert_message = alert_message
+        self.alert = alert
 
     def get_margin_ratio(self):
         try:
@@ -29,14 +29,14 @@ class Account:
         margin_ratio = self.get_margin_ratio()
         if margin_ratio is None:
             logging.warning("Unable to get margin ratio")
-            self.alert_message.sendAlert("Unable to get margin ratio")
+            self.alert.sendAlert("Unable to get margin ratio")
             return 1
         elif margin_ratio > margin_limit:
             logging.error("Margin Ratio breached")
-            self.alert_message.sendAlert(f"❗ Margin Ratio breached: {margin_ratio:.4f} | Maint Margin: {self.maint_margin} | Margin Balance: {self.margin_balance}")
+            self.alert.sendAlert(f"❗ Margin Ratio breached: {margin_ratio:.4f} | Maint Margin: {self.maint_margin} | Margin Balance: {self.margin_balance}")
             return 2
         elif margin_ratio > 0.9:
             logging.warning("Margin Ratio is above 90%, consider reducing positions.")
-            self.alert_message.sendAlert("⚠️ Margin Ratio is above 90%, consider reducing positions.")
+            self.alert.sendAlert("⚠️ Margin Ratio is above 90%, consider reducing positions.")
             return 3
         return 0
