@@ -14,7 +14,7 @@ class RemoteMarketDataClient:
         self.market_data_listener: List[Callable[[OrderBook], None]] = []  # list of callbacks
         self.mark_price_listener: List[Callable[[MarkPrice], None]] = []
 
-        self.executor = ThreadPoolExecutor(max_workers=10)
+        self.executor = ThreadPoolExecutor(max_workers=10,thread_name_prefix="MD")
 
         self.remote_market_data_server = PairConnection(self.port, False, self.name)
         self.remote_market_data_server.start_receiving(self.on_event)

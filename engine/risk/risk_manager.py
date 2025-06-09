@@ -4,7 +4,7 @@ from engine.risk.portfolioValueAtRisk import PortfolioValueAtRisk
 
 
 class RiskManager(RiskManager):
-    def __init__(self, portfolio_var: PortfolioValueAtRisk, max_order_value=5000):
+    def __init__(self, portfolio_var: PortfolioValueAtRisk=None, max_order_value=5000):
         self.max_order_value = max_order_value
         self.portfolio_var = portfolio_var
         self.var_value = 0.0

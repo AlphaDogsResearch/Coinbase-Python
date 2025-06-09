@@ -8,12 +8,13 @@ from common.interface_order import Order, Trade, OrderEvent
 from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
     PositionRequest, MarginInfoRequest, MarginInfoResponse
 from common.subscription.single_pair_connection.single_pair import PairConnection
+from engine.account.account import Account
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position_manager import PositionManager
 
 
 class RemoteOrderClient:
-    def __init__(self,margin_manager:MarginInfoManager,position_manager:PositionManager):
+    def __init__(self,margin_manager:MarginInfoManager,position_manager:PositionManager,account:Account):
         # make port configurable
         self.port = 8081
         self.name = "Remote Order Order Connection"
@@ -24,6 +25,7 @@ class RemoteOrderClient:
 
         self.margin_manager = margin_manager
         self.position_manager = position_manager
+        self.account = account
 
         self.add_listener(self.position_manager.on_order_event)
         #init variable
@@ -44,7 +46,7 @@ class RemoteOrderClient:
     def init_request(self):
         # try for 10 times
         count  = 0
-        while count < 10:
+        while count < 100:
             try:
                 count +=1
                 time.sleep(1)
@@ -110,6 +112,7 @@ class RemoteOrderClient:
 
     def received_account_response(self, account_response: AccountResponse):
         logging.info("Received Account Response %s" % account_response)
+        self.account.init_account(account_response)
 
     def received_position_response(self, position_response: PositionResponse):
         logging.info("Received Position Response %s" % position_response)

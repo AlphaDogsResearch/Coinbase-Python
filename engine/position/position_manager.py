@@ -1,4 +1,6 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from typing import Callable, List
 
 from common.interface_order import Trade, OrderEvent, OrderStatus
 from common.interface_reference_point import MarkPrice
@@ -9,9 +11,14 @@ from engine.position.position import Position
 
 class PositionManager:
     def __init__(self, margin_manager:MarginInfoManager):
+        self.name = "Position Manager"
         self.positions = {}
         self.margin_manager = margin_manager
         self.mark_price_dict={}
+        self.unrealized_pnl_listener: List[Callable[[float], None]] = []
+        self.maint_margin_listener: List[Callable[[float], None]] = []
+
+        self.executor = ThreadPoolExecutor(max_workers=10,thread_name_prefix="POS")
 
     def inital_position(self, position_response:PositionResponse):
         all_pos = position_response.positions
@@ -85,11 +92,46 @@ class PositionManager:
                 # update maint margin
                 position.update_maintenance_margin(mark_price, maint_margin_rate, maint_amount)
 
+                # trigger callback in another thread
+                self.executor.submit(self.on_update_maint_margin)
+
             #update unrealized_pnl
             self.update_unrealized_pnl(position,mark_price)
 
 
     def update_unrealized_pnl(self,position:Position,mark_price:float):
         position.update_unrealised_pnl(mark_price)
+        # trigger callback in another thread
+        self.executor.submit(self.on_update_unrealized)
+
+
+    def on_update_unrealized(self):
+        unreal = 0.0
+        for pos in self.positions.values():
+            unreal += pos.unrealised_pnl
+
+        for listener in self.unrealized_pnl_listener:
+            try:
+                listener(unreal)
+            except Exception as e:
+                logging.warning(self.name + "[PNL] Listener raised an exception: %s", e)
+
+    def on_update_maint_margin(self):
+        maint_margin = 0.0
+        for pos in self.positions.values():
+            maint_margin += pos.maint_margin
+
+        for listener in self.maint_margin_listener:
+            try:
+                listener(maint_margin)
+            except Exception as e:
+                logging.warning(self.name + "[MARGIN] Listener raised an exception: %s", e)
+
+    def add_pnl_listener(self, callback: Callable[[float], None]):
+        self.unrealized_pnl_listener.append(callback)
+
+
+    def add_maint_margin_listener(self, callback: Callable[[float], None]):
+        self.maint_margin_listener.append(callback)
 
 

@@ -26,12 +26,14 @@ class Position:
             self.unrealised_pnl = 0
         self.unrealised_pnl = round(self.unrealised_pnl, self.unrealised_pnl_decimal_place)
         logging.debug("Updated Unrealized Pnl for %s: %s", self.symbol, self)
+        return self.unrealised_pnl
 
     def update_maintenance_margin(self, mark_price: float, maint_margin_rate: float, maint_amount: float):
         notional_value = abs(self.position_amount) * mark_price
-        self.maint_margin = (notional_value * maint_margin_rate) - maint_amount
+        self.maint_margin = (notional_value * maint_margin_rate) + maint_amount
         self.maint_margin = round(self.maint_margin,self.maint_margin_decimal_place)
         logging.debug("Updated Maint Margin for %s: %s", self.symbol, self)
+        return self.maint_margin
 
     def add_trade(self, trade_qty: float, trade_price: float):
         """
