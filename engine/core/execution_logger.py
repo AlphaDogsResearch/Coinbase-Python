@@ -8,3 +8,4 @@ class ExecutionLogger(ABC):
         Record trade execution results.
         """
         pass
+``

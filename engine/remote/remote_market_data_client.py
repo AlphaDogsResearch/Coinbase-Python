@@ -5,46 +5,52 @@ from typing import Callable, List
 from common.interface_book import OrderBook
 from common.interface_reference_point import MarkPrice
 from common.subscription.single_pair_connection.single_pair import PairConnection
+from engine.market_data.market_data_client import MarketDataClient
 
 
-class RemoteMarketDataClient:
+class RemoteMarketDataClient(MarketDataClient):
     def __init__(self):
         self.port = 8080
         self.name = "Remote Market Data Connection"
-        self.market_data_listener: List[Callable[[OrderBook], None]] = []  # list of callbacks
+        self.order_book_listener: List[Callable[[OrderBook], None]] = (
+            []
+        )  # list of callbacks
         self.mark_price_listener: List[Callable[[MarkPrice], None]] = []
 
-        self.executor = ThreadPoolExecutor(max_workers=10,thread_name_prefix="MD")
+        self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="MD")
 
         self.remote_market_data_server = PairConnection(self.port, False, self.name)
         self.remote_market_data_server.start_receiving(self.on_event)
 
-    def add_market_data_listener(self, callback: Callable[[OrderBook], None]):
+    def add_order_book_listener(self, callback: Callable[[OrderBook], None]):
         """Register a callback to receive OrderBook updates"""
-        self.market_data_listener.append(callback)
+        self.order_book_listener.append(callback)
 
     def add_mark_price_listener(self, callback: Callable[[MarkPrice], None]):
         """Register a callback to receive MarkPrice updates"""
         self.mark_price_listener.append(callback)
 
-    def update_market_data(self,order_book:OrderBook):
-        for listener in self.market_data_listener:
+    def notify_order_book_listeners(self, order_book: OrderBook):
+        for listener in self.order_book_listener:
             try:
                 listener(order_book)
             except Exception as e:
-                logging.warning(self.name + "[Market Data] Listener raised an exception: %s", e)
+                logging.warning(
+                    self.name + "[Market Data] Listener raised an exception: %s", e
+                )
 
-    def update_mark_price(self,mark_price:MarkPrice):
+    def update_mark_price(self, mark_price: MarkPrice):
         for listener in self.mark_price_listener:
             try:
                 listener(mark_price)
             except Exception as e:
-                logging.error(self.name + "[Mark Price] Listener raised an exception: %s", e)
+                logging.error(
+                    self.name + "[Mark Price] Listener raised an exception: %s", e
+                )
 
     # dont block the thread
     def on_event(self, obj: object):
         if isinstance(obj, OrderBook):
-            self.executor.submit(self.update_market_data, obj)
+            self.executor.submit(self.notify_order_book_listeners, obj)
         elif isinstance(obj, MarkPrice):
             self.executor.submit(self.update_mark_price, obj)
-
