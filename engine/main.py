@@ -58,7 +58,7 @@ def main():
 
     # init CandleAggregator and Strategy
     inflectionSMACrossoverCandleAggregator = CandleAggregator(
-        interval_seconds=1
+        interval_seconds=300
     )  # should change to 5 min (300) price aggregator
     inflectionSMACrossoverStrategy = InflectionSMACrossoverStrategy()  # need
     inflectionSMACrossoverCandleAggregator.add_candle_created_listener(
