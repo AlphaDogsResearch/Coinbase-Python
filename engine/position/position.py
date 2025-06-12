@@ -11,10 +11,29 @@ class Position:
         self.maint_margin = maint_margin
         self.unrealised_pnl_decimal_place = 4
         self.maint_margin_decimal_place = 4
+        self.realized_pnl = 0.0
+
+    '''
+    TODO calculate Net PNL
+    
+    calculate commission 
+    Executed notional = price(traded price) * qty(traded qty)
+    Commission  = Executed notional * fee rate(depends on maker or taker)
+    Net PNL = realized pnl - Commission
+
+    
+    '''
 
     def get_notional_amount(self,mark_price:float):
         return abs(self.position_amount) * mark_price
 
+    '''
+    long 
+    unrealised_pnl = (mark_price - entry_price) * abs(position_amount)
+    
+    short
+    unrealised_pnl = (entry_price -mark_price) * abs(position_amount)
+    '''
     def update_unrealised_pnl(self, mark_price:float):
         #long
         if self.position_amount > 0:
@@ -28,6 +47,10 @@ class Position:
         logging.debug("Updated Unrealized Pnl for %s: %s", self.symbol, self)
         return self.unrealised_pnl
 
+    '''
+    notional_value = abs(position) * mark price
+    maintenance_margin = (notional_value * maintenance_margin_rate) + min_maintenance_amount
+    '''
     def update_maintenance_margin(self, mark_price: float, maint_margin_rate: float, maint_amount: float):
         notional_value = abs(self.position_amount) * mark_price
         self.maint_margin = (notional_value * maint_margin_rate) + maint_amount
@@ -44,6 +67,17 @@ class Position:
         """
         old_qty = self.position_amount
         new_qty = round(old_qty + trade_qty, 7)
+
+        # Realized PnL computation
+        if old_qty * trade_qty < 0:  # Opposite direction: closing or flipping
+            close_qty = min(abs(trade_qty), abs(old_qty))
+            pnl = close_qty * (trade_price - self.entry_price)
+
+            # Adjust for short positions
+            if old_qty < 0:
+                pnl *= -1
+
+            self.realized_pnl += pnl
 
         # Check if trade is increasing or reducing the position
         if old_qty == 0 or (old_qty * trade_qty > 0):

@@ -120,6 +120,8 @@ class BinanceGateway(GatewayInterface):
             self._get_account_info()
             self._get_margin_tier_info()
             self._start_websocket()
+            self.get_user_trades()
+            self.get_commission_rate()
 
         self._ready_check.snapshot_ready = True
 
@@ -255,6 +257,116 @@ class BinanceGateway(GatewayInterface):
         margin_data = self.api_client.futures_leverage_bracket()
 
         return margin_data
+
+    def get_commission_rate(self):
+        endpoint = "/fapi/v1/commissionRate"
+        url = self.BASE_URL + endpoint
+
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": self._symbol,
+            "timestamp": timestamp
+        }
+
+        query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
+        signature = hmac.new(
+            self._api_secret.encode(),
+            query_string.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        params['signature'] = signature
+
+        headers = {
+            "X-MBX-APIKEY": self._api_key
+        }
+
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 200:
+            data = response.json()
+            print(f"Commission info for {data['symbol']}:")
+            #limit order
+            print(f"  Maker fee rate: {data['makerCommissionRate']}")
+            #market order
+            print(f"  Taker fee rate: {data['takerCommissionRate']}")
+        else:
+            print("Error:", response.status_code, response.text)
+
+    def get_trades_by_order_id(self, order_id):
+        endpoint = "/fapi/v1/userTrades"
+        url = self.BASE_URL + endpoint
+
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": self._symbol,
+            "orderId": order_id,
+            "timestamp": timestamp
+        }
+
+        query_string = '&'.join([f"{key}={params[key]}" for key in params])
+        signature = hmac.new(
+            self._api_secret.encode('utf-8'),
+            query_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        params['signature'] = signature
+        headers = {
+            "X-MBX-APIKEY": self._api_key
+        }
+
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 200:
+            trades = response.json()
+            for t in trades:
+                print(f"Trade ID: {t['id']}, Order ID: {t['orderId']}, Price: {t['price']}, Qty: {t['qty']}")
+            return trades
+        else:
+            print("Error:", response.status_code, response.text)
+            return None
+
+    def get_user_trades(self, limit=10):
+        endpoint = "/fapi/v1/userTrades"
+        url = self.BASE_URL + endpoint
+
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": self._symbol,
+            "limit": limit,
+            "timestamp": timestamp
+        }
+
+        query_string = '&'.join([f"{key}={params[key]}" for key in params])
+        signature = hmac.new(
+            self._api_secret.encode('utf-8'),
+            query_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        params['signature'] = signature
+
+        headers = {
+            "X-MBX-APIKEY": self._api_key
+        }
+
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 200:
+            trades = response.json()
+            for t in trades:
+                print(f"\nTrade ID: {t['id']}")
+                print(f"  Symbol: {t['symbol']}")
+                print(f"  Side: {t['side']}")
+                print(f"  Price: {t['price']}")
+                print(f"  Qty: {t['qty']}")
+                print(f"  Realized PnL: {t['realizedPnl']}")
+                print(f"  Commission: {t['commission']} {t['commissionAsset']}")
+                net_pnl = float(t['realizedPnl']) - float(t['commission'])
+                print(f"  Net PnL: {net_pnl:.4f} {t['commissionAsset']}")
+        else:
+            print("Error:", response.status_code, response.text)
 
     def _start_websocket(self):
 
