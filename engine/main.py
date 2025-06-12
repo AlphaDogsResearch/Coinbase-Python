@@ -12,8 +12,8 @@ from engine.position.position_manager import PositionManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.risk.risk_manager import RiskManager
-from engine.strategies.inflection_sma_crossover_strategy import (
-    InflectionSMACrossoverStrategy,
+from engine.strategies.sma_crossover_inflection_strategy import (
+    SMACrossoverInflectionStrategy,
 )
 from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.in_memory_tracker import InMemoryTracker
@@ -60,14 +60,14 @@ def main():
     inflectionSMACrossoverCandleAggregator = CandleAggregator(
         interval_seconds=300
     )  # should change to 5 min (300) price aggregator
-    inflectionSMACrossoverStrategy = InflectionSMACrossoverStrategy()  # need
+    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy()  # need
     inflectionSMACrossoverCandleAggregator.add_candle_created_listener(
-        inflectionSMACrossoverStrategy.on_candle_created
+        smaCrossoverInflectionStrategy.on_candle_created
     )
     remote_market_data_client.add_order_book_listener(
         inflectionSMACrossoverCandleAggregator.on_order_book
     )
-    strategy_manager.add_strategy(inflectionSMACrossoverStrategy)
+    strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
 
     # attach position manager listener to remote client
     remote_market_data_client.add_mark_price_listener(
