@@ -1,65 +1,46 @@
 from collections import deque
-from typing import Callable
-from engine.core.strategy import Strategy
-from engine.market_data.candle import MidPriceCandle
-
-import logging
+import numpy as np
+import datetime
 
 
-class InflectionSMACrossoverStrategy(Strategy):
-    def __init__(self, short_window: int = 5, long_window: int = 200):
-        super().__init__()
-        self.name = f"SMA({short_window},{long_window})"
-        self.short_window = short_window
+class InflectionSMACrossoverStrategy:
+    def __init__(self, long_window=200, smoothing_window=10):
         self.long_window = long_window
-        self.prices = deque(maxlen=long_window)
-        self.last_short_sma = None
-        self.last_long_sma = None
-        self.listeners = []
-        self.last_signal = 0  # Track to avoid duplicate signal spam
+        self.smoothing_window = smoothing_window
 
-    def add_signal_listener(self, callback: Callable[[int, float], None]):
-        self.listeners.append(callback)
+        self.long_sma_history = deque(maxlen=long_window + 1)
+        self.slope_history = deque(maxlen=smoothing_window + 2)
 
-    def on_signal(self, signal: int, price: float):
-        for callback in self.listeners:
-            callback(signal, price)
+        self.last_smoothed_slope = None
+        self.last_signal = 0
+        self.signals = []  # (timestamp, signal)
 
-    def on_candle_created(self, candle: MidPriceCandle):
-        logging.info("InflectionSMACrossoverStrategy on_candle_created %s", candle)
-        self._update(candle.close)
+    def _update(self, timestamp: datetime, close_price: float):
+        self.long_sma_history.append(close_price)
 
-    def _update(self, price: float):
-        self.prices.append(price)
+        if len(self.long_sma_history) < self.long_window + 1:
+            return
 
-        if len(self.prices) < self.long_window:
-            self.signal = 0
-            return  # Not enough data to compute both SMAs
+        sma_current = np.mean(list(self.long_sma_history)[-self.long_window :])
+        sma_prev = np.mean(list(self.long_sma_history)[-self.long_window - 1 : -1])
 
-        short_sma = sum(list(self.prices)[-self.short_window :]) / self.short_window
-        long_sma = sum(self.prices) / self.long_window
+        slope = sma_current - sma_prev
+        self.slope_history.append(slope)
 
-        # Determine crossover
+        if len(self.slope_history) < self.smoothing_window + 1:
+            return
+
+        smoothed_slope = np.mean(list(self.slope_history)[-self.smoothing_window :])
+
         signal = 0
-        if self.last_short_sma is not None and self.last_long_sma is not None:
-            crossed_above = (
-                self.last_short_sma < self.last_long_sma and short_sma > long_sma
-            )
-            crossed_below = (
-                self.last_short_sma > self.last_long_sma and short_sma < long_sma
-            )
+        if self.last_smoothed_slope is not None:
+            if self.last_smoothed_slope < 0 and smoothed_slope > 0:
+                signal = 1
+            elif self.last_smoothed_slope > 0 and smoothed_slope < 0:
+                signal = -1
 
-            if crossed_above:
-                signal = 1  # Buy
-            elif crossed_below:
-                signal = -1  # Sell
-
-        self.last_short_sma = short_sma
-        self.last_long_sma = long_sma
+        self.last_smoothed_slope = smoothed_slope
 
         if signal != 0 and signal != self.last_signal:
-            self.signal = signal
+            self.signals.append((timestamp, signal))
             self.last_signal = signal
-            self.on_signal(signal, price)
-        else:
-            self.signal = 0  # No action

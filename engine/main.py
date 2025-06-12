@@ -57,13 +57,17 @@ def main():
     strategy_manager = StrategyManager(executor)
 
     # init CandleAggregator and Strategy
-    aggregator = CandleAggregator(
+    inflectionSMACrossoverCandleAggregator = CandleAggregator(
         interval_seconds=1
     )  # should change to 5 min (300) price aggregator
-    strategy = InflectionSMACrossoverStrategy()  # need
-    aggregator.add_candle_created_listener(strategy.on_candle_created)
-    strategy_manager.add_strategy(strategy)
-    remote_market_data_client.add_order_book_listener(aggregator.on_order_book)
+    inflectionSMACrossoverStrategy = InflectionSMACrossoverStrategy()  # need
+    inflectionSMACrossoverCandleAggregator.add_candle_created_listener(
+        inflectionSMACrossoverStrategy.on_candle_created
+    )
+    remote_market_data_client.add_order_book_listener(
+        inflectionSMACrossoverCandleAggregator.on_order_book
+    )
+    strategy_manager.add_strategy(inflectionSMACrossoverStrategy)
 
     # attach position manager listener to remote client
     remote_market_data_client.add_mark_price_listener(
