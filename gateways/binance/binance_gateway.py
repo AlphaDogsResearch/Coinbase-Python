@@ -13,6 +13,10 @@ from enum import Enum
 from threading import Thread
 from urllib.parse import urlencode
 
+import pandas as pd
+import numpy as np
+import csv
+
 import requests
 import websocket
 from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
@@ -122,6 +126,7 @@ class BinanceGateway(GatewayInterface):
             self._start_websocket()
             self.get_user_trades()
             self.get_commission_rate()
+            self._calculate_daily_sharpe_ratio()
 
         self._ready_check.snapshot_ready = True
 
@@ -252,6 +257,77 @@ class BinanceGateway(GatewayInterface):
                     f"Symbol: {symbol}, Position Amount: {position_amt}, Entry Price: {entry_price}, Unrealized PnL: {unrealized_pnl} Maintenance Margin {maint_margin}")
 
         return positions
+
+    def _calculate_daily_sharpe_ratio(self):
+        """
+        Calculates the daily and annualized Sharpe ratio based on realized PnL from futures trades.
+
+        Parameters:
+        - client: Authenticated Binance futures client (python-binance Client)
+        - symbol (str): Futures trading pair (e.g., 'BTCUSDT')
+        - initial_capital (float): Starting capital in USDT
+
+        Returns:
+        - sharpe (float): Daily Sharpe ratio
+        - annualized_sharpe (float): Annualized Sharpe ratio
+        """
+        try:
+            trades = self.api_client.futures_account_trades(symbol=self._symbol)
+        except Exception as e:
+            print("Error fetching trades:", e)
+            return None, None
+
+        try:
+            # Save trades to CSV
+            self.save_trades_to_csv(trades, filename='./trades/'+self._symbol+'_futures_trades.csv')
+        except Exception as e:
+            print("Error saving trades:", e)
+
+        pnl_data = []
+        for trade in trades:
+            pnl = float(trade['realizedPnl'])
+            timestamp = pd.to_datetime(trade['time'], unit='ms')
+            pnl_data.append({'date': timestamp.date(), 'realized_pnl': pnl})
+
+        df = pd.DataFrame(pnl_data)
+
+        if df.empty:
+            print(f"No trades found for symbol: {self._symbol}")
+            return 0.0, 0.0
+
+        daily = df.groupby('date')['realized_pnl'].sum().reset_index()
+        daily['return'] = daily['realized_pnl'] / self.get_futures_usdt_balance()
+
+        mean_return = daily['return'].mean()
+        std_return = daily['return'].std(ddof=1)
+        sharpe = mean_return / std_return if std_return != 0 else 0
+        annualized_sharpe = sharpe * np.sqrt(252)
+
+        print("Daily Sharpe Ratio:", round(sharpe, 4))
+        print("Annualized Sharpe Ratio:", round(annualized_sharpe, 4))
+
+        return sharpe, annualized_sharpe
+
+    def save_trades_to_csv(self,trades, filename='futures_trades.csv'):
+        """
+        Save futures trades data to CSV.
+
+        trades: list of dicts returned by client.futures_account_trades()
+        filename: str, name of the output CSV file
+        """
+        if not trades:
+            print("No trades to save.")
+            return
+
+        # Extract CSV headers from keys of the first trade dict
+        headers = trades[0].keys()
+
+        with open(filename, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.DictWriter(file, fieldnames=headers)
+            writer.writeheader()
+            writer.writerows(trades)
+
+        print(f"Saved {len(trades)} trades to {filename}")
 
     def _get_margin_tier_info(self):
         margin_data = self.api_client.futures_leverage_bracket()
@@ -415,7 +491,19 @@ class BinanceGateway(GatewayInterface):
         print(f"Total Unrealized PnL     : {account_info['totalUnrealizedProfit']}")
         print(f"Total Maintenance Margin : {account_info['totalMaintMargin']}")
 
-        return account_info
+        return
+
+    def get_futures_usdt_balance(self):
+        """
+        Fetch current USDT balance from Binance USDⓈ-M Futures account.
+        """
+        try:
+            balances = self.api_client.futures_account_balance()
+            usdt_balance = next((float(b['balance']) for b in balances if b['asset'] == 'USDT'), 0.0)
+            return usdt_balance
+        except Exception as e:
+            print("Error fetching balance:", e)
+            return 0.0
 
     def _get_wallet_balances(self):
         logging.info('REST - Getting wallet balances')
