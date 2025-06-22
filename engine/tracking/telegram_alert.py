@@ -9,7 +9,7 @@ class telegramAlert:
         try:
             self.bot = telegram.Bot(token=self.api_key)
         except Exception as e:
-            logging.error("[Telegram Bot] Registration failed: ", e)
+            logging.error("[Telegram Bot] Registration failed: ")
 
 
     def sendAlert(self, bot_message):

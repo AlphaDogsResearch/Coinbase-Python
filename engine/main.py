@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from common.config_logging import to_stdout
 from common.interface_order import OrderType
+from common.metrics.sharpe_calculator import BinanceFuturesSharpeCalculator
 from engine.account.account import Account
 from engine.execution.executor import Executor
 from engine.margin.margin_info_manager import MarginInfoManager
@@ -12,6 +13,7 @@ from engine.position.position_manager import PositionManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.risk.risk_manager import RiskManager
+from engine.strategies.sma import SMAStrategy
 from engine.strategies.sma_crossover_inflection_strategy import (
     SMACrossoverInflectionStrategy,
 )
@@ -19,16 +21,28 @@ from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.in_memory_tracker import InMemoryTracker
 from engine.tracking.telegram_alert import telegramAlert
 from engine.market_data.candle import CandleAggregator
+from engine.trades.trades_manager import TradesManager
+from engine.trading_cost.trading_cost_manager import TradingCostManager
+from graph.ohlc_plot import  RealTimePlotWithCandlestick
+from graph.plot import RealTimePlot
 
 
 def main():
     to_stdout()
     logging.info("Running Engine...")
     start = True
-    market_data = {"price": [], "ask": [], "bid": []}
+
+    contract = 'BTCUSDT'
+
+
 
     margin_manager = MarginInfoManager()
-    position_manager = PositionManager(margin_manager)
+    trading_cost_manager = TradingCostManager()
+    sharpe_calculator = BinanceFuturesSharpeCalculator()
+
+
+    trade_manager = TradesManager(sharpe_calculator)
+    position_manager = PositionManager(margin_manager,trading_cost_manager)
 
     # Setup telegram Alert
     dotenv_path = "../gateways/binance/vault/telegram_keys"
@@ -37,14 +51,29 @@ def main():
     telegram_user_id = os.getenv("USER_ID")
     telegram_alert = telegramAlert(telegram_api_key, telegram_user_id)
 
+
     # init account
     account = Account(telegram_alert, 0.8)
+    account.add_wallet_balance_listener(sharpe_calculator.init_capital)
+
+
+
+
+
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
-    position_manager.add_pnl_listener(account.on_unrealised_pnl_update)
+    position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)
+    position_manager.add_realized_pnl_listener(account.update_wallet_with_realized_pnl)
+
+
 
     # initalise remote client
     remote_market_data_client = RemoteMarketDataClient()
-    remote_order_client = RemoteOrderClient(margin_manager, position_manager, account)
+    # attach position manager listener to remote client
+    remote_market_data_client.add_mark_price_listener(
+        position_manager.on_mark_price_event
+    )
+
+    remote_order_client = RemoteOrderClient(margin_manager, position_manager, account,trading_cost_manager,trade_manager)
 
     # setup risk manager
     risk_manager = RiskManager()  # TODO: Calculate portfolio var
@@ -56,6 +85,7 @@ def main():
     # setup strategy manager
     strategy_manager = StrategyManager(executor)
 
+    # actual
     # init CandleAggregator and Strategy
     inflectionSMACrossoverCandleAggregator = CandleAggregator(
         interval_seconds=300
@@ -69,14 +99,65 @@ def main():
     )
     strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
 
-    # attach position manager listener to remote client
-    remote_market_data_client.add_mark_price_listener(
-        position_manager.on_mark_price_event
-    )
+    plotter = RealTimePlotWithCandlestick(ticker_name=contract, max_minutes=60, max_ticks=500, update_interval_ms=100,
+                           is_simulation=False)
+
+
+    account.add_margin_ratio_listener(plotter.add_margin_ratio)
+    plotter.add_capital(account.wallet_balance)
+    account.add_wallet_balance_listener(plotter.add_capital)
+    plotter.add_daily_sharpe(sharpe_calculator.sharpe)
+    sharpe_calculator.add_sharpe_listener(plotter.add_daily_sharpe)
+    # add for plot
+    position_manager.add_unrealized_pnl_listener(plotter.add_unrealized_pnl)
+    position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
+
+    #tick
+    inflectionSMACrossoverCandleAggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
+    #signal
+    smaCrossoverInflectionStrategy.add_tick_signal_listener(plotter.add_signal)
+    #sma
+    smaCrossoverInflectionStrategy.add_tick_sma_listener(plotter.add_sma_point)
+    smaCrossoverInflectionStrategy.add_tick_sma2_listener(plotter.add_sma2_point)
+
+
+
+
+
+    # #### for testing only ####
+    # sma = SMAStrategy(10,20)
+    #
+    # remote_market_data_client.add_order_book_listener(
+    #     sma.on_update
+    # )
+    #
+    # plotter = RealTimePlot(ticker_name=contract, max_minutes=60, max_ticks=500, update_interval_ms=100,
+    #                        is_simulation=False)
+    #
+    # #add for plot
+    # account.add_margin_ratio_listener(plotter.add_margin_ratio)
+    # account.add_wallet_balance_listener(plotter.add_capital)
+    # sharpe_calculator.add_sharpe_listener(plotter.add_daily_sharpe)
+    # # add for plot
+    # position_manager.add_unrealized_pnl_listener(plotter.add_unrealized_pnl)
+    # position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
+    #
+    # sma.add_tick_signal_listener(plotter.add_signal)
+    # sma.add_tick_sma_listener(plotter.add_sma_point)
+    # sma.add_tick_sma2_listener(plotter.add_sma2_point)
+    #
+    # remote_market_data_client.add_tick_price(plotter.add_tick)
+    #
+    # strategy_manager.add_strategy(sma)
+    #
+    # ##testing####
+
+
 
     tracker = InMemoryTracker(telegram_alert)
 
     while start:
+        plotter.start()
         continue
 
 

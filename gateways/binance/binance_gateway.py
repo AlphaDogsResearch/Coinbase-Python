@@ -125,8 +125,8 @@ class BinanceGateway(GatewayInterface):
             self._get_margin_tier_info()
             self._start_websocket()
             self.get_user_trades()
-            self.get_commission_rate()
-            self._calculate_daily_sharpe_ratio()
+            self.get_commission_rate(self._symbol)
+            self._calculate_hourly_sharpe_ratio()
 
         self._ready_check.snapshot_ready = True
 
@@ -258,18 +258,21 @@ class BinanceGateway(GatewayInterface):
 
         return positions
 
-    def _calculate_daily_sharpe_ratio(self):
-        """
-        Calculates the daily and annualized Sharpe ratio based on realized PnL from futures trades.
+    def _get_all_trades(self,symbol:str):
+        try:
+            trades = self.api_client.futures_account_trades(symbol=symbol)
+            return trades
+        except Exception as e:
+            print("Error fetching trades:", e)
+            return None
 
-        Parameters:
-        - client: Authenticated Binance futures client (python-binance Client)
-        - symbol (str): Futures trading pair (e.g., 'BTCUSDT')
-        - initial_capital (float): Starting capital in USDT
+    def _calculate_hourly_sharpe_ratio(self):
+        """
+        Calculates the hourly and annualized Sharpe ratio based on realized PnL from futures trades.
 
         Returns:
-        - sharpe (float): Daily Sharpe ratio
-        - annualized_sharpe (float): Annualized Sharpe ratio
+        - sharpe (float): Hourly Sharpe ratio
+        - annualized_sharpe (float): Annualized Sharpe ratio (hourly basis)
         """
         try:
             trades = self.api_client.futures_account_trades(symbol=self._symbol)
@@ -277,17 +280,11 @@ class BinanceGateway(GatewayInterface):
             print("Error fetching trades:", e)
             return None, None
 
-        try:
-            # Save trades to CSV
-            self.save_trades_to_csv(trades, filename='./trades/'+self._symbol+'_futures_trades.csv')
-        except Exception as e:
-            print("Error saving trades:", e)
-
         pnl_data = []
         for trade in trades:
             pnl = float(trade['realizedPnl'])
             timestamp = pd.to_datetime(trade['time'], unit='ms')
-            pnl_data.append({'date': timestamp.date(), 'realized_pnl': pnl})
+            pnl_data.append({'timestamp': timestamp, 'realized_pnl': pnl})
 
         df = pd.DataFrame(pnl_data)
 
@@ -295,16 +292,30 @@ class BinanceGateway(GatewayInterface):
             print(f"No trades found for symbol: {self._symbol}")
             return 0.0, 0.0
 
-        daily = df.groupby('date')['realized_pnl'].sum().reset_index()
-        daily['return'] = daily['realized_pnl'] / self.get_futures_usdt_balance()
+        # Group by hourly bins
+        df.set_index('timestamp', inplace=True)
+        hourly = df.groupby(pd.Grouper(freq='H'))['realized_pnl'].sum().reset_index()
 
-        mean_return = daily['return'].mean()
-        std_return = daily['return'].std(ddof=1)
+        # Calculate returns as pnl / account balance at calculation time
+        hourly['return'] = hourly['realized_pnl'] / self.get_futures_usdt_balance()
+
+        # Remove hours with no trades (optional, to avoid zero returns)
+        # hourly = hourly[hourly['return'] != 0]
+
+        if len(hourly) < 2:
+            print("Not enough data points to calculate hourly Sharpe ratio.")
+            return 0.0, 0.0
+
+        mean_return = hourly['return'].mean()
+        std_return = hourly['return'].std(ddof=1)
         sharpe = mean_return / std_return if std_return != 0 else 0
-        annualized_sharpe = sharpe * np.sqrt(252)
 
-        print("Daily Sharpe Ratio:", round(sharpe, 4))
-        print("Annualized Sharpe Ratio:", round(annualized_sharpe, 4))
+        # Annualize Sharpe ratio assuming ~8760 trading hours per year (crypto market doesn't close)
+        # Total trading hours per year=24×365=8,760 hours/year
+        annualized_sharpe = sharpe * np.sqrt(8760)
+
+        print("Hourly Sharpe Ratio:", round(sharpe, 4))
+        print("Annualized Hourly Sharpe Ratio:", round(annualized_sharpe, 4))
 
         return sharpe, annualized_sharpe
 
@@ -334,13 +345,13 @@ class BinanceGateway(GatewayInterface):
 
         return margin_data
 
-    def get_commission_rate(self):
+    def get_commission_rate(self,symbol:str):
         endpoint = "/fapi/v1/commissionRate"
         url = self.BASE_URL + endpoint
 
         timestamp = int(time.time() * 1000)
         params = {
-            "symbol": self._symbol,
+            "symbol": symbol,
             "timestamp": timestamp
         }
 
@@ -361,13 +372,17 @@ class BinanceGateway(GatewayInterface):
 
         if response.status_code == 200:
             data = response.json()
-            print(f"Commission info for {data['symbol']}:")
+            logging.info(f"Commission info for {data['symbol']}:")
             #limit order
-            print(f"  Maker fee rate: {data['makerCommissionRate']}")
+            logging.info(f"  Maker fee rate: {data['makerCommissionRate']}")
             #market order
-            print(f"  Taker fee rate: {data['takerCommissionRate']}")
+            logging.info(f"  Taker fee rate: {data['takerCommissionRate']}")
+
+            return data
         else:
-            print("Error:", response.status_code, response.text)
+            logging.error("Error:", response.status_code, response.text)
+
+            return None
 
     def get_trades_by_order_id(self, order_id):
         endpoint = "/fapi/v1/userTrades"
@@ -491,7 +506,7 @@ class BinanceGateway(GatewayInterface):
         print(f"Total Unrealized PnL     : {account_info['totalUnrealizedProfit']}")
         print(f"Total Maintenance Margin : {account_info['totalMaintMargin']}")
 
-        return
+        return account_info
 
     def get_futures_usdt_balance(self):
         """
@@ -708,7 +723,7 @@ class BinanceGateway(GatewayInterface):
         """
         timestamp = int(time.time() * 1000)
         if not self._has_keys():
-            logging.warning("Cannot query orders without API keys.")
+            logging.error("Cannot query orders without API keys.")
             return []
 
         params = {

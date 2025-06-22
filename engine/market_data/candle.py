@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, List
 from common.interface_book import OrderBook
 from typing import Callable
 import logging
+
+from common.time_utils import current_milli_time, convert_epoch_time_to_datetime_millis
 
 
 class MidPriceCandle:
@@ -54,6 +56,8 @@ class CandleAggregator:
         self.current_candle: Optional[MidPriceCandle] = None
         self.candle_callback: Optional[Callable[[MidPriceCandle], None]] = None
 
+        self.tick_candle_listener: List[Callable[[datetime,float,float,float,float], None]] = []
+
     def on_order_book(self, order_book: OrderBook):
         mid_price = (order_book.get_best_bid() + order_book.get_best_ask()) / 2
         timestamp_sec = order_book.timestamp / 1000.0  # Convert from ms to sec
@@ -89,3 +93,21 @@ class CandleAggregator:
     def _notify_candle_created(self, completed_candle: MidPriceCandle):
         if self.candle_callback:
             self.candle_callback(completed_candle)
+            self.on_candle_update(completed_candle)
+
+    def add_tick_candle_listener(self, callback: Callable[[datetime,float,float,float,float], None]):
+        """Register a callback to receive OrderBook updates"""
+        self.tick_candle_listener.append(callback)
+
+    def on_candle_update(self,completed_candle: MidPriceCandle):
+        timestamp= convert_epoch_time_to_datetime_millis(current_milli_time())
+        c_open= completed_candle.open
+        c_high= completed_candle.high
+        c_low= completed_candle.low
+        c_close = completed_candle.close
+        for listener in self.tick_candle_listener:
+            try:
+                listener(timestamp,c_open,c_high,c_low,c_close)
+            except Exception as e:
+                logging.error("Candle Aggregator Listener raised an exception: %s", e)
+

@@ -1,3 +1,4 @@
+import datetime
 from typing import Callable
 from engine.market_data.candle import MidPriceCandle
 
@@ -13,7 +14,7 @@ class Strategy:
     def add_signal_listener(self, callback: Callable[[int, float], None]):
         raise NotImplementedError("Must implement add_signal_listener() in subclass")
 
-    # def _notify_signal_generated(self, signal: int, price: float):
-    #     raise NotImplementedError(
-    #         "Must implement _notify_signal_generated() in subclass"
-    #     )
+    def add_tick_signal_listener(self, callback: Callable[[datetime.datetime,int, float], None]):
+        raise NotImplementedError(
+            "Must implement _notify_signal_generated() in subclass"
+        )

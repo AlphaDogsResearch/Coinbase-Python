@@ -73,7 +73,7 @@ class Dealer:
                 self.send(Register(self.identity))
                 self.registered = True
             except Exception as e:
-                logging.warning("[%s] Registration failed: %s", self.name, e)
+                logging.error("[%s] Registration failed: %s", self.name, e)
 
     def send(self, obj):
         msg = json.dumps(obj.to_dict()) if isinstance(obj, Serializable) else json.dumps(obj) if isinstance(obj, dict) else str(obj)

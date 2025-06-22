@@ -1,3 +1,4 @@
+import datetime
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List
@@ -5,6 +6,7 @@ from typing import Callable, List
 from common.interface_book import OrderBook
 from common.interface_reference_point import MarkPrice
 from common.subscription.single_pair_connection.single_pair import PairConnection
+from common.time_utils import convert_epoch_time_to_datetime_millis
 from engine.market_data.market_data_client import MarketDataClient
 
 
@@ -17,7 +19,12 @@ class RemoteMarketDataClient(MarketDataClient):
         )  # list of callbacks
         self.mark_price_listener: List[Callable[[MarkPrice], None]] = []
 
+        self.tick_price_listener: List[Callable[[datetime.datetime,float], None]] = (
+            []
+        )  # list of callbacks
+
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="MD")
+        self.tick_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TICK")
 
         self.remote_market_data_server = PairConnection(self.port, False, self.name)
         self.remote_market_data_server.start_receiving(self.on_event)
@@ -25,6 +32,11 @@ class RemoteMarketDataClient(MarketDataClient):
     def add_order_book_listener(self, callback: Callable[[OrderBook], None]):
         """Register a callback to receive OrderBook updates"""
         self.order_book_listener.append(callback)
+
+    def add_tick_price(self, callback: Callable[[datetime.datetime,float], None]):
+        """Register a callback to receive OrderBook updates"""
+        self.tick_price_listener.append(callback)
+
 
     def add_mark_price_listener(self, callback: Callable[[MarkPrice], None]):
         """Register a callback to receive MarkPrice updates"""
@@ -35,7 +47,18 @@ class RemoteMarketDataClient(MarketDataClient):
             try:
                 listener(order_book)
             except Exception as e:
-                logging.warning(
+                logging.error(
+                    self.name + "[Market Data] Listener raised an exception: %s", e
+                )
+    def notify_tick_listeners(self, order_book: OrderBook):
+        timestamp = order_book.timestamp
+        dt = convert_epoch_time_to_datetime_millis(timestamp)
+        mid_price = order_book.get_best_mid()
+        for listener in self.tick_price_listener:
+            try:
+                listener(dt,mid_price)
+            except Exception as e:
+                logging.error(
                     self.name + "[Market Data] Listener raised an exception: %s", e
                 )
 
@@ -52,5 +75,6 @@ class RemoteMarketDataClient(MarketDataClient):
     def on_event(self, obj: object):
         if isinstance(obj, OrderBook):
             self.executor.submit(self.notify_order_book_listeners, obj)
+            self.tick_executor.submit(self.notify_tick_listeners, obj)
         elif isinstance(obj, MarkPrice):
             self.executor.submit(self.update_mark_price, obj)

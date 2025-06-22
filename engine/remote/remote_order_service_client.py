@@ -6,15 +6,18 @@ from typing import Callable, List
 
 from common.interface_order import Order, Trade, OrderEvent
 from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
-    PositionRequest, MarginInfoRequest, MarginInfoResponse
+    PositionRequest, MarginInfoRequest, MarginInfoResponse, CommissionRateRequest, CommissionRateResponse, \
+    TradesRequest, TradesResponse
 from common.subscription.single_pair_connection.single_pair import PairConnection
 from engine.account.account import Account
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position_manager import PositionManager
+from engine.trades.trades_manager import TradesManager
+from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
 class RemoteOrderClient:
-    def __init__(self,margin_manager:MarginInfoManager,position_manager:PositionManager,account:Account):
+    def __init__(self,margin_manager:MarginInfoManager,position_manager:PositionManager,account:Account,trading_cost_manager:TradingCostManager,trade_manager:TradesManager):
         # make port configurable
         self.port = 8081
         self.name = "Remote Order Order Connection"
@@ -26,8 +29,13 @@ class RemoteOrderClient:
         self.margin_manager = margin_manager
         self.position_manager = position_manager
         self.account = account
+        self.trading_cost_manager = trading_cost_manager
+
+        # trade manager
+        self.trade_manager = trade_manager
 
         self.add_listener(self.position_manager.on_order_event)
+        self.add_listener(self.trade_manager.on_order_event)
         #init variable
         self.trading_asset = ["BTCUSDT"]
 
@@ -54,6 +62,10 @@ class RemoteOrderClient:
                 self.request_for_account()
                 # request for margin info
                 self.request_for_margin()
+                # request for trades
+                self.request_for_trades()
+                # request for commission rate
+                self.request_for_commission_rate()
                 # request for position
                 self.request_for_position()
                 break
@@ -81,6 +93,14 @@ class RemoteOrderClient:
         for asset in self.trading_asset:
             self.remote_order_server.send_margin_info_request(MarginInfoRequest(asset))
 
+    def request_for_commission_rate(self):
+        for asset in self.trading_asset:
+            self.remote_order_server.send_commission_rate_request(CommissionRateRequest(asset))
+
+    def request_for_trades(self):
+        for asset in self.trading_asset:
+            self.remote_order_server.send_trades_request(TradesRequest(asset))
+
     def _send_orders_loop(self):
         """Background thread to send orders from the queue."""
         while self._running:
@@ -106,6 +126,11 @@ class RemoteOrderClient:
             self.received_position_response(obj)
         elif isinstance(obj, MarginInfoResponse):
             self.received_margin_info_response(obj)
+        elif isinstance(obj, CommissionRateResponse):
+            self.received_commission_rate_response(obj)
+        elif isinstance(obj, TradesResponse):
+            self.received_trades_response(obj)
+
 
     def received_wallet_response(self, wallet_response: WalletResponse):
         logging.info("Received Wallet Response %s" % wallet_response)
@@ -122,6 +147,15 @@ class RemoteOrderClient:
         logging.info("Received Margin Response %s" % margin_info_response)
         self.margin_manager.update_margin(margin_info_response)
 
+    def received_commission_rate_response(self, commission_rate_response: CommissionRateResponse):
+        logging.info("Received Commission Response %s" % commission_rate_response)
+        self.trading_cost_manager.add_trading_cost(commission_rate_response)
+
+    def received_trades_response(self, trades_response: TradesResponse):
+        logging.info("Received Trades Response %s" % trades_response)
+        symbol = trades_response.symbol
+        trades = trades_response.trades
+        self.trade_manager.load_trades(symbol,trades)
 
     def received_order_event(self, order_event : OrderEvent):
         logging.info("[%s] Received %s Order Event: \n %s", self.name,order_event.status, order_event)
@@ -130,7 +164,7 @@ class RemoteOrderClient:
             try:
                 oe_listener(order_event)
             except Exception as e:
-                logging.warning(self.name + " Listener raised an exception: %s", e)
+                logging.error(self.name + " Listener raised an exception: %s", e)
 
     def stop(self):
         """Stop the sender thread cleanly."""

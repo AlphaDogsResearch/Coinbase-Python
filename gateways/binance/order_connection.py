@@ -1,7 +1,8 @@
 import logging
 
-from common.interface_order import Order, NewOrderSingle, Trade, ExecutionType, OrderEvent, OrderStatus
-from common.interface_req_res import WalletRequest, AccountRequest, PositionRequest, MarginInfoRequest
+from common.interface_order import Order, NewOrderSingle, Trade, ExecutionType, OrderEvent, OrderStatus, OrderType, Side
+from common.interface_req_res import WalletRequest, AccountRequest, PositionRequest, MarginInfoRequest, \
+    CommissionRateRequest, TradesRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
 from gateways.binance.binance_gateway import BinanceGateway
 
@@ -34,6 +35,10 @@ class OrderConnection:
             self.get_position_info(obj)
         elif isinstance(obj, MarginInfoRequest):
             self.get_margin_info(obj)
+        elif isinstance(obj, CommissionRateRequest):
+            self.get_commission_rates(obj)
+        elif isinstance(obj, TradesRequest):
+            self.get_trades(obj)
 
     def submit_order(self, order: Order):
         logging.info("Submitted Order %s " % order)
@@ -69,8 +74,15 @@ class OrderConnection:
             last_filled_quantity = execution_report.get('executedQty')
             last_filled_time = execution_report.get('updateTime')
             side = execution_report.get('side')
+
+            type = execution_report.get('type')
+            order_type_type = OrderType.Market
+            if type == "MARKET":
+                order_type_type = OrderType.Market
+
+
             order_event = OrderEvent(symbol, external_order_id, ExecutionType.TRADE, OrderStatus.FILLED, None,
-                                     client_order_id)
+                                     client_order_id,order_type_type)
             order_event.side  = side
             order_event.last_filled_quantity = last_filled_quantity
             order_event.last_filled_price = last_filled_price
@@ -91,6 +103,7 @@ class OrderConnection:
         self.order_listener_server.send_wallet_response(wallet_balance)
 
     def get_account_info(self, account_request: AccountRequest):
+        logging.info("Received Account Info Request %s" % account_request)
         account_info = self.gateway._get_account_info()
         wallet_balance = account_info['totalWalletBalance']
         margin_balance = account_info['totalMarginBalance']
@@ -121,3 +134,36 @@ class OrderConnection:
         positions = position_request.handle(account_position)
         self.order_listener_server.send_position_response(positions)
 
+    def get_commission_rates(self,commission_rate_request:CommissionRateRequest):
+        symbol = commission_rate_request.symbol
+        commission_rate_data = self.gateway.get_commission_rate(symbol)
+        if commission_rate_data is not None:
+            returned_symbol = commission_rate_data['symbol']
+            maker_trading_cost = commission_rate_data['makerCommissionRate']
+            taker_trading_cost = commission_rate_data['takerCommissionRate']
+            commission_rate = commission_rate_request.handle(returned_symbol,maker_trading_cost,taker_trading_cost)
+            self.order_listener_server.send_commission_rate_response(commission_rate)
+
+    def get_trades(self,trades_request:TradesRequest):
+        logging.info("Received Trades Request %s" % trades_request)
+        symbol = trades_request.symbol
+        trades = self.gateway._get_all_trades(symbol)
+        all_trades = []
+
+        if trades is not None:
+            for trade in trades:
+                symbol = trade['symbol']
+                side = trade['side']
+                time = trade['time']
+                order_id = trade['orderId']
+                price = trade['price']
+                qty = trade['qty']
+                realized_pnl = trade['realizedPnl']
+
+                trade_obj = Trade(time,symbol,price,qty,Side[side.upper()],realized_pnl,False)
+                trade_obj.order_id = order_id
+
+                all_trades.append(trade_obj)
+
+        trade_response= trades_request.handle(symbol,all_trades)
+        self.order_listener_server.send_trades_response(trade_response)

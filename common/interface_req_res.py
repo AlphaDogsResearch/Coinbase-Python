@@ -72,3 +72,43 @@ class AccountRequest:
     def handle(self, wallet_balance: float, margin_balance: float, unrealised_pnl: float,
                maint_margin: float) -> AccountResponse:
         return AccountResponse(wallet_balance, margin_balance, unrealised_pnl, maint_margin)
+
+
+class CommissionRateResponse:
+    def __init__(self, symbol: str, maker_trading_cost: float,taker_trading_cost:float):
+        self.symbol = symbol
+        self.maker_trading_cost = maker_trading_cost
+        self.taker_trading_cost = taker_trading_cost
+
+    def __str__(self):
+        return "Symbol=" + self.symbol + \
+            ", Maker Trading Cost=" + str(self.maker_trading_cost) + \
+            ", Taker Trading Cost=" + str(self.taker_trading_cost)
+
+
+class CommissionRateRequest:
+    def __init__(self, symbol: str):
+        self.time = current_milli_time()
+        self.symbol = symbol
+
+    def handle(self, symbol: str, maker_trading_cost: float,taker_trading_cost:float) -> CommissionRateResponse:
+        return CommissionRateResponse(symbol, maker_trading_cost,taker_trading_cost)
+
+
+class TradesResponse:
+    def __init__(self, symbol: str, trades: list):
+        self.symbol = symbol
+        self.trades = trades
+
+    def __str__(self):
+        return "Symbol=" + self.symbol + \
+            ", Trades=" + str(self.trades)
+
+
+class TradesRequest:
+    def __init__(self, symbol: str):
+        self.time = current_milli_time()
+        self.symbol = symbol
+
+    def handle(self, symbol: str, trades: list) -> TradesResponse:
+        return TradesResponse(symbol, trades)

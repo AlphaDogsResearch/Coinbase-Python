@@ -27,7 +27,7 @@ class SubmitAlternateOrder:
 
     def start(self):
         if self._thread is not None and self._thread.is_alive():
-            logging.warning("Submit loop already running.")
+            logging.error("Submit loop already running.")
             return
 
         self._running = True

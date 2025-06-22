@@ -9,7 +9,8 @@ from common.interface_book import OrderBook
 from common.interface_order import Order, Trade, OrderEvent
 from common.interface_reference_point import MarkPrice
 from common.interface_req_res import WalletResponse, WalletRequest, AccountResponse, AccountRequest, PositionResponse, \
-    PositionRequest, MarginInfoResponse, MarginInfoRequest
+    PositionRequest, MarginInfoResponse, MarginInfoRequest, CommissionRateResponse, CommissionRateRequest, \
+    TradesResponse, TradesRequest
 
 
 class PairConnection:
@@ -118,6 +119,22 @@ class PairConnection:
         logging.info(f"[{self.name}] Sending Margin Info Request: {margin_info_request}")
         self.socket.send_pyobj(margin_info_request, flags=zmq.NOBLOCK)
 
+    def send_commission_rate_response(self, commission_rate_response: CommissionRateResponse):
+        logging.info(f"[{self.name}] Sending Commission Rate Response: {commission_rate_response}")
+        self.socket.send_pyobj(commission_rate_response, flags=zmq.NOBLOCK)
+
+    def send_commission_rate_request(self, commission_rate_request: CommissionRateRequest):
+        logging.info(f"[{self.name}] Sending Commission Rate Request: {commission_rate_request}")
+        self.socket.send_pyobj(commission_rate_request, flags=zmq.NOBLOCK)
+
+    def send_trades_response(self, trades_response: TradesResponse):
+        logging.info(f"[{self.name}] Sending Trades Response: {trades_response}")
+        self.socket.send_pyobj(trades_response, flags=zmq.NOBLOCK)
+
+    def send_trades_request(self, trades_request: TradesRequest):
+        logging.info(f"[{self.name}] Sending Trades Request: {trades_request}")
+        self.socket.send_pyobj(trades_request, flags=zmq.NOBLOCK)
+
     def send_trade(self,trade:Trade):
         logging.info(f"[{self.name}] Sending Trade: {trade}")
         self.socket.send_pyobj(trade,flags=zmq.NOBLOCK)
@@ -137,7 +154,7 @@ class PairConnection:
         try:
             self.socket.send_pyobj(order_book,flags=zmq.NOBLOCK)
         except zmq.Again:
-            logging.warning(f"Dropped message {order_book}")
+            logging.error(f"Dropped message {order_book}")
             time.sleep(1)
 
     def publish_mark_price(self, mark_price: MarkPrice):
@@ -146,7 +163,7 @@ class PairConnection:
         try:
             self.socket.send_pyobj(mark_price,flags=zmq.NOBLOCK)
         except zmq.Again:
-            logging.warning(f"Dropped message {mark_price}")
+            logging.error(f"Dropped message {mark_price}")
             time.sleep(1)
 
     def stop(self):
