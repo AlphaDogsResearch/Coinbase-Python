@@ -117,6 +117,7 @@ class RealTimePlotWithCandlestick:
         self.ohlc_data = deque()
         self.ohlc_buffer = deque()
         self.ohlc_item = CandlestickItem([])
+        self.ohlc_item.setZValue(0)
         self.plot_widget.addItem(self.ohlc_item)
 
         self.sma_timestamps = deque()
@@ -141,9 +142,12 @@ class RealTimePlotWithCandlestick:
 
         # SMA plot curves
         self.sma_curve = self.plot_widget.plot(pen=pg.mkPen('c', width=2), name="SMA")
+        self.sma_curve.setZValue(1)
         self.sma2_curve = self.plot_widget.plot(pen=pg.mkPen('m', width=2), name="SMA2")
+        self.sma2_curve.setZValue(1)
 
         self.signal_scatter = pg.ScatterPlotItem(size=15, brush='b', symbol='t1', pen='w', name="Signals")
+        self.signal_scatter.setZValue(2)
         self.plot_widget.addItem(self.signal_scatter)
 
         # New params
@@ -302,6 +306,7 @@ class RealTimePlotWithCandlestick:
             # Redraw candlestick
             self.plot_widget.removeItem(self.ohlc_item)
             self.ohlc_item = CandlestickItem(list(self.ohlc_data))
+            self.ohlc_item.setZValue(0)
             self.plot_widget.addItem(self.ohlc_item)
 
             # Update SMA curves
