@@ -2,7 +2,7 @@ import logging
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
-from typing import Callable, List, Optional
+from typing import Callable, List
 
 import numpy as np
 
@@ -11,12 +11,14 @@ from engine.market_data.candle import MidPriceCandle
 
 class SMACrossoverInflectionStrategy:
     def __init__(
-            self, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10
+            self, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10,
+            tolerance: float = 1e-6  # ✅ ADDED: Noise threshold for small slope changes
     ):
         self.name = f"InflectionSMA({short_window},{long_window},{smoothing_window})"
         self.short_window = short_window
         self.long_window = long_window
         self.smoothing_window = smoothing_window
+        self.tolerance = tolerance  # ✅ ADDED
 
         self.prices = deque(maxlen=long_window + 2)
         self.short_smas = deque(maxlen=2)
@@ -26,12 +28,12 @@ class SMACrossoverInflectionStrategy:
         self.last_smoothed_diff = None
         self.last_position = 0  # Current held position: 1 (long), -1 (short), 0 (flat)
 
-        self.signal_history = []  # Optional for inspection
+        self.signal_history = []
         self.listeners: List[Callable[[int, float], None]] = []
 
-        self.tick_signal_listeners: List[Callable[[datetime, int, float], None]] = []  # list of callbacks
-        self.tick_sma_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
-        self.tick_sma2_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
+        self.tick_signal_listeners: List[Callable[[datetime, int, float], None]] = []
+        self.tick_sma_listeners: List[Callable[[datetime, float], None]] = []
+        self.tick_sma2_listeners: List[Callable[[datetime, float], None]] = []
 
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMACROSS")
 
@@ -65,10 +67,7 @@ class SMACrossoverInflectionStrategy:
         self.executor.submit(run)
 
     def on_sma_signal(self, timestamp: datetime, sma: float):
-        logging.info(
-            "%s sma %s",
-            timestamp, sma
-        )
+        logging.info("%s sma %s", timestamp, sma)
 
         def run():
             for listener in self.tick_sma_listeners:
@@ -80,13 +79,9 @@ class SMACrossoverInflectionStrategy:
         self.executor.submit(run)
 
     def on_sma2_signal(self, timestamp: datetime, sma2: float):
-        logging.info(
-            "%s sma2 %s",
-            timestamp, sma2
-        )
+        logging.info("%s sma2 %s", timestamp, sma2)
 
         def run():
-
             for listener in self.tick_sma2_listeners:
                 try:
                     listener(timestamp, sma2)
@@ -102,7 +97,8 @@ class SMACrossoverInflectionStrategy:
     def update(self, timestamp: datetime, price: float):
         self.prices.append(price)
 
-        if len(self.prices) < self.long_window + 1:
+        # ✅ ADDED: More robust check for data readiness
+        if len(self.prices) < max(self.short_window, self.long_window, self.smoothing_window + 2):
             return None
 
         short_sma = np.mean(list(self.prices)[-self.short_window:])
@@ -120,24 +116,33 @@ class SMACrossoverInflectionStrategy:
             diff = self.long_smas[-1] - self.long_smas[-2]
             self.long_diffs.append(diff)
 
-        if len(self.long_diffs) < self.smoothing_window + 1:
+        if len(self.long_diffs) < self.smoothing_window:
             return None
 
         smoothed_diff = np.mean(list(self.long_diffs)[-self.smoothing_window:])
-        self.on_signal(0, price)
+
+        # 🔄 REMOVED: Always-emitting neutral signal (0)
+        # self.on_signal(0, price)  ← removed as not helpful unless used for every tick state
+
+        # ✅ ADDED: Avoid noise-induced false signals
+        if abs(smoothed_diff) < self.tolerance:
+            return None
 
         if self.last_smoothed_diff is not None:
-            inflection_up = self.last_smoothed_diff < 0 and smoothed_diff > 0
-            inflection_down = self.last_smoothed_diff > 0 and smoothed_diff < 0
+            inflection_up = self.last_smoothed_diff < -self.tolerance and smoothed_diff > self.tolerance
+            inflection_down = self.last_smoothed_diff > self.tolerance and smoothed_diff < -self.tolerance
 
             if inflection_up:
                 signal = 1
-                self.on_signal(1, price)
+                self.on_signal(signal, price)
                 self.on_tick_signal(timestamp, signal, price)
                 logging.info("On Inflection Up Signal")
 
             elif inflection_down:
                 signal = -1
-                self.on_signal(-1, price)
+                self.on_signal(signal, price)
                 self.on_tick_signal(timestamp, signal, price)
                 logging.info("On Inflection Down Signal")
+
+        # ✅ ADDED: Update for next comparison
+        self.last_smoothed_diff = smoothed_diff
