@@ -184,9 +184,8 @@ cython_debug/
 #.idea/
 
 # ignore generated test data
-alpha_model_integration/indicators/generated_test_data/*
-alpha_model_integration/strategies/generated_test_data/*
-alpha_model_integration/test_data/*
+model_integration/tests/indicators/generated_test_data/*
+model_integration/tests/strategies/generated_test_data/*
 
 # ignore research datasets
 research/datasets/*
