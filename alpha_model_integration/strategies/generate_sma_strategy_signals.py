@@ -12,6 +12,7 @@ from alpha_model_integration.strategies.vectorized.vectorized_sma_inflection_cro
 OUTPUT_DIR = "alpha_model_integration/strategies/generated_test_data"
 INPUT_DIR = "alpha_model_integration/indicators/generated_test_data"
 INPUT_FILE = f"{INPUT_DIR}/vectorized_candles.csv"
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def generate_vectorized_signals(df: pd.DataFrame) -> pd.DataFrame:
@@ -53,8 +54,8 @@ def main():
     df = pd.read_csv(INPUT_FILE)
     df["Timestamp"] = pd.to_datetime(df["Timestamp"])
 
-    # vectorized_df = generate_vectorized_signals(df)
-    # vectorized_df.to_csv(f"{OUTPUT_DIR}/vectorized_sma_signals.csv", index=False)
+    vectorized_df = generate_vectorized_signals(df)
+    vectorized_df.to_csv(f"{OUTPUT_DIR}/vectorized_sma_signals.csv", index=False)
 
     event_df = generate_event_driven_signals(df)
     event_df.to_csv(f"{OUTPUT_DIR}/event_sma_signals.csv", index=False)

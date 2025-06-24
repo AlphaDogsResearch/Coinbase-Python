@@ -2,7 +2,7 @@ import pandas as pd
 from pandas.testing import assert_series_equal
 
 
-def test_vectorized_vs_event_signals():
+def test_sma_inflection_strategy():
     # Paths to the generated signal CSVs
     vec_path = "alpha_model_integration/strategies/generated_test_data/vectorized_sma_signals.csv"
     evt_path = (
