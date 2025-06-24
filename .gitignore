@@ -187,3 +187,8 @@ cython_debug/
 alpha_model_integration/indicators/generated_test_data/*
 alpha_model_integration/strategies/generated_test_data/*
 alpha_model_integration/test_data/*
+
+# ignore research datasets
+research/datasets/*
+research/notebooks/__pycache__/
+research/**/*.ipynb_checkpoints
