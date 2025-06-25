@@ -129,8 +129,8 @@ class SMACrossoverInflectionStrategy:
             return None
 
         if self.last_smoothed_diff is not None:
-            inflection_up = self.last_smoothed_diff < -self.tolerance and smoothed_diff > self.tolerance
-            inflection_down = self.last_smoothed_diff > self.tolerance and smoothed_diff < -self.tolerance
+            inflection_up = self.last_smoothed_diff < 0 and smoothed_diff > 0
+            inflection_down = self.last_smoothed_diff > 0 and smoothed_diff < 0
 
             if inflection_up:
                 signal = 1
