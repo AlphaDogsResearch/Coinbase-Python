@@ -100,3 +100,18 @@ ExecutionReport + PositionTracker
 
 This `core/` module contains only the interface definitions. Concrete implementations should live in folders like `strategies/`, `execution/`, `portfolio/`, etc.
 
+
+
+## ⚡ How to Run
+
+### Gateway
+Add the keys in the `gateways/binance/vault/binance_keys` file
+Run the `run_binance.py`
+
+### Engine
+Add the telegram keys in `engine/vault/telegram_keys`
+Run the `main.py`
+
+### Run in Windows
+Execute the `run.bat`
+

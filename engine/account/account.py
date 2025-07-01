@@ -9,10 +9,10 @@ from engine.tracking.telegram_alert import telegramAlert
 class Account:
     def __init__(self, alert: telegramAlert,margin_limit:float):
         self.name = "Account"
-        self.maint_margin = None
-        self.unrealised_pnl = None
-        self.wallet_balance = None
-        self.margin_balance = None
+        self.maint_margin = 0.0
+        self.unrealised_pnl = 0.0
+        self.wallet_balance = 0.0
+        self.margin_balance = 0.0
         self.alert = alert
         self.initalised = False
         self.margin_limit = margin_limit # ratio of margin limit

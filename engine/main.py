@@ -45,8 +45,11 @@ def main():
     position_manager = PositionManager(margin_manager,trading_cost_manager)
 
     # Setup telegram Alert
-    dotenv_path = "../gateways/binance/vault/telegram_keys"
+    base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located
+    dotenv_path = os.path.join(base_dir, 'vault', 'telegram_keys')  # adjust '..' if needed
     load_dotenv(dotenv_path=dotenv_path)
+    print("Loading env from:", dotenv_path)
+
     telegram_api_key = os.getenv("API_KEY")
     telegram_user_id = os.getenv("USER_ID")
     telegram_alert = telegramAlert(telegram_api_key, telegram_user_id)

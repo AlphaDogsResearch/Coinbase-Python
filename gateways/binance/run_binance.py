@@ -30,8 +30,10 @@ if __name__ == '__main__':
     to_stdout()
 
     # read key and secret from environment variable file
-    dotenv_path = 'vault/binance_keys'
+    base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located
+    dotenv_path = os.path.join(base_dir, 'vault', 'binance_keys')  # adjust '..' if needed
     load_dotenv(dotenv_path=dotenv_path)
+    print("Loading env from:", dotenv_path)
     API_KEY = os.getenv('BINANCE_API_KEY')
     API_SECRET = os.getenv('BINANCE_API_SECRET')
 
