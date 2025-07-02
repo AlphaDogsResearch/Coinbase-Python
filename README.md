@@ -1,117 +1,101 @@
-# Live Trading Bot – Core Architecture
 
-This module defines the **abstract base classes (ABCs)** that form the backbone of a modular, real-time crypto trading bot. These interfaces allow for pluggable components to be cleanly separated, tested, and extended.
+# 🧠  Real-Time Cryptocurrency Trading Bot Using SMA Strategy on BTC Futures 
 
----
-
-## 🔁 Pipeline Flow
-
-```
-MarketDataHandler
-      ↓
-Strategy (Signal Generation)
-      ↓
-PortfolioManager (Sizing + Capital + Risk Check)
-      ↓
-RiskManager (Optional, pluggable)
-      ↓
-OrderManager (Queue/Rollback/Cancel)
-      ↓
-TradeExecution (Live Order Placement)
-      ↓
-ExecutionReport + PositionTracker
-```
+This repository implements a modular framework for researching and deploying quantitative trading strategies in real-time environments. The design separates **research**, **productionization**, and **runtime system architecture** into clearly defined layers.
 
 ---
 
-## 🧩 Core Components
+## 🏗️ Project Structure
 
-### `MarketDataHandler`
-- **Purpose**: Fetch and normalize market data from exchanges.
-- **Input**: None (internal fetch logic).
-- **Output**: `dict` of structured market data per asset.
+Below is the updated architecture of the codebase:
 
----
+![Architecture Diagram](QF635.png)
 
-### `Strategy`
-- **Purpose**: Analyze market data and generate trade signals.
-- **Input**: Market data (`dict`).
-- **Output**: Signal dictionary like `{ "BTCUSDT": "long", "ETHUSDT": "short" }`.
+*This diagram illustrates the flow from strategy research to event-driven integration and validation.*
 
 ---
-
-### `PortfolioManager`
-- **Purpose**: Position sizing, capital allocation, and filtering trades.
-- **Input**: Signals (`dict`), AUM (`float`).
-- **Output**: Dict of `Order` objects keyed by asset.
-
----
-
-### `RiskManager` (optional)
-- **Purpose**: Validate each order against risk rules.
-- **Input**: `Order`, AUM.
-- **Output**: `bool` (True = allowed, False = blocked).
-
----
-
-### `OrderManager`
-- **Purpose**: Manage order queue, cancel unplaced trades, and track pending orders.
-- **Input**: Orders (`dict`).
-- **Output**: Access to queued orders (`dict`), cancellation logic.
-
----
-
-### `TradeExecution`
-- **Purpose**: Place live trades on an exchange.
-- **Input**: Orders (`dict`).
-- **Output**: None directly (trades are placed externally).
-
----
-
-### `ExecutionLogger`
-- **Purpose**: Log each trade’s outcome.
-- **Input**: `Order`, status string, fill price (optional).
-- **Output**: Logging side-effect.
-
----
-
-### `PositionTracker`
-- **Purpose**: Maintain current positions and PnL tracking.
-- **Input**: Executed `Order`, fill price.
-- **Output**: Internal state; exposes `get_positions()` and `get_pnl()`.
-
----
-
-### `Order`
-- **Dataclass**
-- Fields: `asset`, `quantity`, `price` (optional), `order_type` (default: "market").
-
----
-
-## ✅ How to Use
-
-1. Implement each abstract class in its own module.
-2. Wire them together in an orchestrator (e.g., `main.py`).
-3. Swap out components (e.g. `MockExecution` vs `BinanceExecution`) with zero friction.
-
----
-
-## 📂 Directory
-
-This `core/` module contains only the interface definitions. Concrete implementations should live in folders like `strategies/`, `execution/`, `portfolio/`, etc.
-
-
 
 ## ⚡ How to Run
 
 ### Gateway
 Add the keys in the `gateways/binance/vault/binance_keys` file
 Run the `run_binance.py`
-
 ### Engine
 Add the telegram keys in `engine/vault/telegram_keys`
 Run the `main.py`
-
 ### Run in Windows
 Execute the `run.bat`
+
+---
+
+## 🧪 Research
+
+Exploratory and experimental phase where strategies are initially tested in a vectorized notebook format using historical data.
+
+### Components
+- `research/datasets/`: Raw historical price/time-series data
+- `research/`: Strategy prototyping and analysis
+
+---
+
+## 🚀 Productionization (Model Integration)
+
+Bridges research models into real-time production-ready event-driven strategies.
+
+### Steps
+1. Implement a class that inherits from the base `Strategy` and wraps vectorized logic.
+2. Use `MarketDataClient` and `CandleAggregator` to simulate or stream tick-level market data.
+3. Compare vectorized vs real-time strategy signals via the `ValidationTestingSuite ~ model_integration/tests`.
+
+---
+
+## ⚙️ Runtime System Architecture
+
+System design for executing trades in a live setting using real-time data and event streams.
+
+### Data Flow
+```
+Exchange
+  ↓
+MarketDataClient (e.g. CCXT, RemoteFeed)
+  ↓
+CandleAggregator → MidPriceCandle → Strategy
+  ↓
+→ StrategyManager → on_signal()
+  ↓
+→ TradeExecutor → RiskManager.validate_order()
+  ↓
+→ OrderExecutor → OrderStore
+  ↓
+→ AccountStateStore → MarginCalc → NotificationCenter
+```
+
+---
+
+## 🧩 Key Components
+
+| Component                | Description                                                                 |
+|--------------------------|-----------------------------------------------------------------------------|
+| **MarketDataClient**     | Streams raw order book data from an exchange.                              |
+| **CandleAggregator**     | Constructs event-driven candles from raw ticks.                            |
+| **Strategy**             | Real-time strategy class (e.g., `SMACrossoverInflectionStrategy`).         |
+| **StrategyManager**      | Manages strategy lifecycle and dispatches signals.                         |
+| **TradeExecutor**        | Listens to strategy signals and sends validated orders to executor.        |
+| **RiskManager**          | Validates signals and orders against capital and risk rules.               |
+| **OrderExecutor**        | Places or cancels orders through broker or mock client.                    |
+| **OrderStore**           | Tracks live and historical orders.                                         |
+| **AccountStateStore**    | Updates current positions, PnL, and available balance.                     |
+| **MarginCalculator**     | Computes margin usage for active trades.                                   |
+| **NotificationCenter**   | Pushes alerts to the notification platform.                                |
+
+---
+
+## ✅ Development Workflow
+
+1. **Research** a new idea in notebooks using historical datasets.
+2. **Productionize** the idea by wrapping logic in a real-time `Strategy` class.
+3. Use the **Validation Suite** to ensure fidelity between vectorized and live logic.
+4. Plug the new strategy into the **Runtime Engine** for simulation or live deployment.
+
+---
 
