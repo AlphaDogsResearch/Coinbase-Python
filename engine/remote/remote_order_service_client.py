@@ -13,6 +13,8 @@ from engine.account.account import Account
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position_manager import PositionManager
 from engine.trades.trades_manager import TradesManager
+
+from common.config_symbols import TRADING_SYMBOLS
 from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
@@ -36,8 +38,8 @@ class RemoteOrderClient:
 
         self.add_listener(self.position_manager.on_order_event)
         self.add_listener(self.trade_manager.on_order_event)
-        #init variable
-        self.trading_asset = ["BTCUSDT"]
+
+
 
         # init request
         self.init_request()

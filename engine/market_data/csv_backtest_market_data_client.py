@@ -1,3 +1,4 @@
+from common.config_symbols import TRADING_SYMBOLS
 import pandas as pd
 import time
 from typing import Callable, List
@@ -8,7 +9,7 @@ import logging
 
 class CSVBacktestOrderBook(OrderBook):
     def __init__(self, timestamp: float, price: float):
-        contract = "BTCUSD"
+        contract = TRADING_SYMBOLS[0]
         bids = [PriceLevel(price - 0.5, 1.0)]  # mock one level bid/ask depth
         asks = [PriceLevel(price + 0.5, 1.0)]
         super().__init__(timestamp, contract, bids, asks)

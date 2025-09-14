@@ -4,12 +4,14 @@ Executor class for executing orders using various strategies.
 import logging
 import math
 
+
 from common.identifier import OrderIdGenerator
 from common.interface_order import Side, Order, OrderType
 from common.time_utils import current_milli_time
 from engine.core.trade_execution import TradeExecution
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.risk.risk_manager import RiskManager
+from common.config_symbols import TRADING_SYMBOLS
 
 
 class Executor(TradeExecution):
@@ -24,12 +26,13 @@ class Executor(TradeExecution):
         # decide what to do with signal
         #round to 1 dp
         var_signal = self.risk_manager.get_portfolio_var_assessment() #TODO: Handle var signal
+        symbol = TRADING_SYMBOLS[0]
         if signal == 1:
             rounded_down_price = math.floor(price * 10) / 10
-            self.place_orders("BTCUSDT", 0.001, Side.BUY,rounded_down_price)
+            self.place_orders(symbol, 0.001, Side.BUY, rounded_down_price)
         elif signal == -1:
             rounded_up_price = math.ceil(price * 10) / 10
-            self.place_orders("BTCUSDT", 0.001, Side.SELL,rounded_up_price)
+            self.place_orders(symbol, 0.001, Side.SELL, rounded_up_price)
 
     def place_orders(self, symbol: str, quantity: float, side: Side,price:float):
         """

@@ -1,3 +1,4 @@
+from common.config_symbols import TRADING_SYMBOLS
 from engine.market_data.market_data_client import MarketDataClient
 from typing import Callable, List
 from common.interface_book import OrderBook, PriceLevel
@@ -30,7 +31,7 @@ class MockMarketDataClient(MarketDataClient):
 
 class MockOrderBook(OrderBook):
     def __init__(self, timestamp: float):
-        contract = "BTCUSD"
+        contract = TRADING_SYMBOLS[0]
         bids = [PriceLevel(100 - i * 0.5, random.uniform(-1.5, 1.5)) for i in range(5)]
         asks = [PriceLevel(100 + i * 0.5, random.uniform(-1.5, 1.5)) for i in range(5)]
         super().__init__(timestamp, contract, bids, asks)

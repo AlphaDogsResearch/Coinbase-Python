@@ -14,6 +14,7 @@ For further information:
 https://www.binance.com/en/support/faq/how-to-test-my-functions-on-binance-testnet-ab78f9a1b8824cf0a106b4229c76496d
 
 """
+
 import logging
 import os
 import time
@@ -24,6 +25,7 @@ from common.config_logging import to_stdout
 from gateways.binance.binance_gateway import BinanceGateway, ProductType
 from gateways.binance.market_connection import MarketDataConnection
 from gateways.binance.order_connection import OrderConnection
+from common.config_symbols import TRADING_SYMBOLS
 
 if __name__ == '__main__':
     logging.info("Running Binance Gateway...")
@@ -37,8 +39,8 @@ if __name__ == '__main__':
     API_KEY = os.getenv('BINANCE_API_KEY')
     API_SECRET = os.getenv('BINANCE_API_SECRET')
 
-    contract = 'BTCUSDT'
-    binance = BinanceGateway(symbol=contract, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
+    # Use global config for trading symbols
+    binance = BinanceGateway(symbols=TRADING_SYMBOLS, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
     binance.connect()
     market_data_port = 8080
     order_port = 8081

@@ -1,5 +1,7 @@
+
 import logging
 import os
+import sys
 
 from dotenv import load_dotenv
 
@@ -26,23 +28,39 @@ from engine.trading_cost.trading_cost_manager import TradingCostManager
 from graph.ohlc_plot import  RealTimePlotWithCandlestick
 from graph.plot import RealTimePlot
 
+from common.config_symbols import TRADING_SYMBOLS
+
 
 def main():
     to_stdout()
     logging.info("Running Engine...")
     start = True
 
-    contract = 'BTCUSDT'
-
-
+    # Get symbol from CLI argument
+    if len(sys.argv) < 2:
+        print(f"Usage: python {os.path.basename(__file__)} SYMBOL")
+        print(f"Available symbols: {', '.join(TRADING_SYMBOLS)}")
+        sys.exit(1)
+    input_symbol = sys.argv[1].upper()
+    if input_symbol not in TRADING_SYMBOLS:
+        print(f"Error: '{input_symbol}' is not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}")
+        sys.exit(1)
+    selected_symbol = input_symbol
 
     margin_manager = MarginInfoManager()
     trading_cost_manager = TradingCostManager()
     sharpe_calculator = BinanceFuturesSharpeCalculator()
 
-
     trade_manager = TradesManager(sharpe_calculator)
-    position_manager = PositionManager(margin_manager,trading_cost_manager)
+    position_manager = PositionManager(margin_manager, trading_cost_manager)
+
+    # --- BinanceGateway for selected instrument ---
+    from gateways.binance.binance_gateway import BinanceGateway
+    # You should load your API keys from env or config
+    api_key = os.getenv('BINANCE_API_KEY')
+    api_secret = os.getenv('BINANCE_API_SECRET')
+    binance_gateway = BinanceGateway([selected_symbol], api_key=api_key, api_secret=api_secret, product_type=None)
+    binance_gateway.connect()
 
     # Setup telegram Alert
     base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located
@@ -102,7 +120,7 @@ def main():
     )
     strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
 
-    plotter = RealTimePlotWithCandlestick(ticker_name=contract, max_minutes=60, max_ticks=500, update_interval_ms=100,
+    plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=500, update_interval_ms=100,
                            is_simulation=False)
 
 
