@@ -45,41 +45,36 @@ def sign_url(secret: str, api_url, params: {}):
     return 'https://testnet.binancefuture.com' + api_url + "?" + query_string + "&signature=" + signature
 
 
+
 class BinanceGateway(GatewayInterface):
-    def __init__(self, symbol: str, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance'):
+    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance'):
+        """
+        symbols: list of trading pairs (e.g. ["BTCUSDT", "ETHUSDT"])
+        """
         self._api_key = api_key
         self._api_secret = api_secret
         self._exchange_name = name
-        self._symbol = symbol
+        self._symbols = symbols if isinstance(symbols, list) else [symbols]
         self._product_type = product_type
-        # Base URLs
         self.BASE_URL = 'https://testnet.binancefuture.com'
 
-        # Connect to Futures Testnet
-
         self.api_client = Client(self._api_key, self._api_secret)
-        self.api_client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'  # Point to Futures Testnet
+        self.api_client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'
 
-        # binance async client
         self._client = None
-        self._bm = None  # binance socket manager
-        self._dcm = None  # depth cache, which implements the logic to manage a local order book
-        self._dws = None  # depth async WebSocket session
-        self._ts = None  # trade socket
-        self._tws = None  # trade async WebSocket session
+        self._bm = None
+        self._dcm = {}  # symbol -> DepthCacheManager
+        self._dws = {}  # symbol -> depth ws
+        self._ts = {}   # symbol -> trade socket
+        self._tws = {}  # symbol -> trade ws
+        self._depth_cache = {}  # symbol -> cache
 
-        # depth cache
-        self._depth_cache = None
-
-        # this is a loop and dedicated thread to run all async concurrent tasks
         self._loop = asyncio.new_event_loop()
         self._loop_thread = Thread(target=self._run_async_tasks, daemon=True, name=name)
 
-        # readiness and circuit breaker flag
         self._ready_check = ReadyCheck()
         self._signal_reconnect = False
 
-        # callbacks
         self._depth_callbacks = []
         self._mark_price_callbacks = []
         self._market_trades_callbacks = []
@@ -97,8 +92,9 @@ class BinanceGateway(GatewayInterface):
 
     def _run_async_tasks(self):
         """ Run the following tasks concurrently in the current thread """
-        self._loop.create_task(self._listen_depth_forever())
-        self._loop.create_task(self._listen_trade_forever())
+        for symbol in self._symbols:
+            self._loop.create_task(self._listen_depth_forever(symbol))
+            self._loop.create_task(self._listen_trade_forever(symbol))
         self._loop.create_task(self._listen_private_forever())
         self._loop.run_forever()
 
@@ -108,11 +104,7 @@ class BinanceGateway(GatewayInterface):
     async def _reconnect_ws(self):
         logging.info("reconnecting")
         self._ready_check = ReadyCheck()
-
-        # initialize cache
         self._init_cache()
-
-        # ws connect and authenticate
         await self._connect_authenticate_ws()
 
     def _init_cache(self):
@@ -125,77 +117,56 @@ class BinanceGateway(GatewayInterface):
             self._get_margin_tier_info()
             self._start_websocket()
             self.get_user_trades()
-            self.get_commission_rate(self._symbol)
-            self._calculate_hourly_sharpe_ratio()
-
+            for symbol in self._symbols:
+                self.get_commission_rate(symbol)
+                self._calculate_hourly_sharpe_ratio()
         self._ready_check.snapshot_ready = True
 
     async def _connect_authenticate_ws(self):
         logging.info("connecting to ws")
         self._client = await AsyncClient.create(self._api_key, self._api_secret)
         self._bm = BinanceSocketManager(self._client)
-        # connected
         self._ready_check.ws_connected = True
 
-    async def _listen_depth_forever(self):
-        logging.info("start subscribing and listen to depth events")
+    async def _listen_depth_forever(self, symbol):
+        logging.info(f"start subscribing and listen to depth events for {symbol}")
         while True:
-            if not self._dws:
-                logging.info("depth socket not connected, reconnecting")
+            if symbol not in self._dws or not self._dws[symbol]:
+                logging.info(f"depth socket not connected for {symbol}, reconnecting")
                 if self._product_type == ProductType.SPOT:
-                    self._dcm = DepthCacheManager(self._client, symbol=self._symbol, bm=self._bm, ws_interval=100)
+                    self._dcm[symbol] = DepthCacheManager(self._client, symbol=symbol, bm=self._bm, ws_interval=100)
                 elif self._product_type == ProductType.FUTURE:
-                    self._dcm = FuturesDepthCacheManager(self._client, symbol=self._symbol, bm=self._bm)
+                    self._dcm[symbol] = FuturesDepthCacheManager(self._client, symbol=symbol, bm=self._bm)
                 else:
                     sys.exit('Unrecognized product type: '.format(self._product_type))
 
-                self._dws = await self._dcm.__aenter__()
+                self._dws[symbol] = await self._dcm[symbol].__aenter__()
                 self._ready_check.depth_stream_ready = True
 
-            # wait for depth update
             try:
-                self._depth_cache = await self._dws.recv()
-
+                self._depth_cache[symbol] = await self._dws[symbol].recv()
                 if self._depth_callbacks:
                     for _cb in self._depth_callbacks:
-                        _cb(self._exchange_name, VenueOrderBook(self._exchange_name, self._get_order_book()))
-
+                        _cb(self._exchange_name, VenueOrderBook(self._exchange_name, self._get_order_book(symbol)))
             except Exception as e:
-                await self._handle_exception(e, 'encountered issue in depth processing')
+                await self._handle_exception(e, f'encountered issue in depth processing for {symbol}')
 
-    async def _listen_trade_forever(self):
-        logging.info("start subscribing and listen to trade events")
+    async def _listen_trade_forever(self, symbol):
+        logging.info(f"start subscribing and listen to trade events for {symbol}")
         while True:
-            if not self._tws:
-                logging.info("trade socket not connected, reconnecting")
+            if symbol not in self._tws or not self._tws[symbol]:
+                logging.info(f"trade socket not connected for {symbol}, reconnecting")
                 if self._product_type == ProductType.SPOT:
-                    self._ts = self._bm.aggtrade_socket(self._symbol)
+                    self._ts[symbol] = self._bm.aggtrade_socket(symbol)
                 elif self._product_type == ProductType.FUTURE:
-                    self._ts = self._bm.aggtrade_futures_socket(symbol=self._symbol, futures_type=FuturesType.USD_M)
+                    self._ts[symbol] = self._bm.aggtrade_futures_socket(symbol=symbol, futures_type=FuturesType.USD_M)
                 else:
                     sys.exit('Unrecognized product type: '.format(self._product_type))
 
-                self._tws = await self._ts.__aenter__()
+                self._tws[symbol] = await self._ts[symbol].__aenter__()
 
-            # wait for trade message
             try:
-                """
-                {
-                    "e": "trade",     // Event type
-                    "E": 123456789,   // Event time
-                    "s": "BNBBTC",    // Symbol
-                    "t": 12345,       // Trade ID
-                    "p": "0.001",     // Price
-                    "q": "100",       // Quantity
-                    "b": 88,          // Buyer order ID
-                    "a": 50,          // Seller order ID
-                    "T": 123456785,   // Trade time
-                    "m": true,        // Is the buyer the market maker?
-                    "M": true         // Ignore
-                }                
-                """
-                message = await self._tws.recv()
-
+                message = await self._tws[symbol].recv()
                 if self._market_trades_callbacks:
                     data = message['data']
                     trade = Trade(received_time=data['T'],
@@ -206,9 +177,8 @@ class BinanceGateway(GatewayInterface):
                                   liquidation=False)
                     for _cb in self._market_trades_callbacks:
                         _cb([trade])
-
             except Exception as e:
-                await self._handle_exception(e, 'encountered issue in trade processing')
+                await self._handle_exception(e, f'encountered issue in trade processing for {symbol}')
 
     async def _listen_private_forever(self):
         if not self._has_keys():
@@ -230,10 +200,13 @@ class BinanceGateway(GatewayInterface):
         # reconnect client
         await self._reconnect_ws()
 
-    def _get_order_book(self) -> OrderBook:
-        bids = [PriceLevel(price=p, size=s) for (p, s) in self._depth_cache.get_bids()[:5]]
-        asks = [PriceLevel(price=p, size=s) for (p, s) in self._depth_cache.get_asks()[:5]]
-        return OrderBook(timestamp=self._depth_cache.update_time, contract_name=self._symbol, bids=bids, asks=asks)
+    def _get_order_book(self, symbol=None) -> OrderBook:
+        symbol = symbol or (self._symbols[0] if self._symbols else None)
+        if symbol not in self._depth_cache or not self._depth_cache[symbol]:
+            return None
+        bids = [PriceLevel(price=p, size=s) for (p, s) in self._depth_cache[symbol].get_bids()[:5]]
+        asks = [PriceLevel(price=p, size=s) for (p, s) in self._depth_cache[symbol].get_asks()[:5]]
+        return OrderBook(timestamp=self._depth_cache[symbol].update_time, contract_name=symbol, bids=bids, asks=asks)
 
     """ ----------------------------------- """
     """             REST API                """
@@ -564,7 +537,7 @@ class BinanceGateway(GatewayInterface):
         return 0
 
     def get_order_book(self, contract_name: str) -> OrderBook:
-        return self._get_order_book()
+        return self._get_order_book(contract_name)
 
     def register_depth_callback(self, callback):
         """ a depth callback function takes two argument: (exchange_name:str, book: VenueOrderBook) """
