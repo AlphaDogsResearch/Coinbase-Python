@@ -1,13 +1,21 @@
 import logging
 from typing import Optional, Dict
 from engine.core.order import Order
+from engine.risk.position_tracker import PositionTracker
+import threading
+import time
+import datetime
+import pytz
 
 
 class RiskManager:
-   
+    """
+    Institutional-grade risk manager for algorithmic trading systems.
+    Performs multiple risk checks before allowing order execution.
+    """
     def __init__(
         self,
-        max_order_value: float = 1000.0,
+        max_order_value: float = 5000.0,
         max_position_value: float = 20000.0,
         max_leverage: float = 5.0,
         max_open_orders: int = 20,
@@ -15,7 +23,8 @@ class RiskManager:
         max_var_ratio: float = 0.10,     # 10% of AUM
         allowed_symbols: Optional[list] = None,
         min_order_size: float = 0.001,
-        compliance_blacklist: Optional[list] = None,
+        position_tracker: Optional[PositionTracker] = None,
+        liquidation_loss_threshold: float = 0.2,  # 20% loss threshold
     ):
         self.max_order_value = max_order_value
         self.max_position_value = max_position_value
@@ -25,22 +34,31 @@ class RiskManager:
         self.max_var_ratio = max_var_ratio
         self.allowed_symbols = allowed_symbols
         self.min_order_size = min_order_size
-        self.compliance_blacklist = compliance_blacklist or []
         self.daily_loss = 0.0
         self.aum = 1.0  # Should be set by account/wallet manager
-        self.positions: Dict[str, float] = {}  # symbol -> position size
-        self.open_orders: Dict[str, int] = {}  # symbol -> open order count
         self.var_value = 0.0
         self.portfolio_value = 0.0
+        self.position_tracker = position_tracker
+        self.liquidation_loss_threshold = liquidation_loss_threshold
+        self._start_daily_loss_reset_thread()
+
+    def _start_daily_loss_reset_thread(self):
+        def reset_loop():
+            eastern = pytz.timezone('US/Eastern')
+            while True:
+                now = datetime.datetime.now(tz=eastern)
+                next_reset = now.replace(hour=8, minute=0, second=0, microsecond=0)
+                if now >= next_reset:
+                    next_reset += datetime.timedelta(days=1)
+                sleep_seconds = (next_reset - now).total_seconds()
+                time.sleep(sleep_seconds)
+                self.reset_daily_loss()
+                logging.info("Daily loss reset at 8am EST.")
+        t = threading.Thread(target=reset_loop, daemon=True)
+        t.start()
 
     def set_aum(self, aum: float):
         self.aum = aum
-
-    def set_positions(self, positions: Dict[str, float]):
-        self.positions = positions
-
-    def set_open_orders(self, open_orders: Dict[str, int]):
-        self.open_orders = open_orders
 
     def set_var(self, var_value: float, portfolio_value: float):
         self.var_value = var_value
@@ -55,15 +73,15 @@ class RiskManager:
         """
         symbol = order.symbol
         notional = order.quantity * (order.price if order.price else 1.0)
-        position = self.positions.get(symbol, 0.0)
-        open_orders = self.open_orders.get(symbol, 0)
+        position = 0.0
+        open_orders = 0
+        if self.position_tracker:
+            position = self.position_tracker.get_position(symbol)
+            open_orders = self.position_tracker.get_open_orders(symbol)
 
-        # 1. Compliance: symbol blacklist
+        # 1. Compliance: symbol whitelist
         if self.allowed_symbols and symbol not in self.allowed_symbols:
             logging.warning(f"Order rejected: {symbol} not in allowed symbols.")
-            return False
-        if symbol in self.compliance_blacklist:
-            logging.warning(f"Order rejected: {symbol} is blacklisted.")
             return False
 
         # 2. Minimum order size
@@ -129,3 +147,15 @@ class RiskManager:
 
     def reset_daily_loss(self):
         self.daily_loss = 0.0
+
+    def check_and_liquidate_on_loss(self):
+        """
+        If cumulative PnL of all open positions is below -liquidation_loss_threshold * AUM, close all positions and orders.
+        """
+        if not self.position_tracker:
+            return
+        cumulative_pnl = self.position_tracker.get_cumulative_pnl()
+        threshold = -self.liquidation_loss_threshold * self.aum
+        if cumulative_pnl <= threshold:
+            logging.warning(f"Cumulative PnL {cumulative_pnl} <= {threshold}: Closing all positions and orders!")
+            self.position_tracker.close_all_positions_and_orders()
