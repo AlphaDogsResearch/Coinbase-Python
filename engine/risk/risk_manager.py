@@ -1,7 +1,7 @@
 import logging
-from typing import Optional, Dict
+from typing import Optional
 from engine.core.order import Order
-from engine.risk.position_tracker import PositionTracker
+from engine.position.position import Position
 import threading
 import time
 import datetime
@@ -23,7 +23,7 @@ class RiskManager:
         max_var_ratio: float = 0.10,     # 10% of AUM
         allowed_symbols: Optional[list] = None,
         min_order_size: float = 0.001,
-        position_tracker: Optional[PositionTracker] = None,
+        position: Optional[Position] = None,
         liquidation_loss_threshold: float = 0.2,  # 20% loss threshold
     ):
         self.max_order_value = max_order_value
@@ -38,7 +38,7 @@ class RiskManager:
         self.aum = 1.0  # Should be set by account/wallet manager
         self.var_value = 0.0
         self.portfolio_value = 0.0
-        self.position_tracker = position_tracker
+        self.position = position
         self.liquidation_loss_threshold = liquidation_loss_threshold
         self._start_daily_loss_reset_thread()
 
@@ -73,11 +73,11 @@ class RiskManager:
         """
         symbol = order.symbol
         notional = order.quantity * (order.price if order.price else 1.0)
-        position = 0.0
+        position_amt = 0.0
         open_orders = 0
-        if self.position_tracker:
-            position = self.position_tracker.get_position(symbol)
-            open_orders = self.position_tracker.get_open_orders(symbol)
+        if self.position and self.position.symbol == symbol:
+            position_amt = self.position.position_amount
+            open_orders = self.position.get_open_orders()
 
         # 1. Compliance: symbol whitelist
         if self.allowed_symbols and symbol not in self.allowed_symbols:
@@ -95,7 +95,7 @@ class RiskManager:
             return False
 
         # 4. Max position notional
-        if abs(position + order.quantity) * (order.price if order.price else 1.0) > self.max_position_value:
+        if abs(position_amt + order.quantity) * (order.price if order.price else 1.0) > self.max_position_value:
             logging.warning(f"Order rejected: position size would exceed max position value {self.max_position_value}.")
             return False
 
@@ -106,7 +106,7 @@ class RiskManager:
 
         # 6. Leverage check (if applicable)
         if self.aum > 0:
-            leverage = abs((position + order.quantity) * (order.price if order.price else 1.0)) / self.aum
+            leverage = abs((position_amt + order.quantity) * (order.price if order.price else 1.0)) / self.aum
             if leverage > self.max_leverage:
                 logging.warning(f"Order rejected: leverage {leverage:.2f}x exceeds max {self.max_leverage}x.")
                 return False
@@ -152,10 +152,10 @@ class RiskManager:
         """
         If cumulative PnL of all open positions is below -liquidation_loss_threshold * AUM, close all positions and orders.
         """
-        if not self.position_tracker:
+        if not self.position:
             return
-        cumulative_pnl = self.position_tracker.get_cumulative_pnl()
+        cumulative_pnl = self.position.get_position_pnl()
         threshold = -self.liquidation_loss_threshold * self.aum
         if cumulative_pnl <= threshold:
             logging.warning(f"Cumulative PnL {cumulative_pnl} <= {threshold}: Closing all positions and orders!")
-            self.position_tracker.close_all_positions_and_orders()
+            # Implement your close logic here, e.g. self.position.reset() or similar
