@@ -89,7 +89,6 @@ def main():
     position_manager.add_realized_pnl_listener(account.update_wallet_with_realized_pnl)
 
 
-
     # initalise remote client
     remote_market_data_client = RemoteMarketDataClient()
     # attach position manager listener to remote client
