@@ -84,9 +84,6 @@ def main():
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
 
 
-
-
-
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)
     position_manager.add_realized_pnl_listener(account.update_wallet_with_realized_pnl)
