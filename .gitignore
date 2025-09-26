@@ -188,3 +188,6 @@ model_integration/tests/strategies/generated_test_data/*
 research/datasets/*
 research/notebooks/__pycache__/
 research/**/*.ipynb_checkpoints
+
+
+binance_keys

@@ -1,4 +1,3 @@
-
 import logging
 import os
 import sys
@@ -11,6 +10,7 @@ from common.metrics.sharpe_calculator import BinanceFuturesSharpeCalculator
 from engine.account.account import Account
 from engine.execution.executor import Executor
 from engine.margin.margin_info_manager import MarginInfoManager
+from engine.position.position import Position
 from engine.position.position_manager import PositionManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
@@ -28,6 +28,8 @@ from engine.trading_cost.trading_cost_manager import TradingCostManager
 from graph.ohlc_plot import  RealTimePlotWithCandlestick
 from graph.plot import RealTimePlot
 
+
+from engine.core.order import Order
 from common.config_symbols import TRADING_SYMBOLS
 
 
@@ -46,6 +48,10 @@ def main():
         print(f"Error: '{input_symbol}' is not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}")
         sys.exit(1)
     selected_symbol = input_symbol
+
+    # Initialize Position and RiskManager
+    position = Position(symbol=selected_symbol)
+    risk_manager = RiskManager(position=position)
 
     margin_manager = MarginInfoManager()
     trading_cost_manager = TradingCostManager()
@@ -95,9 +101,6 @@ def main():
     )
 
     remote_order_client = RemoteOrderClient(margin_manager, position_manager, account,trading_cost_manager,trade_manager)
-
-    # setup risk manager
-    risk_manager = RiskManager()  # TODO: Calculate portfolio var
 
     # create executor
     order_type = OrderType.Market
@@ -172,8 +175,6 @@ def main():
     # strategy_manager.add_strategy(sma)
     #
     # ##testing####
-
-
 
     tracker = InMemoryTracker(telegram_alert)
 

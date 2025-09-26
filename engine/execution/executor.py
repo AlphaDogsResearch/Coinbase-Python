@@ -34,16 +34,19 @@ class Executor(TradeExecution):
             rounded_up_price = math.ceil(price * 10) / 10
             self.place_orders(symbol, 0.001, Side.SELL, rounded_up_price)
 
-    def place_orders(self, symbol: str, quantity: float, side: Side,price:float):
+    def place_orders(self, symbol: str, quantity: float, side: Side, price: float):
         """
         Place orders using the specified execution strategy.
 
         :param order: A dictionary of orders to be executed.
         """
-
         order_id = self.id_generator.next()
-        order = Order(order_id, side, quantity, symbol, current_milli_time(), self.order_type,price)
-        self.remote_order_client.submit_order(order)
+        order = Order(order_id, side, quantity, symbol, current_milli_time(), self.order_type, price)
+        # Risk check before submitting order
+        if self.risk_manager and not self.risk_manager.validate_order(order):
+            logging.warning(f"Order blocked by risk manager: {order}")
+            return None
+        return self.remote_order_client.submit_order(order)
 
     def query_order(self, symbol: str, order_id: str):
         """
