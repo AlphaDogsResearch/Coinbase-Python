@@ -27,7 +27,7 @@ class SMACrossoverInflectionStrategy:
         self.last_position = 0  # Current held position: 1 (long), -1 (short), 0 (flat)
 
         self.signal_history = []  # Optional for inspection
-        self.listeners: List[Callable[[int, float], None]] = []
+        self.listeners: List[Callable[[str,int, float], None]] = []
 
         self.tick_signal_listeners: List[Callable[[datetime, int, float], None]] = []  # list of callbacks
         self.tick_sma_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
@@ -35,7 +35,7 @@ class SMACrossoverInflectionStrategy:
 
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMACROSS")
 
-    def add_signal_listener(self, callback: Callable[[int, float], None]):
+    def add_signal_listener(self, callback: Callable[[str,int, float], None]):
         self.listeners.append(callback)
 
     def add_tick_signal_listener(self, callback: Callable[[datetime, int, float], None]):
@@ -50,9 +50,9 @@ class SMACrossoverInflectionStrategy:
     def on_signal(self, signal: int, price: float):
         for listener in self.listeners:
             try:
-                listener(signal, price)
+                listener(self.name,signal, price)
             except Exception as e:
-                logging.error(f"{self.name} listener raised an exception: %s", e)
+                logging.error(f"{self.name} on_signal listener raised an exception: %s", e)
 
     def on_tick_signal(self, timestamp: datetime, signal: int, price: float):
         def run():
@@ -60,7 +60,7 @@ class SMACrossoverInflectionStrategy:
                 try:
                     listener(timestamp, signal, price)
                 except Exception as e:
-                    logging.error(self.name + " Listener raised an exception: %s", e)
+                    logging.error(self.name + " on_tick_signal Listener raised an exception: %s", e)
 
         self.executor.submit(run)
 
@@ -75,7 +75,7 @@ class SMACrossoverInflectionStrategy:
                 try:
                     listener(timestamp, sma)
                 except Exception as e:
-                    logging.error(self.name + " Listener raised an exception: %s", e)
+                    logging.error(self.name + " on_sma_signal Listener raised an exception: %s", e)
 
         self.executor.submit(run)
 
@@ -91,7 +91,7 @@ class SMACrossoverInflectionStrategy:
                 try:
                     listener(timestamp, sma2)
                 except Exception as e:
-                    logging.error(self.name + " Listener raised an exception: %s", e)
+                    logging.error(self.name + " on_sma2_signal Listener raised an exception: %s", e)
 
         self.executor.submit(run)
 

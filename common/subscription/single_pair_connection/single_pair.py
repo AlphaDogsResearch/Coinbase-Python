@@ -154,7 +154,7 @@ class PairConnection:
         try:
             self.socket.send_pyobj(order_book,flags=zmq.NOBLOCK)
         except zmq.Again:
-            logging.error(f"Dropped message {order_book}")
+            logging.error(f"Dropped message Order Book {order_book}")
             time.sleep(1)
 
     def publish_mark_price(self, mark_price: MarkPrice):
@@ -163,7 +163,7 @@ class PairConnection:
         try:
             self.socket.send_pyobj(mark_price,flags=zmq.NOBLOCK)
         except zmq.Again:
-            logging.error(f"Dropped message {mark_price}")
+            logging.error(f"Dropped message Mark Price {mark_price}")
             time.sleep(1)
 
     def stop(self):

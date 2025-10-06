@@ -11,7 +11,7 @@ class Strategy:
     def on_candle_created(self, candle: MidPriceCandle):
         raise NotImplementedError("Must implement on_candle_created() in subclass")
 
-    def add_signal_listener(self, callback: Callable[[int, float], None]):
+    def add_signal_listener(self, callback: Callable[[str,int, float], None]):
         raise NotImplementedError("Must implement add_signal_listener() in subclass")
 
     def add_tick_signal_listener(self, callback: Callable[[datetime.datetime,int, float], None]):

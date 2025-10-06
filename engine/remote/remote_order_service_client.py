@@ -92,15 +92,15 @@ class RemoteOrderClient:
         self.remote_order_server.send_position_request(PositionRequest())
 
     def request_for_margin(self):
-        for asset in self.trading_asset:
+        for asset in TRADING_SYMBOLS:
             self.remote_order_server.send_margin_info_request(MarginInfoRequest(asset))
 
     def request_for_commission_rate(self):
-        for asset in self.trading_asset:
+        for asset in TRADING_SYMBOLS:
             self.remote_order_server.send_commission_rate_request(CommissionRateRequest(asset))
 
     def request_for_trades(self):
-        for asset in self.trading_asset:
+        for asset in TRADING_SYMBOLS:
             self.remote_order_server.send_trades_request(TradesRequest(asset))
 
     def _send_orders_loop(self):

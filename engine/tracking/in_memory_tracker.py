@@ -10,7 +10,7 @@ class InMemoryTracker(PositionTracker):
 
     def update_position(self, order: Order, fill_price: float):
         symbol = order.symbol
-        qty = order.quantity
+        qty = order.leaves_quantity
         self.positions[symbol] = self.positions.get(symbol, 0) + qty
         self.pnl[symbol] = self.pnl.get(symbol, 0.0) + qty * fill_price
         self.alert.sendAlert(f"Position updated: {symbol} | Qty: {qty} | Fill Price: {fill_price}")

@@ -23,10 +23,10 @@ class OrderBook(Serializable):
     def __str__(self):
         string = f"[{self.contract_name} @ {self.timestamp}]"
         string += ' Bids:'
-        for tier in self.bids[:3]:
+        for tier in self.bids[:]:
             string += str(tier)
         string += ' Asks:'
-        for tier in self.asks[:3]:
+        for tier in self.asks[:]:
             string += str(tier)
         return string
 

@@ -23,6 +23,7 @@ from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
 from binance import FuturesDepthCacheManager
 from binance.client import Client
 from binance.enums import FuturesType
+from binance.ws.depthcache import DepthCache
 
 from common.callback_utils import assert_param_counts
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
@@ -114,8 +115,9 @@ class BinanceGateway(GatewayInterface):
             self._get_account_info()
             self._get_margin_tier_info()
             self._start_websocket()
-            self.get_user_trades()
+
             for symbol in self._symbols:
+                self.get_user_trades(symbol)
                 self.get_commission_rate(symbol)
                 self._calculate_hourly_sharpe_ratio()
         self._ready_check.snapshot_ready = True
@@ -145,7 +147,11 @@ class BinanceGateway(GatewayInterface):
                 self._depth_cache[symbol] = await self._dws[symbol].recv()
                 if self._depth_callbacks:
                     for _cb in self._depth_callbacks:
-                        _cb(self._exchange_name, VenueOrderBook(self._exchange_name, self._get_order_book(symbol)))
+                        order_book = self._get_order_book(symbol)
+                        if order_book is None:
+                            logging.info(f"Unable to get order book for {symbol}")
+                            continue
+                        _cb(self._exchange_name, VenueOrderBook(self._exchange_name, order_book))
             except Exception as e:
                 await self._handle_exception(e, f'encountered issue in depth processing for {symbol}')
 
@@ -198,13 +204,32 @@ class BinanceGateway(GatewayInterface):
         # reconnect client
         await self._reconnect_ws()
 
-    def _get_order_book(self, symbol=None) -> OrderBook:
-        symbol = symbol or (self._symbols[0] if self._symbols else None)
-        if symbol not in self._depth_cache or not self._depth_cache[symbol]:
+    # when disconnected _depth_cache will be empty
+    def _get_order_book(self, symbol=None) -> OrderBook | None:
+        try:
+            cache = self._depth_cache[symbol]
+
+            symbol = symbol or (self._symbols[0] if self._symbols else None)
+            if symbol not in self._depth_cache or not cache:
+                logging.warning(f'depth socket not found for {symbol}')
+                return None
+
+
+            if type(cache) is dict:
+                if cache['e'] == 'error':
+                    logging.error(f"Error while fetching depth for {symbol} probably due to disconnection")
+                    return None
+
+            # is DepthCache Object
+            bids = [PriceLevel(price=p, size=s) for (p, s) in cache.get_bids()[:5]]
+            asks = [PriceLevel(price=p, size=s) for (p, s) in cache.get_asks()[:5]]
+            return OrderBook(timestamp=cache.update_time, contract_name=symbol, bids=bids,
+                             asks=asks)
+        except Exception as e:
+            logging.error(f'Failed to get order book for {symbol} cache: {self._depth_cache} error: {e.with_traceback}')
             return None
-        bids = [PriceLevel(price=p, size=s) for (p, s) in self._depth_cache[symbol].get_bids()[:5]]
-        asks = [PriceLevel(price=p, size=s) for (p, s) in self._depth_cache[symbol].get_asks()[:5]]
-        return OrderBook(timestamp=self._depth_cache[symbol].update_time, contract_name=symbol, bids=bids, asks=asks)
+
+
 
     """ ----------------------------------- """
     """             REST API                """
@@ -343,6 +368,7 @@ class BinanceGateway(GatewayInterface):
 
         if response.status_code == 200:
             data = response.json()
+            logging.info(f"Info {symbol}: {data}")
             logging.info(f"Commission info for {data['symbol']}:")
             #limit order
             logging.info(f"  Maker fee rate: {data['makerCommissionRate']}")
@@ -389,13 +415,13 @@ class BinanceGateway(GatewayInterface):
             print("Error:", response.status_code, response.text)
             return None
 
-    def get_user_trades(self, limit=10):
+    def get_user_trades(self,symbol, limit=10):
         endpoint = "/fapi/v1/userTrades"
         url = self.BASE_URL + endpoint
 
         timestamp = int(time.time() * 1000)
         params = {
-            "symbol": self._symbol,
+            "symbol": symbol,
             "limit": limit,
             "timestamp": timestamp
         }
@@ -462,11 +488,13 @@ class BinanceGateway(GatewayInterface):
         def on_close(ws, code, reason):
             print("Web socket connection closed")
 
-        url = f"wss://fstream.binance.com/ws/{self._symbol.lower()}@markPrice"
+        for symbol in self._symbols:
+            logging.info(f"Starting Mark Price for Symbol: {symbol}")
+            url = f"wss://fstream.binance.com/ws/{symbol.lower()}@markPrice"
 
-        ws = websocket.WebSocketApp(url, on_message=on_message, on_open=on_open, on_close=on_close)
-        thread = threading.Thread(target=ws.run_forever, daemon=True)
-        thread.start()
+            ws = websocket.WebSocketApp(url, on_message=on_message, on_open=on_open, on_close=on_close)
+            thread = threading.Thread(target=ws.run_forever, daemon=True)
+            thread.start()
 
 
     def _get_account_info(self):

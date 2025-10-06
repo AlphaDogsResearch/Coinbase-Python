@@ -16,7 +16,7 @@ class SMAStrategy(Strategy):
         self.long_window = long_window
         self.name = "SMA-" + str(self.short_window) + "-" + str(self.long_window)
         self.prices = []
-        self.listeners: List[Callable[[int,float], None]] = []  # list of callbacks
+        self.listeners: List[Callable[[str,int,float], None]] = []  # list of callbacks
         self.tick_signal_listeners: List[Callable[[datetime.datetime,int,float], None]] = []  # list of callbacks
         self.tick_sma_listeners: List[Callable[[datetime.datetime,float], None]] = []  # list of callbacks
         self.tick_sma2_listeners: List[Callable[[datetime.datetime,float], None]] = []  # list of callbacks
@@ -31,7 +31,7 @@ class SMAStrategy(Strategy):
     def on_candle_created(self, candle: MidPriceCandle):
         pass
 
-    def add_signal_listener(self, callback: Callable[[int, float], None]):
+    def add_signal_listener(self, callback: Callable[[str,int, float], None]):
         self.listeners.append(callback)
 
     def add_tick_signal_listener(self, callback: Callable[[datetime,int, float], None]):
@@ -46,7 +46,7 @@ class SMAStrategy(Strategy):
     def on_signal(self, signal: int,price:float):
         for listener in self.listeners:
             try:
-                listener(signal,price)
+                listener(self.name,signal,price)
             except Exception as e:
                 logging.error(self.name + " Listener raised an exception: %s", e)
 

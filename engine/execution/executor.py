@@ -4,47 +4,49 @@ Executor class for executing orders using various strategies.
 import logging
 import math
 
-
+from common.config_symbols import TRADING_SYMBOLS
 from common.identifier import OrderIdGenerator
 from common.interface_order import Side, Order, OrderType
 from common.time_utils import current_milli_time
 from engine.core.trade_execution import TradeExecution
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.risk.risk_manager import RiskManager
-from common.config_symbols import TRADING_SYMBOLS
 
 
 class Executor(TradeExecution):
-    def __init__(self,order_type:OrderType, remote_order_client: RemoteOrderClient, risk_manager: RiskManager):
+    def __init__(self, order_type: OrderType, remote_order_client: RemoteOrderClient, risk_manager: RiskManager):
         self.remote_order_client = remote_order_client
         self.id_generator = OrderIdGenerator("STRAT")
         self.order_type = order_type
         self.risk_manager = risk_manager
 
-    def on_signal(self, signal: int,price:float):
-        print(f"TradeExecution on_signal: {signal} price {price}")
+    def on_signal(self, strategy_id: str, signal: int, price: float):
+        print(f"TradeExecution strategy:{strategy_id} on_signal: {signal} price {price}")
         # decide what to do with signal
-        #round to 1 dp
-        var_signal = self.risk_manager.get_portfolio_var_assessment() #TODO: Handle var signal
+        # round to 1 dp
+        var_signal = self.risk_manager.get_portfolio_var_assessment()  # TODO: Handle var signal
         symbol = TRADING_SYMBOLS[0]
         if signal == 1:
             rounded_down_price = math.floor(price * 10) / 10
-            self.place_orders(symbol, 0.001, Side.BUY, rounded_down_price)
+            self.place_orders(strategy_id=strategy_id, symbol=symbol, quantity=0.001, side=Side.BUY,
+                              price=rounded_down_price)
         elif signal == -1:
             rounded_up_price = math.ceil(price * 10) / 10
-            self.place_orders(symbol, 0.001, Side.SELL, rounded_up_price)
+            self.place_orders(strategy_id=strategy_id, symbol=symbol, quantity=0.001, side=Side.SELL,
+                              price=rounded_up_price)
 
-    def place_orders(self, symbol: str, quantity: float, side: Side, price: float):
+    def place_orders(self, strategy_id: str, symbol: str, quantity: float, side: Side, price: float):
         """
         Place orders using the specified execution strategy.
 
         :param order: A dictionary of orders to be executed.
         """
         order_id = self.id_generator.next()
-        order = Order(order_id, side, quantity, symbol, current_milli_time(), self.order_type, price)
+        order = Order(order_id=order_id, side=side, leaves_qty=quantity, symbol=symbol, timestamp=current_milli_time(),
+                      order_type=self.order_type, price=price,strategy_id=strategy_id )
         # Risk check before submitting order
         if self.risk_manager and not self.risk_manager.validate_order(order):
-            logging.warning(f"Order blocked by risk manager: {order}")
+            logging.info(f"Order blocked by risk manager: {order}")
             return None
         return self.remote_order_client.submit_order(order)
 

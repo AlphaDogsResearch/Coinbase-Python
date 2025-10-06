@@ -61,12 +61,12 @@ def main():
     position_manager = PositionManager(margin_manager, trading_cost_manager)
 
     # --- BinanceGateway for selected instrument ---
-    from gateways.binance.binance_gateway import BinanceGateway
-    # You should load your API keys from env or config
-    api_key = os.getenv('BINANCE_API_KEY')
-    api_secret = os.getenv('BINANCE_API_SECRET')
-    binance_gateway = BinanceGateway([selected_symbol], api_key=api_key, api_secret=api_secret, product_type=None)
-    binance_gateway.connect()
+    # from gateways.binance.binance_gateway import BinanceGateway
+    # # You should load your API keys from env or config
+    # api_key = os.getenv('BINANCE_API_KEY')
+    # api_secret = os.getenv('BINANCE_API_SECRET')
+    # binance_gateway = BinanceGateway([selected_symbol], api_key=api_key, api_secret=api_secret, product_type=None)
+    # binance_gateway.connect()
 
     # Setup telegram Alert
     base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located
@@ -82,6 +82,7 @@ def main():
     # init account
     account = Account(telegram_alert, 0.8)
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
+    account.add_wallet_balance_listener(risk_manager.set_aum)
 
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
@@ -108,9 +109,9 @@ def main():
     # actual
     # init CandleAggregator and Strategy
     inflectionSMACrossoverCandleAggregator = CandleAggregator(
-        interval_seconds=300
+        interval_seconds=2
     )  # should change to 5 min (300) price aggregator
-    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy()  # need
+    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(short_window=5,long_window=10)  # need
     inflectionSMACrossoverCandleAggregator.add_candle_created_listener(
         smaCrossoverInflectionStrategy.on_candle_created
     )

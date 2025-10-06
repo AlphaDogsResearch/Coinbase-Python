@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
-from engine.core.order import Order
+
+from common.interface_order import Order
 from engine.position.position import Position
 import threading
 import time
@@ -58,6 +59,7 @@ class RiskManager:
         t.start()
 
     def set_aum(self, aum: float):
+        logging.info(f"Updating AUM to {aum}")
         self.aum = aum
 
     def set_var(self, var_value: float, portfolio_value: float):
@@ -72,7 +74,7 @@ class RiskManager:
         Run all risk checks. Return True if order is allowed, False otherwise.
         """
         symbol = order.symbol
-        notional = order.quantity * (order.price if order.price else 1.0)
+        notional = order.leaves_qty * (order.price if order.price else 1.0)
         position_amt = 0.0
         open_orders = 0
         if self.position and self.position.symbol == symbol:
@@ -85,8 +87,8 @@ class RiskManager:
             return False
 
         # 2. Minimum order size
-        if order.quantity < self.min_order_size:
-            logging.warning(f"Order rejected: quantity {order.quantity} below minimum {self.min_order_size}.")
+        if order.leaves_qty < self.min_order_size:
+            logging.warning(f"Order rejected: quantity {order.leaves_qty} below minimum {self.min_order_size}.")
             return False
 
         # 3. Max order notional
@@ -95,7 +97,7 @@ class RiskManager:
             return False
 
         # 4. Max position notional
-        if abs(position_amt + order.quantity) * (order.price if order.price else 1.0) > self.max_position_value:
+        if abs(position_amt + order.leaves_qty) * (order.price if order.price else 1.0) > self.max_position_value:
             logging.warning(f"Order rejected: position size would exceed max position value {self.max_position_value}.")
             return False
 
@@ -106,7 +108,7 @@ class RiskManager:
 
         # 6. Leverage check (if applicable)
         if self.aum > 0:
-            leverage = abs((position_amt + order.quantity) * (order.price if order.price else 1.0)) / self.aum
+            leverage = abs((position_amt + order.leaves_qty) * (order.price if order.price else 1.0)) / self.aum
             if leverage > self.max_leverage:
                 logging.warning(f"Order rejected: leverage {leverage:.2f}x exceeds max {self.max_leverage}x.")
                 return False

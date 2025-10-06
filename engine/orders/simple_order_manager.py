@@ -1,15 +1,21 @@
+from typing import Callable, List
+
+from common.interface_order import OrderEvent
 from engine.core.order_manager import OrderManager
 
 class SimpleOrderManager(OrderManager):
+
+
+
     def __init__(self):
         self.queue = {}
+        self.open_orders = {}
+        self.call_back_listeners = List[Callable[[OrderEvent], None]] = []
 
-    def queue_orders(self, orders: dict):
-        self.queue.update(orders)
+    def on_order_event(self, order: OrderEvent):
+        for call_back in self.call_back_listeners:
+            call_back(order)
 
-    def cancel_order(self, asset: str):
-        if asset in self.queue:
-            del self.queue[asset]
-
-    def get_queued_orders(self) -> dict:
-        return self.queue
+    def register_order_event_callbacks(self, callback: Callable[[OrderEvent], None]):
+        """Register a callback to receive OrderBook updates"""
+        self.call_back_listeners.append(callback)

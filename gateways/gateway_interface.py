@@ -1,3 +1,5 @@
+import logging
+
 from common.interface_book import OrderBook
 
 

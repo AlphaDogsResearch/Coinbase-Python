@@ -23,6 +23,6 @@ class StrategyManager:
         self.strategies.pop(strategy_id)
         logging.info("Removed Strategy %s" % strategy_id)
 
-    def on_signal(self, signal: int, price: float):
+    def on_signal(self,strategy_id:str, signal: int, price: float):
         logging.info("StrategyManager on_signal %s", signal)
-        self.executor.on_signal(signal=signal, price=price)
+        self.executor.on_signal(strategy_id=strategy_id,signal=signal, price=price)
