@@ -110,12 +110,16 @@ def main():
     # init CandleAggregator and Strategy
 
 
-    inflectionSMACrossoverCandleAggregator = CandleAggregator(
+    inflectionSMACrossoverCandleAggregatorBTCUSDC = CandleAggregator(
         interval_seconds=2
     )  # should change to 5 min (300) price aggregator
 
-    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregator,short_window=5,long_window=10)  # need
-    smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregator,short_window=5,long_window=10)  # need
+    inflectionSMACrossoverCandleAggregatorETHUSDC = CandleAggregator(
+        interval_seconds=2
+    )
+
+    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
+    smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
 
     sma = SMAStrategy(symbol="BTCUSDC",short_window=10, long_window=200)
 
