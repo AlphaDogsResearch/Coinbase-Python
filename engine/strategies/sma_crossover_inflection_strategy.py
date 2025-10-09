@@ -6,14 +6,16 @@ from typing import Callable, List, Optional
 
 import numpy as np
 
-from engine.market_data.candle import MidPriceCandle
+from common.interface_book import OrderBook
+from engine.core.strategy import Strategy
+from engine.market_data.candle import MidPriceCandle, CandleAggregator
 
 
-class SMACrossoverInflectionStrategy:
-    def __init__(
-            self, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10
-    ):
-        self.name = f"InflectionSMA({short_window},{long_window},{smoothing_window})"
+class SMACrossoverInflectionStrategy(Strategy):
+    def __init__(self, symbol: str,candle_aggregator: CandleAggregator, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10):
+        super().__init__(symbol=symbol,candle_aggregator=candle_aggregator)
+        self.symbol = symbol
+        self.name = f"InflectionSMA({symbol},{short_window},{long_window},{smoothing_window})"
         self.short_window = short_window
         self.long_window = long_window
         self.smoothing_window = smoothing_window
@@ -94,6 +96,9 @@ class SMACrossoverInflectionStrategy:
                     logging.error(self.name + " on_sma2_signal Listener raised an exception: %s", e)
 
         self.executor.submit(run)
+
+    def on_update(self, order_book: OrderBook):
+        pass
 
     def on_candle_created(self, candle: MidPriceCandle):
         logging.info("SMACrossoverInflectionStrategy on_candle_created %s", candle)

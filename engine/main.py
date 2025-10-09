@@ -104,23 +104,24 @@ def main():
     executor = Executor(order_type, remote_order_client, risk_manager)
 
     # setup strategy manager
-    strategy_manager = StrategyManager(executor)
+    strategy_manager = StrategyManager(executor,remote_market_data_client)
 
     # actual
     # init CandleAggregator and Strategy
+
+
     inflectionSMACrossoverCandleAggregator = CandleAggregator(
         interval_seconds=2
     )  # should change to 5 min (300) price aggregator
-    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(short_window=5,long_window=10)  # need
-    inflectionSMACrossoverCandleAggregator.add_candle_created_listener(
-        smaCrossoverInflectionStrategy.on_candle_created
-    )
-    remote_market_data_client.add_order_book_listener(
-        inflectionSMACrossoverCandleAggregator.on_order_book
-    )
-    strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
 
-    plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=500, update_interval_ms=100,
+    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregator,short_window=5,long_window=10)  # need
+
+    sma = SMAStrategy(symbol="BTCUSDC",short_window=10, long_window=200)
+
+    strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
+    strategy_manager.add_strategy(sma)
+
+    plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=300, update_interval_ms=100,
                            is_simulation=False)
 
 
@@ -134,7 +135,7 @@ def main():
     position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
 
     #tick
-    inflectionSMACrossoverCandleAggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
+    smaCrossoverInflectionStrategy.candle_aggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
     #signal
     smaCrossoverInflectionStrategy.add_tick_signal_listener(plotter.add_signal)
     #sma

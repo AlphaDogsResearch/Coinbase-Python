@@ -10,8 +10,8 @@ from engine.market_data.candle import MidPriceCandle
 
 
 class SMAStrategy(Strategy):
-    def __init__(self, short_window: int, long_window: int):
-        super().__init__()
+    def __init__(self,symbol:str, short_window: int, long_window: int):
+        super().__init__(symbol)
         self.short_window = short_window
         self.long_window = long_window
         self.name = "SMA-" + str(self.short_window) + "-" + str(self.long_window)
