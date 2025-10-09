@@ -101,7 +101,7 @@ class SMACrossoverInflectionStrategy(Strategy):
         pass
 
     def on_candle_created(self, candle: MidPriceCandle):
-        logging.info("SMACrossoverInflectionStrategy on_candle_created %s", candle)
+        logging.info("SMACrossoverInflectionStrategy %s on_candle_created %s",self.name, candle)
         self.update(candle.start_time, candle.close)
 
     def update(self, timestamp: datetime, price: float):

@@ -1,7 +1,7 @@
 import datetime
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List
+from typing import Callable, List, Dict
 
 from common.interface_book import OrderBook
 from common.interface_reference_point import MarkPrice
@@ -14,9 +14,7 @@ class RemoteMarketDataClient(MarketDataClient):
     def __init__(self):
         self.port = 8080
         self.name = "Remote Market Data Connection"
-        self.order_book_listener: List[Callable[[OrderBook], None]] = (
-            []
-        )  # list of callbacks
+        self.order_book_listeners: Dict[str, List[Callable[[OrderBook], None]]] = {}  # list of callbacks
         self.mark_price_listener: List[Callable[[MarkPrice], None]] = []
 
         self.tick_price_listener: List[Callable[[datetime.datetime,float], None]] = (
@@ -29,9 +27,11 @@ class RemoteMarketDataClient(MarketDataClient):
         self.remote_market_data_server = PairConnection(self.port, False, self.name)
         self.remote_market_data_server.start_receiving(self.on_event)
 
-    def add_order_book_listener(self, callback: Callable[[OrderBook], None]):
+    def add_order_book_listener(self,symbol:str, callback: Callable[[OrderBook], None]):
         """Register a callback to receive OrderBook updates"""
-        self.order_book_listener.append(callback)
+        if symbol not in self.order_book_listeners:
+            self.order_book_listeners[symbol] = []
+        self.order_book_listeners[symbol].append(callback)
 
     def add_tick_price(self, callback: Callable[[datetime.datetime,float], None]):
         """Register a callback to receive OrderBook updates"""
@@ -43,7 +43,8 @@ class RemoteMarketDataClient(MarketDataClient):
         self.mark_price_listener.append(callback)
 
     def notify_order_book_listeners(self, order_book: OrderBook):
-        for listener in self.order_book_listener:
+        symbol = order_book.contract_name
+        for listener in self.order_book_listeners.get(symbol, []):
             try:
                 listener(order_book)
             except Exception as e:

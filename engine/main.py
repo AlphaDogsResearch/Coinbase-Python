@@ -115,10 +115,12 @@ def main():
     )  # should change to 5 min (300) price aggregator
 
     smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregator,short_window=5,long_window=10)  # need
+    smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregator,short_window=5,long_window=10)  # need
 
     sma = SMAStrategy(symbol="BTCUSDC",short_window=10, long_window=200)
 
     strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
+    strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)
     strategy_manager.add_strategy(sma)
 
     plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=300, update_interval_ms=100,

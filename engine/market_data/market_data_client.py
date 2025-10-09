@@ -7,7 +7,7 @@ from common.interface_book import OrderBook
 class MarketDataClient(ABC):
 
     @abstractmethod
-    def add_order_book_listener(self, callback: Callable[[OrderBook], None]):
+    def add_order_book_listener(self,symbol:str, callback: Callable[[OrderBook], None]):
         """
         Register a callback that will be invoked with new OrderBook data.
         """

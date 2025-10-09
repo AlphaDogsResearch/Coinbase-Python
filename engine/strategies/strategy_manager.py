@@ -25,12 +25,12 @@ class StrategyManager:
             if strategy.strategy_market_data_type ==  StrategyMarketDataType.CANDLE:
                 candle_agg = strategy.candle_aggregator
                 # add tick listener to candle aggregator
-                self.remote_market_data_client.add_order_book_listener(candle_agg.on_order_book)
+                self.remote_market_data_client.add_order_book_listener(strategy.symbol,candle_agg.on_order_book)
                 # add candle agg to strategy listener
                 candle_agg.add_candle_created_listener(strategy.on_candle_created)
             elif strategy.strategy_market_data_type == StrategyMarketDataType.TICK:
                 # add tick listener to strategy directly
-                self.remote_market_data_client.add_order_book_listener(strategy.on_update)
+                self.remote_market_data_client.add_order_book_listener(strategy.symbol,strategy.on_update)
 
 
             logging.info("Added Strategy %s" % strategy_id)
