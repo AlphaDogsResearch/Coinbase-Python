@@ -20,12 +20,12 @@ class RiskManager:
         max_position_value: float = 20000.0,
         max_leverage: float = 5.0,
         max_open_orders: int = 20,
-        max_loss_per_day: float = 0.05,  # 5% of AUM
-        max_var_ratio: float = 0.10,     # 10% of AUM
+        max_loss_per_day: float = 0.15,  # 10% of AUM
+        max_var_ratio: float = 0.15,     # 15% of AUM
         allowed_symbols: Optional[list] = None,
         min_order_size: float = 0.001,
         position: Optional[Position] = None,
-        liquidation_loss_threshold: float = 0.2,  # 20% loss threshold
+        liquidation_loss_threshold: float = 0.25,  # 25% loss threshold
     ):
         self.max_order_value = max_order_value
         self.max_position_value = max_position_value
