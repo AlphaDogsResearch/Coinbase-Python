@@ -12,7 +12,7 @@ def to_stdout():
 
     handler = logging.StreamHandler(sys.stdout)
     handler.setLevel(logging.INFO)
-    log_formatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s]  %(message)s")
+    log_formatter = logging.Formatter("%(asctime)s [%(threadName)-12.12s] [%(levelname)-5.5s] [%(name)s] %(message)s")
     handler.setFormatter(log_formatter)
     root.addHandler(handler)
 

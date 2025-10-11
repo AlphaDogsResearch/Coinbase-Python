@@ -10,18 +10,19 @@ from engine.market_data.candle import MidPriceCandle
 
 
 class SMAStrategy(Strategy):
-    def __init__(self,symbol:str, short_window: int, long_window: int):
+    def __init__(self,symbol:str,quantity_per_order:float, short_window: int, long_window: int):
         super().__init__(symbol)
         self.short_window = short_window
         self.long_window = long_window
-        self.name = "SMA-" + str(self.short_window) + "-" + str(self.long_window)
+        self.name = "SMA-" +str(symbol) +"-" + str(self.short_window) + "-" + str(self.long_window)
         self.prices = []
-        self.listeners: List[Callable[[str,int,float], None]] = []  # list of callbacks
-        self.tick_signal_listeners: List[Callable[[datetime.datetime,int,float], None]] = []  # list of callbacks
-        self.tick_sma_listeners: List[Callable[[datetime.datetime,float], None]] = []  # list of callbacks
-        self.tick_sma2_listeners: List[Callable[[datetime.datetime,float], None]] = []  # list of callbacks
+        self.listeners: List[Callable[[str,int,float,str,float], None]] = []  # list of callbacks
+        self.plot_signal_listeners: List[Callable[[datetime.datetime, int, float], None]] = []  # list of callbacks
+        self.plot_sma_listeners: List[Callable[[datetime.datetime, float], None]] = []  # list of callbacks
+        self.plot_sma2_listeners: List[Callable[[datetime.datetime, float], None]] = []  # list of callbacks
         self.signal = 0
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMA")
+        self.quantity_per_order = quantity_per_order
 
     def moving_average(self, window: int):
         if len(self.prices) < window:
@@ -31,29 +32,29 @@ class SMAStrategy(Strategy):
     def on_candle_created(self, candle: MidPriceCandle):
         pass
 
-    def add_signal_listener(self, callback: Callable[[str,int, float], None]):
+    def add_signal_listener(self, callback: Callable[[str,int, float,str,float], None]):
         self.listeners.append(callback)
 
-    def add_tick_signal_listener(self, callback: Callable[[datetime,int, float], None]):
-        self.tick_signal_listeners.append(callback)
+    def add_plot_signal_listener(self, callback: Callable[[datetime, int, float], None]):
+        self.plot_signal_listeners.append(callback)
 
-    def add_tick_sma_listener(self, callback: Callable[[datetime.datetime, float], None]):
-        self.tick_sma_listeners.append(callback)
+    def add_plot_sma_listener(self, callback: Callable[[datetime.datetime, float], None]):
+        self.plot_sma_listeners.append(callback)
 
-    def add_tick_sma2_listener(self, callback: Callable[[datetime.datetime, float], None]):
-        self.tick_sma2_listeners.append(callback)
+    def add_plot_sma2_listener(self, callback: Callable[[datetime.datetime, float], None]):
+        self.plot_sma2_listeners.append(callback)
 
     def on_signal(self, signal: int,price:float):
         for listener in self.listeners:
             try:
-                listener(self.name,signal,price)
+                listener(self.name,signal,price,self.symbol,self.quantity_per_order)
             except Exception as e:
                 logging.error(self.name + " Listener raised an exception: %s", e)
 
     def on_tick_signal(self,timestamp:float, signal: int, price: float):
         def run():
             dt = convert_epoch_time_to_datetime_millis(timestamp)
-            for listener in self.tick_signal_listeners:
+            for listener in self.plot_signal_listeners:
                 try:
                     listener(dt,signal, price)
                 except Exception as e:
@@ -63,7 +64,7 @@ class SMAStrategy(Strategy):
     def on_sma_signal(self,timestamp:float, sma: float):
         def run():
             dt = convert_epoch_time_to_datetime_millis(timestamp)
-            for listener in self.tick_sma_listeners:
+            for listener in self.plot_sma_listeners:
                 try:
                     listener(dt, sma)
                 except Exception as e:
@@ -73,7 +74,7 @@ class SMAStrategy(Strategy):
     def on_sma2_signal(self,timestamp:float, sma2: float):
         def run():
             dt = convert_epoch_time_to_datetime_millis(timestamp)
-            for listener in self.tick_sma2_listeners:
+            for listener in self.plot_sma2_listeners:
                 try:
                     listener(dt, sma2)
                 except Exception as e:

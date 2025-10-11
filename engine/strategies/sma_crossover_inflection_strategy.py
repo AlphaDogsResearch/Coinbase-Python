@@ -12,7 +12,7 @@ from engine.market_data.candle import MidPriceCandle, CandleAggregator
 
 
 class SMACrossoverInflectionStrategy(Strategy):
-    def __init__(self, symbol: str,candle_aggregator: CandleAggregator, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10):
+    def __init__(self, symbol: str, quantity_per_order: float,candle_aggregator: CandleAggregator, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10):
         super().__init__(symbol=symbol,candle_aggregator=candle_aggregator)
         self.symbol = symbol
         self.name = f"InflectionSMA({symbol},{short_window},{long_window},{smoothing_window})"
@@ -29,36 +29,38 @@ class SMACrossoverInflectionStrategy(Strategy):
         self.last_position = 0  # Current held position: 1 (long), -1 (short), 0 (flat)
 
         self.signal_history = []  # Optional for inspection
-        self.listeners: List[Callable[[str,int, float], None]] = []
+        self.listeners: List[Callable[[str,int, float,str,float], None]] = []
 
-        self.tick_signal_listeners: List[Callable[[datetime, int, float], None]] = []  # list of callbacks
-        self.tick_sma_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
-        self.tick_sma2_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
+        self.plot_signal_listeners: List[Callable[[datetime, int, float], None]] = []  # list of callbacks
+        self.plot_sma_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
+        self.plot_sma2_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
 
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMACROSS")
 
-    def add_signal_listener(self, callback: Callable[[str,int, float], None]):
+        self.quantity_per_order = quantity_per_order
+
+    def add_signal_listener(self, callback: Callable[[str,int, float,str,float], None]):
         self.listeners.append(callback)
 
-    def add_tick_signal_listener(self, callback: Callable[[datetime, int, float], None]):
-        self.tick_signal_listeners.append(callback)
+    def add_plot_signal_listener(self, callback: Callable[[datetime, int, float], None]):
+        self.plot_signal_listeners.append(callback)
 
-    def add_tick_sma_listener(self, callback: Callable[[datetime, float], None]):
-        self.tick_sma_listeners.append(callback)
+    def add_plot_sma_listener(self, callback: Callable[[datetime, float], None]):
+        self.plot_sma_listeners.append(callback)
 
-    def add_tick_sma2_listener(self, callback: Callable[[datetime, float], None]):
-        self.tick_sma2_listeners.append(callback)
+    def add_plot_sma2_listener(self, callback: Callable[[datetime, float], None]):
+        self.plot_sma2_listeners.append(callback)
 
     def on_signal(self, signal: int, price: float):
         for listener in self.listeners:
             try:
-                listener(self.name,signal, price)
+                listener(self.name,signal, price,self.symbol,self.quantity_per_order)
             except Exception as e:
                 logging.error(f"{self.name} on_signal listener raised an exception: %s", e)
 
     def on_tick_signal(self, timestamp: datetime, signal: int, price: float):
         def run():
-            for listener in self.tick_signal_listeners:
+            for listener in self.plot_signal_listeners:
                 try:
                     listener(timestamp, signal, price)
                 except Exception as e:
@@ -73,7 +75,7 @@ class SMACrossoverInflectionStrategy(Strategy):
         )
 
         def run():
-            for listener in self.tick_sma_listeners:
+            for listener in self.plot_sma_listeners:
                 try:
                     listener(timestamp, sma)
                 except Exception as e:
@@ -89,7 +91,7 @@ class SMACrossoverInflectionStrategy(Strategy):
 
         def run():
 
-            for listener in self.tick_sma2_listeners:
+            for listener in self.plot_sma2_listeners:
                 try:
                     listener(timestamp, sma2)
                 except Exception as e:

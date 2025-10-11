@@ -1,19 +1,20 @@
 import logging
 from enum import Enum
 
+from engine.core.order_manager import OrderManager
 from engine.core.strategy import Strategy, StrategyMarketDataType
 from engine.execution.executor import Executor
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 
 
 class StrategyManager:
-    def __init__(self, executor: Executor, remote_market_data_client:RemoteMarketDataClient):
+    def __init__(self, remote_market_data_client: RemoteMarketDataClient, order_manager: OrderManager):
         self.strategies = {}
         self.name = "StrategyManager"
-        self.executor = executor
-
         # todo should change to support different venue
         self.remote_market_data_client = remote_market_data_client
+
+        self.order_manager = order_manager
 
     def add_strategy(self, strategy: Strategy):
         strategy_id = strategy.name
@@ -36,14 +37,15 @@ class StrategyManager:
             logging.info("Added Strategy %s" % strategy_id)
         else:
             logging.info("Strategy already exist, Unable to add Strategy %s" % strategy_id)
+            raise ValueError("Strategy already exist, Unable to add Strategy")
 
     def remove_strategy(self, strategy_id: str):
         self.strategies.pop(strategy_id)
         logging.info("Removed Strategy %s" % strategy_id)
 
-    def on_signal(self,strategy_id:str, signal: int, price: float):
-        logging.info("StrategyManager on_signal %s", signal)
-        self.executor.on_signal(strategy_id=strategy_id,signal=signal, price=price)
+    def on_signal(self,strategy_id:str, signal: int, price: float,symbol: str, quantity: float):
+        logging.info("%s on_signal %s price %s symbol %s quantity %s",strategy_id, signal,price,symbol,quantity)
+        self.order_manager.on_signal(strategy_id=strategy_id,signal=signal, price=price,symbol=symbol,quantity=quantity)
 
 
 

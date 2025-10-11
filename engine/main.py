@@ -8,7 +8,9 @@ from common.config_logging import to_stdout
 from common.interface_order import OrderType
 from common.metrics.sharpe_calculator import BinanceFuturesSharpeCalculator
 from engine.account.account import Account
+from engine.database.database_connection import DatabaseConnectionPool
 from engine.execution.executor import Executor
+from engine.management.order_management_system import FCFSOrderManager
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position import Position
 from engine.position.position_manager import PositionManager
@@ -99,12 +101,19 @@ def main():
 
     remote_order_client = RemoteOrderClient(margin_manager, position_manager, account,trading_cost_manager,trade_manager)
 
+
+
     # create executor
     order_type = OrderType.Market
-    executor = Executor(order_type, remote_order_client, risk_manager)
+    executor = Executor(order_type, remote_order_client)
+    # create order manager
+    order_manager = FCFSOrderManager(executor, risk_manager)
+    order_manager.start()
+
+    remote_order_client.add_order_event_listener(order_manager.on_order_event)
 
     # setup strategy manager
-    strategy_manager = StrategyManager(executor,remote_market_data_client)
+    strategy_manager = StrategyManager(remote_market_data_client,order_manager)
 
     # actual
     # init CandleAggregator and Strategy
@@ -118,14 +127,18 @@ def main():
         interval_seconds=2
     )
 
-    smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
-    smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
+    # smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",quantity_per_order=0.001,candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
+    # smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",quantity_per_order=0.005,candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
 
-    sma = SMAStrategy(symbol="BTCUSDC",short_window=10, long_window=200)
+    # TODO figure out lot size,e.g. ETHUSDC minimum size is 20 USDC , meaning min size  =  roundup(current value / 20)
+    # TODO https://www.binance.com/en/futures/trading-rules
+    sma = SMAStrategy(symbol="BTCUSDC",quantity_per_order=0.001,short_window=10, long_window=20)
+    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",quantity_per_order=0.006,short_window=10, long_window=20)
 
-    strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
-    strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)
+    # strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
+    # strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)
     strategy_manager.add_strategy(sma)
+    strategy_manager.add_strategy(smaETHUSDC)
 
     plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=300, update_interval_ms=100,
                            is_simulation=False)
@@ -140,13 +153,13 @@ def main():
     position_manager.add_unrealized_pnl_listener(plotter.add_unrealized_pnl)
     position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
 
-    #tick
-    smaCrossoverInflectionStrategy.candle_aggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
-    #signal
-    smaCrossoverInflectionStrategy.add_tick_signal_listener(plotter.add_signal)
-    #sma
-    smaCrossoverInflectionStrategy.add_tick_sma_listener(plotter.add_sma_point)
-    smaCrossoverInflectionStrategy.add_tick_sma2_listener(plotter.add_sma2_point)
+    # #tick
+    # smaCrossoverInflectionStrategy.candle_aggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
+    # #signal
+    # smaCrossoverInflectionStrategy.add_plot_signal_listener(plotter.add_signal)
+    # #sma
+    # smaCrossoverInflectionStrategy.add_plot_sma_listener(plotter.add_sma_point)
+    # smaCrossoverInflectionStrategy.add_plot_sma2_listener(plotter.add_sma2_point)
 
 
 

@@ -9,7 +9,7 @@ from gateways.binance.binance_gateway import BinanceGateway
 
 def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
     symbol = order.symbol
-    type = order.type
+    type = order.order_type
     price = order.price
     side = order.side
     qty = order.leaves_qty
@@ -46,6 +46,7 @@ class OrderConnection:
         logging.info("New Order Single %s" % new_order_single)
         initial_er = self.gateway.submit_order(new_order_single)
         order_event = self.on_execution_report(initial_er)
+        logging.info("Order Event %s" % order_event)
         if order_event is not None:
             self.order_listener_server.publish_order_event(order_event)
             if order_event.status == OrderStatus.NEW:
@@ -84,8 +85,8 @@ class OrderConnection:
             order_event = OrderEvent(symbol, external_order_id, ExecutionType.TRADE, OrderStatus.FILLED, None,
                                      client_order_id,order_type_type)
             order_event.side  = side
-            order_event.last_filled_quantity = last_filled_quantity
-            order_event.last_filled_price = last_filled_price
+            order_event.last_filled_quantity = float(last_filled_quantity)
+            order_event.last_filled_price = float(last_filled_price)
             order_event.last_filled_time = last_filled_time
 
         else:

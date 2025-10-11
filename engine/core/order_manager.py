@@ -1,24 +1,27 @@
 from abc import ABC, abstractmethod
+from typing import Optional
+
 from .order import Order
 
 class OrderManager(ABC):
+
     @abstractmethod
-    def queue_orders(self, orders: dict):
+    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, quantity: float) -> bool:
+        """
+        Do Something on signal
+        """
+        pass
+
+    @abstractmethod
+    def _process_orders(self):
         """
         Add new orders to execution queue.
         """
         pass
 
     @abstractmethod
-    def cancel_order(self, asset: str):
+    def get_order_status(self, order_id: str) -> Optional[str]:
         """
         Cancel a specific order if it hasn't been placed.
-        """
-        pass
-
-    @abstractmethod
-    def get_queued_orders(self) -> dict:
-        """
-        Return all orders pending execution.
         """
         pass

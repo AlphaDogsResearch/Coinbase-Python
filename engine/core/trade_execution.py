@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
 
+from common.interface_order import Order
+
 
 class TradeExecution(ABC):
     @abstractmethod
-    def place_orders(self, strategy_id: str, symbol: str, quantity: float, side: bool, price: float):
+    def place_orders(self, order: Order):
         """
         Send orders to the exchange or broker.
         """

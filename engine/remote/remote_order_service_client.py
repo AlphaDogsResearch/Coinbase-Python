@@ -36,8 +36,8 @@ class RemoteOrderClient:
         # trade manager
         self.trade_manager = trade_manager
 
-        self.add_listener(self.position_manager.on_order_event)
-        self.add_listener(self.trade_manager.on_order_event)
+        self.add_order_event_listener(self.position_manager.on_order_event)
+        self.add_order_event_listener(self.trade_manager.on_order_event)
 
 
 
@@ -113,7 +113,7 @@ class RemoteOrderClient:
             except queue.Empty:
                 continue  # no orders, loop again
 
-    def add_listener(self, callback: Callable[[OrderEvent], None]):
+    def add_order_event_listener(self, callback: Callable[[OrderEvent], None]):
         """Register a callback to receive OrderBook updates"""
         self.order_event_listeners.append(callback)
 

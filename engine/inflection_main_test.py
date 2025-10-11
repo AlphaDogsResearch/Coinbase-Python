@@ -20,7 +20,7 @@ def main():
     def signal_printer(signal, price):
         print(f"Signal: {signal} at Price: {price}")
 
-    strategy.add_listener(signal_printer)
+    strategy.add_order_event_listener(signal_printer)
 
     market_data_client = CSVBacktestMarketDataClient(
         "./engine/synthetic_sma_dataset.csv"
