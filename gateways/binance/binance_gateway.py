@@ -416,6 +416,7 @@ class BinanceGateway(GatewayInterface):
             return None
 
     def get_user_trades(self,symbol, limit=10):
+        logging.info(f"Getting All Trades limit: {limit}")
         endpoint = "/fapi/v1/userTrades"
         url = self.BASE_URL + endpoint
 
@@ -506,6 +507,9 @@ class BinanceGateway(GatewayInterface):
         print(f"Total Maintenance Margin : {account_info['totalMaintMargin']}")
 
         return account_info
+    def _get_exchange_info(self):
+        logging.info('REST - Getting exchange info')
+        self.api_client.get_exchange_info()
 
     def get_futures_usdt_balance(self):
         """
