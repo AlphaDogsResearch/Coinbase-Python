@@ -3,7 +3,7 @@ import queue
 import threading
 from abc import ABC
 from queue import Queue
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 import time
 
 from common.identifier import OrderIdGenerator
@@ -13,10 +13,11 @@ from engine.core.order_manager import OrderManager
 from engine.execution.executor import Executor
 from engine.pool.object_pool import ObjectPool
 from engine.risk.risk_manager import RiskManager
+from engine.core.sizing import SizingPolicy
 
 
 class FCFSOrderManager(OrderManager, ABC):
-    def __init__(self, executor: Executor,risk_manager: RiskManager):
+    def __init__(self, executor: Executor, risk_manager: RiskManager):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
         self.name = "FCFSOrderManager"
@@ -27,6 +28,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.id_generator = OrderIdGenerator("STRAT")
         self.process_thread = threading.Thread(target=self._process_orders, daemon=True,name=self.name)
         self.risk_manager = risk_manager
+        self.sizing = SizingPolicy()
 
         self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(
             self.id_generator.next()
@@ -47,7 +49,16 @@ class FCFSOrderManager(OrderManager, ABC):
         elif signal == -1:
             side = Side.SELL
 
-        order.update_order_fields(side, quantity,symbol,current_milli_time(), price,strategy_id)
+        # Dynamic sizing: if quantity <= 0, compute from AUM and price
+        try:
+            if quantity is None or quantity <= 0:
+                aum = getattr(self.risk_manager, 'aum', 0.0)
+                sized_qty = self.sizing.compute_qty(size=quantity, price=price)
+                logging.info(f"[Sizing] Computed qty={sized_qty} from AUM={aum} price={price}")
+        except Exception as e:
+            logging.error("Failed to compute sizing; defaulting to provided quantity", exc_info=e)
+
+        order.update_order_fields(side, sized_qty, symbol, current_milli_time(), price, strategy_id)
 
         return self.submit_order_internal(order)
 

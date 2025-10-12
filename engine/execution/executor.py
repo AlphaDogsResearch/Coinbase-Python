@@ -2,16 +2,10 @@
 Executor class for executing orders using various strategies.
 """
 import logging
-import math
 
-from common.config_symbols import TRADING_SYMBOLS
-from common.identifier import OrderIdGenerator
-from common.interface_order import Side, Order, OrderType
-from common.time_utils import current_milli_time
+from common.interface_order import Order, OrderType
 from engine.core.trade_execution import TradeExecution
 from engine.remote.remote_order_service_client import RemoteOrderClient
-from engine.risk.risk_manager import RiskManager
-
 
 class Executor(TradeExecution):
     def __init__(self, order_type: OrderType, remote_order_client: RemoteOrderClient):

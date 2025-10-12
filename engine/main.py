@@ -27,8 +27,11 @@ from engine.tracking.telegram_alert import telegramAlert
 from engine.market_data.candle import CandleAggregator
 from engine.trades.trades_manager import TradesManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
+from engine.core.sizing import SizingPolicy
+
 from graph.ohlc_plot import  RealTimePlotWithCandlestick
 from graph.plot import RealTimePlot
+
 
 
 from engine.core.order import Order
@@ -36,18 +39,19 @@ from common.config_symbols import TRADING_SYMBOLS
 
 
 def main():
+    # Configure logging with optional LOG_LEVEL env
     to_stdout()
     logging.info("Running Engine...")
     start = True
 
     # Get symbol from CLI argument
     if len(sys.argv) < 2:
-        print(f"Usage: python {os.path.basename(__file__)} SYMBOL")
-        print(f"Available symbols: {', '.join(TRADING_SYMBOLS)}")
+        logging.error(f"Usage: python {os.path.basename(__file__)} SYMBOL")
+        logging.error(f"Available symbols: {', '.join(TRADING_SYMBOLS)}")
         sys.exit(1)
     input_symbol = sys.argv[1].upper()
     if input_symbol not in TRADING_SYMBOLS:
-        print(f"Error: '{input_symbol}' is not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}")
+        logging.error(f"'{input_symbol}' not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}")
         sys.exit(1)
     selected_symbol = input_symbol
 
@@ -74,7 +78,6 @@ def main():
     base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located
     dotenv_path = os.path.join(base_dir, 'vault', 'telegram_keys')  # adjust '..' if needed
     load_dotenv(dotenv_path=dotenv_path)
-    print("Loading env from:", dotenv_path)
 
     telegram_api_key = os.getenv("API_KEY")
     telegram_user_id = os.getenv("USER_ID")
@@ -132,8 +135,13 @@ def main():
 
     # TODO figure out lot size,e.g. ETHUSDC minimum size is 20 USDC , meaning min size  =  roundup(current value / 20)
     # TODO https://www.binance.com/en/futures/trading-rules
-    sma = SMAStrategy(symbol="BTCUSDC",quantity_per_order=0.001,short_window=10, long_window=20)
-    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",quantity_per_order=0.006,short_window=10, long_window=20)
+    aum = getattr(risk_manager, 'aum', 0.0)
+    trade_quantity = SizingPolicy().get_size(aum)
+
+    logging.info(f"[Sizing] Trade qty={trade_quantity} from AUM={aum}")
+
+    sma = SMAStrategy(symbol="BTCUSDC",quantity_per_order=trade_quantity,short_window=10, long_window=20)
+    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",quantity_per_order=trade_quantity,short_window=10, long_window=20)
 
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)
