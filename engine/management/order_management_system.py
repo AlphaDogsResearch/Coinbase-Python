@@ -19,12 +19,13 @@ class FCFSOrderManager(OrderManager, ABC):
     def __init__(self, executor: Executor,risk_manager: RiskManager):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
+        self.name = "FCFSOrderManager"
         self.order_queue = Queue()
         self.orders: Dict[str, Order] = {}
         self.lock = threading.RLock()
         self.running = False
         self.id_generator = OrderIdGenerator("STRAT")
-        self.process_thread = threading.Thread(target=self._process_orders, daemon=True)
+        self.process_thread = threading.Thread(target=self._process_orders, daemon=True,name=self.name)
         self.risk_manager = risk_manager
 
         self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(

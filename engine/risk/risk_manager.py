@@ -55,7 +55,7 @@ class RiskManager:
                 time.sleep(sleep_seconds)
                 self.reset_daily_loss()
                 logging.info("Daily loss reset at 8am EST.")
-        t = threading.Thread(target=reset_loop, daemon=True)
+        t = threading.Thread(target=reset_loop, daemon=True,name="daily_loss_reset_thread")
         t.start()
 
     def set_aum(self, aum: float):
