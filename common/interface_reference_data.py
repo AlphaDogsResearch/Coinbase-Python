@@ -25,14 +25,14 @@ class ReferenceData(object):
         self.quantity_precision = int(quantity_precision)
         self.min_price = float(min_price)
         self.max_price = float(max_price)
-        self.price_tick_size = float(price_tick_size)
-        self.min_lot_size = float(min_lot_size)
-        self.max_lot_size = float(max_lot_size)
-        self.lot_step_size = float(lot_step_size)
-        self.min_market_lot_size = float(min_market_lot_size)
-        self.max_market_lot_size = float(max_market_lot_size)
-        self.market_lot_step_size = float(market_lot_step_size)
-        self.min_notional = float(min_notional)
+        self.price_tick_size = float(price_tick_size) # price step size
+        self.min_lot_size = float(min_lot_size) # min lot size for RESTING order
+        self.max_lot_size = float(max_lot_size) # max lot size for RESTING order
+        self.lot_step_size = float(lot_step_size) # lot step size for RESTING order
+        self.min_market_lot_size = float(min_market_lot_size) # min lot size for MARKET order
+        self.max_market_lot_size = float(max_market_lot_size) # max lot size for MARKET order
+        self.market_lot_step_size = float(market_lot_step_size) # lot step size for MARKET order
+        self.min_notional = float(min_notional) # min notional size
 
     def __str__(self):
         return (
