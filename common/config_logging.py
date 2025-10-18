@@ -1,7 +1,6 @@
 import logging
 import sys
 
-
 # Configure logging to console
 def to_stdout():
     root = logging.getLogger()

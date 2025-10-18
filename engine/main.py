@@ -58,6 +58,11 @@ def main():
     # Initialize Position and RiskManager
     position = Position(symbol=selected_symbol)
     risk_manager = RiskManager(position=position)
+    # Ensure symbol is registered for per-symbol risk tracking
+    try:
+        risk_manager.add_symbol(selected_symbol, position=position)
+    except Exception:
+        logging.debug("RiskManager.add_symbol at startup failed (symbol may already be registered)", exc_info=True)
 
     margin_manager = MarginInfoManager()
     trading_cost_manager = TradingCostManager()

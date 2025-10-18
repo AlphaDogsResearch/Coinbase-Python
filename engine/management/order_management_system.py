@@ -50,10 +50,11 @@ class FCFSOrderManager(OrderManager, ABC):
             side = Side.SELL
 
         # Dynamic sizing: if quantity <= 0, compute from AUM and price
+        sized_qty = quantity
         try:
-            if quantity is None or quantity <= 0:
+            if sized_qty is None or sized_qty <= 0:
                 aum = getattr(self.risk_manager, 'aum', 0.0)
-                sized_qty = self.sizing.compute_qty(size=quantity, price=price)
+                sized_qty = self.sizing.compute_qty(aum=aum, price=price)
                 logging.info(f"[Sizing] Computed qty={sized_qty} from AUM={aum} price={price}")
         except Exception as e:
             logging.error("Failed to compute sizing; defaulting to provided quantity", exc_info=e)
