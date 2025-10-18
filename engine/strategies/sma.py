@@ -48,7 +48,7 @@ class SMAStrategy(Strategy):
             try:
                 listener(self.name,signal,price,self.symbol,self.trade_unit)
             except Exception as e:
-                logging.error(self.name + " Listener raised an exception: %s", e)
+                logging.error(self.name + " on_signal Listener raised an exception: %s", e)
 
     def on_tick_signal(self,timestamp:float, signal: int, price: float):
         def run():

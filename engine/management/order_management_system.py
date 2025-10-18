@@ -11,6 +11,7 @@ from common.identifier import OrderIdGenerator
 from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderType
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
+from engine.core.strategy import Strategy
 from engine.execution.executor import Executor
 from engine.pool.object_pool import ObjectPool
 from engine.reference_data.reference_data_manager import ReferenceDataManager
@@ -31,6 +32,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.process_thread = threading.Thread(target=self._process_orders, daemon=True,name=self.name)
         self.risk_manager = risk_manager
         self.reference_data_manager = reference_data_manager
+        self.single_asset_strategy_position = {}
 
         self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(
             self.id_generator.next()
@@ -43,22 +45,47 @@ class FCFSOrderManager(OrderManager, ABC):
         }
         self.stats_lock = threading.Lock()
 
+    def add_position_by_strategy(self, strategy_id: str, position: float , side :Side) -> None:
+        logging.info(f"New Position for Strategy:{strategy_id}: {position}")
+        actual_position = position
+        if side == Side.BUY:
+            actual_position = actual_position * 1
+        elif side == Side.SELL:
+            actual_position = actual_position * -1
+
+        if strategy_id not in self.single_asset_strategy_position:
+            self.single_asset_strategy_position[strategy_id] = actual_position
+        else:
+            self.single_asset_strategy_position[strategy_id] += actual_position
+
     def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float) -> bool:
-        order = self.order_pool.acquire()
-        side = None
-        if signal == 1:
-            side = Side.BUY
-        elif signal == -1:
-            side = Side.SELL
 
-        min_effective_qty = self.reference_data_manager.get_effective_min_quantity(self.executor.order_type, symbol)
-        size_quantity = min_effective_qty * Decimal(trade_unit)
-        logging.info(f"Symbol {symbol} with {min_effective_qty} min_effective_qty,{trade_unit} trade_unit , size_quantity {size_quantity}")
+        try:
+            order = self.order_pool.acquire()
+            logging.info(f"Order ID from object Pool {order.order_id}")
+            side = None
+            if signal == 1:
+                side = Side.BUY
+            elif signal == -1:
+                side = Side.SELL
+
+            min_effective_qty = self.reference_data_manager.get_effective_min_quantity(self.executor.order_type, symbol)
+            logging.info(f"min_effective_qty: {min_effective_qty} {type(min_effective_qty)}")
+            logging.info(f"side: {side} {type(side)}")
+            logging.info(f"symbol: {symbol} {type(symbol)}")
+            logging.info(f"trade_unit: {trade_unit} {type(trade_unit)}")
+            trade_unit_in_decimal = Decimal(str(trade_unit))
+            logging.info(f"trade_unit_in_decimal: {trade_unit_in_decimal} {type(trade_unit_in_decimal)}")
+            size_quantity = min_effective_qty * trade_unit_in_decimal
+            logging.info(f"Symbol {symbol} with  min_effective_qty {min_effective_qty}, trade_unit {trade_unit}, size_quantity {size_quantity}")
 
 
-        order.update_order_fields(side, float(size_quantity), symbol, current_milli_time(), price, strategy_id)
+            order.update_order_fields(side, float(size_quantity), symbol, current_milli_time(), price, strategy_id)
 
-        return self.submit_order_internal(order)
+            return self.submit_order_internal(order)
+        except Exception as e:
+            logging.error("Error Submitting Order on Signal:  %s",e)
+            return False
 
     def submit_order_internal(self, order: Order) -> bool:
         """Submit order - true FCFS across all strategies"""
@@ -107,7 +134,9 @@ class FCFSOrderManager(OrderManager, ABC):
             if order is not None:
                 self.order_pool.release(order)
 
-        logging.info(self.get_stats())
+        logging.info(f"Normal Stats {self.get_stats()}")
+        self.log_order_stats()
+        logging.info(f"Strategy Position {self.get_strategy_position_stats()}")
 
     def start(self):
         """Start order processing"""
@@ -137,7 +166,7 @@ class FCFSOrderManager(OrderManager, ABC):
 
                 # Execute immediately
                 self.executor.on_signal(order)
-
+                self.add_position_by_strategy(order.strategy_id, order.quantity,order.side)
                 self.order_queue.task_done()
 
             except queue.Empty:
@@ -162,3 +191,19 @@ class FCFSOrderManager(OrderManager, ABC):
         """Get current statistics - thread safe"""
         with self.stats_lock:
             return self.stats.copy()
+
+    def log_order_stats(self):
+        """Log order statistics"""
+        orders_stats = self.get_orders_stats()
+        for order_id,order in orders_stats.items():
+            logging.info(f"Order ID {order_id} : {order}")
+
+    def get_orders_stats(self):
+        """Get current orders statistics - thread safe"""
+        with self.stats_lock:
+            return self.orders.copy()
+
+    def get_strategy_position_stats(self):
+        """Get current strategy to position statistics - thread safe"""
+        with self.stats_lock:
+            return self.single_asset_strategy_position.copy()
