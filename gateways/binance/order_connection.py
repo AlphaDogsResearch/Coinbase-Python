@@ -1,8 +1,9 @@
 import logging
 
 from common.interface_order import Order, NewOrderSingle, Trade, ExecutionType, OrderEvent, OrderStatus, OrderType, Side
+from common.interface_reference_data import ReferenceData
 from common.interface_req_res import WalletRequest, AccountRequest, PositionRequest, MarginInfoRequest, \
-    CommissionRateRequest, TradesRequest
+    CommissionRateRequest, TradesRequest, ReferenceDataRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
 from gateways.binance.binance_gateway import BinanceGateway
 
@@ -39,6 +40,8 @@ class OrderConnection:
             self.get_commission_rates(obj)
         elif isinstance(obj, TradesRequest):
             self.get_trades(obj)
+        elif isinstance(obj, ReferenceDataRequest):
+            self.get_reference_data(obj)
 
     def submit_order(self, order: Order):
         logging.info("Submitted Order %s " % order)
@@ -112,6 +115,66 @@ class OrderConnection:
         maint_margin = account_info['totalMaintMargin']
         account = account_request.handle(wallet_balance, margin_balance, unreal_pnl, maint_margin)
         self.order_listener_server.send_account_response(account)
+
+    def get_reference_data(self, reference_data_request: ReferenceDataRequest):
+        global min_price, max_price, price_tick_size, min_lot_size, max_lot_size, lot_step_size, min_market_lot_size, max_market_lot_size, market_lot_step_size, min_notional
+        logging.info("Received Reference Data Request %s" % reference_data_request)
+        gateway_reference_data = self.gateway.get_reference_data()
+        if gateway_reference_data is None:
+            logging.error("Reference Data Request Error")
+        else:
+            symbols = gateway_reference_data['symbols']
+            reference_data_dict = {}
+            for data in symbols:
+                symbol = data['symbol']
+                status = data['status']
+                base_asset = data['baseAsset']
+                quote_asset = data['quoteAsset']
+                price_precision = data['pricePrecision']
+                quantity_precision = data['quantityPrecision']
+                filters = data['filters']
+                if filters is not None:
+                    for f in filters:
+                        filter_type = f['filterType']
+                        if filter_type == 'PRICE_FILTER':
+                            min_price = f['minPrice']
+                            max_price = f['maxPrice']
+                            price_tick_size = f['tickSize']
+                        elif filter_type == 'LOT_SIZE':
+                            min_lot_size = f['minQty']
+                            max_lot_size = f['maxQty']
+                            lot_step_size = f['stepSize']
+                        elif filter_type == 'MARKET_LOT_SIZE':
+                            min_market_lot_size = f['minQty']
+                            max_market_lot_size = f['maxQty']
+                            market_lot_step_size = f['stepSize']
+                        elif filter_type == 'MIN_NOTIONAL':
+                            min_notional = f['notional']
+
+                reference_data = ReferenceData(symbol,
+                                               status,
+                                               base_asset,
+                                               quote_asset,
+                                               price_precision,
+                                               quantity_precision,
+                                               min_price,
+                                               max_price,
+                                               price_tick_size,
+                                               min_lot_size,
+                                               max_lot_size,
+                                               lot_step_size,
+                                               min_market_lot_size,
+                                               max_market_lot_size,
+                                               market_lot_step_size,
+                                               min_notional)
+                reference_data_dict[symbol] = reference_data
+
+            reference_data_response = reference_data_request.handle(reference_data_dict)
+            self.order_listener_server.send_reference_data_response(reference_data_response)
+
+
+
+
 
     def get_margin_info(self,margin_info_request:MarginInfoRequest):
         request_symbol = margin_info_request.symbol

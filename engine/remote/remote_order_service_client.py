@@ -7,11 +7,12 @@ from typing import Callable, List
 from common.interface_order import Order, Trade, OrderEvent
 from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
     PositionRequest, MarginInfoRequest, MarginInfoResponse, CommissionRateRequest, CommissionRateResponse, \
-    TradesRequest, TradesResponse
+    TradesRequest, TradesResponse, ReferenceDataRequest, ReferenceDataResponse
 from common.subscription.single_pair_connection.single_pair import PairConnection
 from engine.account.account import Account
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position_manager import PositionManager
+from engine.reference_data.reference_data_manager import ReferenceDataManager
 from engine.trades.trades_manager import TradesManager
 
 from common.config_symbols import TRADING_SYMBOLS
@@ -19,7 +20,8 @@ from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
 class RemoteOrderClient:
-    def __init__(self,margin_manager:MarginInfoManager,position_manager:PositionManager,account:Account,trading_cost_manager:TradingCostManager,trade_manager:TradesManager):
+    def __init__(self, margin_manager: MarginInfoManager, position_manager: PositionManager, account: Account,
+                 trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager):
         # make port configurable
         self.port = 8081
         self.name = "Remote Order Order Connection"
@@ -38,6 +40,7 @@ class RemoteOrderClient:
 
         self.add_order_event_listener(self.position_manager.on_order_event)
         self.add_order_event_listener(self.trade_manager.on_order_event)
+        self.reference_data_manager = reference_data_manager
 
 
 
@@ -64,6 +67,8 @@ class RemoteOrderClient:
                 self.request_for_account()
                 # request for margin info
                 self.request_for_margin()
+                # request for reference data
+                self.request_for_reference_data()
                 # request for trades
                 self.request_for_trades()
                 # request for commission rate
@@ -103,6 +108,9 @@ class RemoteOrderClient:
         for asset in TRADING_SYMBOLS:
             self.remote_order_server.send_trades_request(TradesRequest(asset))
 
+    def request_for_reference_data(self):
+        self.remote_order_server.send_reference_data_request(ReferenceDataRequest())
+
     def _send_orders_loop(self):
         """Background thread to send orders from the queue."""
         while self._running:
@@ -132,6 +140,12 @@ class RemoteOrderClient:
             self.received_commission_rate_response(obj)
         elif isinstance(obj, TradesResponse):
             self.received_trades_response(obj)
+        elif isinstance(obj, ReferenceDataResponse):
+            self.received_reference_data_response(obj)
+
+    def received_reference_data_response(self, reference_data_response: ReferenceDataResponse):
+        logging.info(f"Received ReferenceDataResponse: {reference_data_response}")
+        self.reference_data_manager.init_reference_data(reference_data_response.reference_data)
 
 
     def received_wallet_response(self, wallet_response: WalletResponse):

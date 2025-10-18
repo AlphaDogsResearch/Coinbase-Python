@@ -12,7 +12,7 @@ from common.interface_order import Order, Trade, OrderEvent
 from common.interface_reference_point import MarkPrice
 from common.interface_req_res import WalletResponse, WalletRequest, AccountResponse, AccountRequest, PositionResponse, \
     PositionRequest, MarginInfoResponse, MarginInfoRequest, CommissionRateResponse, CommissionRateRequest, \
-    TradesResponse, TradesRequest
+    TradesResponse, TradesRequest, ReferenceDataResponse, ReferenceDataRequest
 
 
 @dataclass
@@ -337,6 +337,19 @@ class PairConnection:
         success = self._send_with_monitoring(trades_request, "TradesRequest")
         if not success:
             logging.error(f"Dropped TradesRequest: {trades_request}")
+
+
+    def send_reference_data_response(self, reference_data_response: ReferenceDataResponse):
+        logging.info(f"[{self.name}] Sending Reference Data Response: {reference_data_response}")
+        success = self._send_with_monitoring(reference_data_response, "ReferenceDataResponse")
+        if not success:
+            logging.error(f"Dropped ReferenceDataResponse: {reference_data_response}")
+
+    def send_reference_data_request(self, reference_data_request: ReferenceDataRequest):
+        logging.info(f"[{self.name}] Sending Reference Data Request: {reference_data_request}")
+        success = self._send_with_monitoring(reference_data_request, "ReferenceDataRequest")
+        if not success:
+            logging.error(f"Dropped Reference Data Request: {reference_data_request}")
 
     def send_trade(self, trade: Trade):
         logging.info(f"[{self.name}] Sending Trade: {trade}")

@@ -8,9 +8,18 @@ from engine.market_data.candle import MidPriceCandle, CandleAggregator
 
 
 class Strategy(ABC):
-    def __init__(self,symbol:str,candle_aggregator: Optional[CandleAggregator] = None):
+    def __init__(self,symbol:str,trade_unit:float,candle_aggregator: Optional[CandleAggregator] = None):
         self.signal = 0  # -1 = sell, 0 = hold, 1 = buy
         self.name = ""
+        '''
+        trade unit is different from qty as min qty can change by price
+        e.g.  ETHUSDC min qty is 0.006 whereas XRPUSDC min qty is 0.001 due to min notional differences so we standardise by using trade unit
+        '''
+        self.trade_unit = trade_unit
+
+        if trade_unit <= 0:
+            raise ValueError("trade_unit must be greater than 0")
+
         self.symbol = symbol
         self.candle_aggregator = candle_aggregator
         if candle_aggregator is None:

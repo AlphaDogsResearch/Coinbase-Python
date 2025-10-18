@@ -26,6 +26,7 @@ from binance.enums import FuturesType
 from binance.ws.depthcache import DepthCache
 
 from common.callback_utils import assert_param_counts
+from common.file.file_utils import save_dict_to_file
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
 from common.interface_order import Trade, Side, NewOrderSingle, OrderType, OrderEvent, ExecutionType
 from gateways.gateway_interface import GatewayInterface, ReadyCheck
@@ -115,6 +116,7 @@ class BinanceGateway(GatewayInterface):
             self._get_account_info()
             self._get_margin_tier_info()
             self._start_websocket()
+            self.get_reference_data()
 
             for symbol in self._symbols:
                 self.get_user_trades(symbol)
@@ -364,6 +366,8 @@ class BinanceGateway(GatewayInterface):
             "X-MBX-APIKEY": self._api_key
         }
 
+        # TODO change to this
+        # response = self.api_client.futures_commission_rate(symbol=symbol)
         response = requests.get(url, headers=headers, params=params)
 
         if response.status_code == 200:
@@ -507,9 +511,29 @@ class BinanceGateway(GatewayInterface):
         print(f"Total Maintenance Margin : {account_info['totalMaintMargin']}")
 
         return account_info
+
+    def get_reference_data(self):
+        if self._product_type == ProductType.SPOT:
+           return self._get_exchange_info()
+        elif self._product_type == ProductType.FUTURE:
+           return self._get_futures_exchange_info()
+        return None
+
+    def _get_futures_exchange_info(self):
+        logging.info('REST - Getting Futures exchange info')
+        futures_exchange_info = self.api_client.futures_exchange_info()
+
+        logging.info(f"Total Futures Exchange Info : {futures_exchange_info}")
+        save_dict_to_file(data=futures_exchange_info,filename="futures_exchange_info.json",method='json')
+        return futures_exchange_info
+
     def _get_exchange_info(self):
         logging.info('REST - Getting exchange info')
-        self.api_client.get_exchange_info()
+        exchange_info = self.api_client.get_exchange_info()
+
+        logging.info(f"Total Exchange Info : {exchange_info}")
+        save_dict_to_file(data=exchange_info, filename="exchange_info.json", method='json')
+        return exchange_info
 
     def get_futures_usdt_balance(self):
         """

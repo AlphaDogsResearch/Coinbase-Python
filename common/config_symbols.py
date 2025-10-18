@@ -6,6 +6,7 @@
 
 TRADING_SYMBOLS = [
     'BTCUSDC',
-    'ETHUSDC'
+    'ETHUSDC',
+    'XRPUSDC',
     # Add more symbols as needed
 ]

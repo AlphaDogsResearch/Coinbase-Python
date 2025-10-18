@@ -10,8 +10,8 @@ from engine.market_data.candle import MidPriceCandle
 
 
 class SMAStrategy(Strategy):
-    def __init__(self,symbol:str,quantity_per_order:float, short_window: int, long_window: int):
-        super().__init__(symbol)
+    def __init__(self,symbol:str,trade_unit:float, short_window: int, long_window: int):
+        super().__init__(symbol,trade_unit)
         self.short_window = short_window
         self.long_window = long_window
         self.name = "SMA-" +str(symbol) +"-" + str(self.short_window) + "-" + str(self.long_window)
@@ -22,7 +22,6 @@ class SMAStrategy(Strategy):
         self.plot_sma2_listeners: List[Callable[[datetime.datetime, float], None]] = []  # list of callbacks
         self.signal = 0
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMA")
-        self.quantity_per_order = quantity_per_order
 
     def moving_average(self, window: int):
         if len(self.prices) < window:
@@ -47,7 +46,7 @@ class SMAStrategy(Strategy):
     def on_signal(self, signal: int,price:float):
         for listener in self.listeners:
             try:
-                listener(self.name,signal,price,self.symbol,self.quantity_per_order)
+                listener(self.name,signal,price,self.symbol,self.trade_unit)
             except Exception as e:
                 logging.error(self.name + " Listener raised an exception: %s", e)
 

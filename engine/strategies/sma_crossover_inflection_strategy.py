@@ -12,8 +12,8 @@ from engine.market_data.candle import MidPriceCandle, CandleAggregator
 
 
 class SMACrossoverInflectionStrategy(Strategy):
-    def __init__(self, symbol: str, quantity_per_order: float,candle_aggregator: CandleAggregator, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10):
-        super().__init__(symbol=symbol,candle_aggregator=candle_aggregator)
+    def __init__(self, symbol: str, trade_unit: float,candle_aggregator: CandleAggregator, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10):
+        super().__init__(symbol=symbol,trade_unit=trade_unit,candle_aggregator=candle_aggregator)
         self.symbol = symbol
         self.name = f"InflectionSMA({symbol},{short_window},{long_window},{smoothing_window})"
         self.short_window = short_window
@@ -37,8 +37,6 @@ class SMACrossoverInflectionStrategy(Strategy):
 
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMACROSS")
 
-        self.quantity_per_order = quantity_per_order
-
     def add_signal_listener(self, callback: Callable[[str,int, float,str,float], None]):
         self.listeners.append(callback)
 
@@ -54,7 +52,7 @@ class SMACrossoverInflectionStrategy(Strategy):
     def on_signal(self, signal: int, price: float):
         for listener in self.listeners:
             try:
-                listener(self.name,signal, price,self.symbol,self.quantity_per_order)
+                listener(self.name,signal, price,self.symbol,self.trade_unit)
             except Exception as e:
                 logging.error(f"{self.name} on_signal listener raised an exception: %s", e)
 

@@ -11,3 +11,5 @@ MIN_ORDER_QTY = 0.001
 
 # Quantity step size (Number of trades per AUM)
 QTY_STEP = 1000
+# MIN
+

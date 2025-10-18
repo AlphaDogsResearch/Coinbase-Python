@@ -1,4 +1,7 @@
 # Wallet response
+from typing import Dict
+
+from common.interface_reference_data import ReferenceData
 from common.time_utils import current_milli_time
 
 
@@ -112,3 +115,25 @@ class TradesRequest:
 
     def handle(self, symbol: str, trades: list) -> TradesResponse:
         return TradesResponse(symbol, trades)
+
+class ReferenceDataResponse:
+    def __init__(self, reference_data: Dict[str, ReferenceData]):
+        self.reference_data = reference_data
+
+    def __str__(self):
+        return "ReferenceResponse={\n" + "\n".join(
+            f"  {symbol}: {info}" for symbol, info in self.reference_data.items()
+        ) + "\n}"
+
+
+class ReferenceDataRequest:
+    def __init__(self):
+        self.time = current_milli_time()
+
+    def handle(self, reference_data: Dict[str, ReferenceData]) -> ReferenceDataResponse:
+        return ReferenceDataResponse(reference_data)
+
+
+
+
+

@@ -14,6 +14,8 @@ from engine.management.order_management_system import FCFSOrderManager
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position import Position
 from engine.position.position_manager import PositionManager
+from engine.reference_data.reference_data_manager import ReferenceDataManager
+from engine.reference_data.reference_price_manager import ReferencePriceManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.risk.risk_manager import RiskManager
@@ -27,7 +29,7 @@ from engine.tracking.telegram_alert import telegramAlert
 from engine.market_data.candle import CandleAggregator
 from engine.trades.trades_manager import TradesManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
-from engine.core.sizing import SizingPolicy
+
 
 from graph.ohlc_plot import  RealTimePlotWithCandlestick
 from graph.plot import RealTimePlot
@@ -64,7 +66,12 @@ def main():
     sharpe_calculator = BinanceFuturesSharpeCalculator()
 
     trade_manager = TradesManager(sharpe_calculator)
-    position_manager = PositionManager(margin_manager, trading_cost_manager)
+
+    # initialise reference price manager
+    reference_price_manager = ReferencePriceManager()
+
+    position_manager = PositionManager(margin_manager, trading_cost_manager,reference_price_manager)
+    reference_price_manager.attach_mark_price_listener(position_manager.on_mark_price_event)
 
     # --- BinanceGateway for selected instrument ---
     # from gateways.binance.binance_gateway import BinanceGateway
@@ -95,14 +102,19 @@ def main():
     position_manager.add_realized_pnl_listener(account.update_wallet_with_realized_pnl)
 
 
-    # initalise remote client
+    # initialise remote client
     remote_market_data_client = RemoteMarketDataClient()
+
+
+
     # attach position manager listener to remote client
     remote_market_data_client.add_mark_price_listener(
-        position_manager.on_mark_price_event
+        reference_price_manager.on_reference_data_event
     )
 
-    remote_order_client = RemoteOrderClient(margin_manager, position_manager, account,trading_cost_manager,trade_manager)
+    reference_data_manager = ReferenceDataManager(reference_price_manager)
+
+    remote_order_client = RemoteOrderClient(margin_manager, position_manager, account,trading_cost_manager,trade_manager,reference_data_manager)
 
 
 
@@ -110,7 +122,7 @@ def main():
     order_type = OrderType.Market
     executor = Executor(order_type, remote_order_client)
     # create order manager
-    order_manager = FCFSOrderManager(executor, risk_manager)
+    order_manager = FCFSOrderManager(executor, risk_manager,reference_data_manager)
     order_manager.start()
 
     remote_order_client.add_order_event_listener(order_manager.on_order_event)
@@ -130,23 +142,21 @@ def main():
         interval_seconds=2
     )
 
-    # smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",quantity_per_order=0.001,candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
-    # smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",quantity_per_order=0.005,candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
+    # smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",trade_unit=1,quantity_per_order=0.001,candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
+    # smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",trade_unit=1,quantity_per_order=0.005,candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
 
     # TODO figure out lot size,e.g. ETHUSDC minimum size is 20 USDC , meaning min size  =  roundup(current value / 20)
     # TODO https://www.binance.com/en/futures/trading-rules
-    aum = getattr(risk_manager, 'aum', 0.0)
-    trade_quantity = SizingPolicy().get_size(aum)
-
-    logging.info(f"[Sizing] Trade qty={trade_quantity} from AUM={aum}")
-
-    sma = SMAStrategy(symbol="BTCUSDC",quantity_per_order=trade_quantity,short_window=10, long_window=20)
-    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",quantity_per_order=trade_quantity,short_window=10, long_window=20)
+    # use trade size to determine min qty
+    sma = SMAStrategy(symbol="BTCUSDC",trade_unit=1,short_window=10, long_window=20)
+    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",trade_unit=1,short_window=10, long_window=20)
+    smaXPUSDC = SMAStrategy(symbol="XRPUSDC",trade_unit=1,short_window=10, long_window=20)
 
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)
     strategy_manager.add_strategy(sma)
     strategy_manager.add_strategy(smaETHUSDC)
+    strategy_manager.add_strategy(smaXPUSDC)
 
     plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=300, update_interval_ms=100,
                            is_simulation=False)

@@ -2,22 +2,24 @@ import logging
 import queue
 import threading
 from abc import ABC
+from decimal import Decimal
 from queue import Queue
 from typing import Dict, Optional
 import time
 
 from common.identifier import OrderIdGenerator
-from common.interface_order import Order, Side, OrderEvent, OrderStatus
+from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderType
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
 from engine.execution.executor import Executor
 from engine.pool.object_pool import ObjectPool
+from engine.reference_data.reference_data_manager import ReferenceDataManager
 from engine.risk.risk_manager import RiskManager
 from engine.core.sizing import SizingPolicy
 
 
 class FCFSOrderManager(OrderManager, ABC):
-    def __init__(self, executor: Executor, risk_manager: RiskManager):
+    def __init__(self, executor: Executor, risk_manager: RiskManager, reference_data_manager: ReferenceDataManager):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
         self.name = "FCFSOrderManager"
@@ -28,7 +30,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.id_generator = OrderIdGenerator("STRAT")
         self.process_thread = threading.Thread(target=self._process_orders, daemon=True,name=self.name)
         self.risk_manager = risk_manager
-        self.sizing = SizingPolicy()
+        self.reference_data_manager = reference_data_manager
 
         self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(
             self.id_generator.next()
@@ -41,7 +43,7 @@ class FCFSOrderManager(OrderManager, ABC):
         }
         self.stats_lock = threading.Lock()
 
-    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, quantity: float) -> bool:
+    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float) -> bool:
         order = self.order_pool.acquire()
         side = None
         if signal == 1:
@@ -49,16 +51,11 @@ class FCFSOrderManager(OrderManager, ABC):
         elif signal == -1:
             side = Side.SELL
 
-        # Dynamic sizing: if quantity <= 0, compute from AUM and price
-        try:
-            if quantity is None or quantity <= 0:
-                aum = getattr(self.risk_manager, 'aum', 0.0)
-                sized_qty = self.sizing.compute_qty(size=quantity, price=price)
-                logging.info(f"[Sizing] Computed qty={sized_qty} from AUM={aum} price={price}")
-        except Exception as e:
-            logging.error("Failed to compute sizing; defaulting to provided quantity", exc_info=e)
+        min_effective_qty = self.reference_data_manager.get_effective_min_quantity(self.executor.order_type, symbol)
+        size_quantity = min_effective_qty * Decimal(trade_unit)
+        logging.info(f"Symbol {symbol} with {min_effective_qty} min_effective_qty,{trade_unit} trade_unit , size_quantity {size_quantity}")
 
-        order.update_order_fields(side, sized_qty, symbol, current_milli_time(), price, strategy_id)
+        order.update_order_fields(side, float(size_quantity), symbol, current_milli_time(), price, strategy_id)
 
         return self.submit_order_internal(order)
 

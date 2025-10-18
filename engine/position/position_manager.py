@@ -8,11 +8,12 @@ from common.interface_reference_point import MarkPrice
 from common.interface_req_res import PositionResponse
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position import Position
+from engine.reference_data.reference_price_manager import ReferencePriceManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
 class PositionManager:
-    def __init__(self, margin_manager: MarginInfoManager, trading_cost_manager: TradingCostManager):
+    def __init__(self, margin_manager: MarginInfoManager, trading_cost_manager: TradingCostManager, reference_price_manager: ReferencePriceManager):
         self.name = "Position Manager"
         self.positions = {}
         self.margin_manager = margin_manager
@@ -22,6 +23,7 @@ class PositionManager:
         self.maint_margin_listener: List[Callable[[float], None]] = []
         self.realized_pnl_listener: List[Callable[[float], None]] = []
         self.symbol_realized_pnl = {}
+        self.reference_price_manager =reference_price_manager
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="POS")
 
     def inital_position(self, position_response: PositionResponse):

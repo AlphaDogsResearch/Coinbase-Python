@@ -6,7 +6,7 @@ from .order import Order
 class OrderManager(ABC):
 
     @abstractmethod
-    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, quantity: float) -> bool:
+    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float) -> bool:
         """
         Do Something on signal
         """
