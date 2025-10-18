@@ -55,6 +55,7 @@ class FCFSOrderManager(OrderManager, ABC):
         size_quantity = min_effective_qty * Decimal(trade_unit)
         logging.info(f"Symbol {symbol} with {min_effective_qty} min_effective_qty,{trade_unit} trade_unit , size_quantity {size_quantity}")
 
+
         order.update_order_fields(side, float(size_quantity), symbol, current_milli_time(), price, strategy_id)
 
         return self.submit_order_internal(order)
