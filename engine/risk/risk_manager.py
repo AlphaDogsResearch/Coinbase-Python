@@ -1,5 +1,6 @@
 import logging
-from typing import Optional, Dict, Set
+from typing import Optional, Dict, Set, Callable, List
+from common import config_risk
 
 from common.interface_order import Order
 from engine.position.position import Position
@@ -16,32 +17,47 @@ class RiskManager:
     """
     def __init__(
         self,
-        max_order_value: float = 5000.0,
-        max_position_value: float = 20000.0,
-        max_leverage: float = 5.0,
-        max_open_orders: int = 20,
-        max_loss_per_day: float = 0.15,  # 15% of AUM
-        max_var_ratio: float = 0.15,     # 15% of AUM
+        max_order_value: Optional[float] = None,
+        max_position_value: Optional[float] = None,
+        max_leverage: Optional[float] = None,
+        max_open_orders: Optional[int] = None,
+        max_loss_per_day: Optional[float] = None,  # 15% of AUM
+        max_var_ratio: Optional[float] = None,     # 15% of AUM
         allowed_symbols: Optional[list] = None,
-        min_order_size: float = 0.001,
+        min_order_size: Optional[float] = None,
         position: Optional[Position] = None,
-        liquidation_loss_threshold: float = 0.25,  # 25% loss threshold
+        liquidation_loss_threshold: Optional[float] = None,  # 25% loss threshold
     ):
         # Global limits (applied per symbol unless overridden)
-        self.max_order_value = max_order_value
-        self.max_position_value = max_position_value
-        self.max_leverage = max_leverage
-        self.max_open_orders = max_open_orders
-        self.max_loss_per_day = max_loss_per_day
-        self.max_var_ratio = max_var_ratio
-        self.min_order_size = min_order_size
+        self.max_order_value = (
+            config_risk.MAX_ORDER_VALUE_DEFAULT if max_order_value is None else max_order_value
+        )
+        self.max_position_value = (
+            config_risk.MAX_POSITION_VALUE_DEFAULT if max_position_value is None else max_position_value
+        )
+        self.max_leverage = (
+            config_risk.MAX_LEVERAGE_DEFAULT if max_leverage is None else max_leverage
+        )
+        self.max_open_orders = (
+            config_risk.MAX_OPEN_ORDERS_DEFAULT if max_open_orders is None else max_open_orders
+        )
+        self.max_loss_per_day = (
+            config_risk.MAX_LOSS_PER_DAY_DEFAULT if max_loss_per_day is None else max_loss_per_day
+        )
+        self.max_var_ratio = (
+            config_risk.MAX_VAR_RATIO_DEFAULT if max_var_ratio is None else max_var_ratio
+        )
+        self.min_order_size = (
+            config_risk.MIN_ORDER_SIZE_DEFAULT if min_order_size is None else min_order_size
+        )
 
         # Dynamic symbol management
-        self.allowed_symbols: Optional[Set[str]] = set(allowed_symbols) if allowed_symbols else None
-        self.positions: Dict[str, Position] = {}
-        self.symbol_daily_loss: Dict[str, float] = {}
-        self.symbol_var_value: Dict[str, float] = {}
-        self.symbol_portfolio_value: Dict[str, float] = {}
+        symbols_list = allowed_symbols if allowed_symbols is not None else config_risk.ALLOWED_SYMBOLS_DEFAULT
+        self.allowed_symbols = set(symbols_list) if symbols_list else None
+        self.positions = {}
+        self.symbol_daily_loss = {}
+        self.symbol_var_value = {}
+        self.symbol_portfolio_value = {}
 
         # Backward-compat single-position path
         self.position = position
@@ -49,12 +65,22 @@ class RiskManager:
         # Global portfolio/AUM
         self.aum = 1.0  # Should be set by account/wallet manager
 
-        self.liquidation_loss_threshold = liquidation_loss_threshold
+        self.liquidation_loss_threshold = (
+            config_risk.LIQUIDATION_LOSS_THRESHOLD_DEFAULT if liquidation_loss_threshold is None else liquidation_loss_threshold
+        )
         self._start_daily_loss_reset_thread()
 
         # If an initial position is provided, register its symbol
         if self.position and getattr(self.position, 'symbol', None):
             self.add_symbol(self.position.symbol, self.position)
+
+        # Reporting and price provider
+        self._price_provider = None
+        self._report_thread = None
+        self._report_stop = threading.Event()
+        self._report_logger = None
+        self._report_interval_seconds = 600
+        self._report_symbols = None
 
     def _start_daily_loss_reset_thread(self):
         def reset_loop():
@@ -74,6 +100,14 @@ class RiskManager:
     def set_aum(self, aum: float):
         logging.info(f"Updating AUM to {aum}")
         self.aum = aum
+
+    # ------------------------
+    # Price provider
+    # ------------------------
+    def set_price_provider(self, provider: Callable[[str], Optional[float]]):
+        """Register a callable that returns the latest mark price for a symbol."""
+        self._price_provider = provider
+        logging.info("RiskManager: price provider set")
 
     def set_var(self, var_value: float, portfolio_value: float):
         """Set portfolio-level VaR; kept for backward compatibility."""
@@ -101,7 +135,7 @@ class RiskManager:
         if min_order_size is not None:
             # Store per-symbol min size via a dedicated dict to extend later, for now simple attribute
             if not hasattr(self, '_symbol_min_order_size'):
-                self._symbol_min_order_size: Dict[str, float] = {}
+                self._symbol_min_order_size = {}
             self._symbol_min_order_size[symbol] = float(min_order_size)
         logging.info(f"RiskManager: added symbol {symbol}")
 
@@ -196,6 +230,115 @@ class RiskManager:
         # 9. (Optional) Other custom checks can be added here
 
         return True
+
+    # ------------------------
+    # Risk reporting
+    # ------------------------
+    def _ensure_report_logger(self, report_file: str) -> logging.Logger:
+        if self._report_logger:
+            return self._report_logger
+        logger = logging.getLogger("RiskReport")
+        logger.setLevel(logging.INFO)
+        # Avoid duplicate handlers if reconfigured
+        logger.handlers = []
+        # Create directory if needed
+        try:
+            import os
+            directory = os.path.dirname(report_file)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+        except Exception:
+            logging.debug("Failed to ensure report directory", exc_info=True)
+        fh = logging.FileHandler(report_file)
+        fh.setLevel(logging.INFO)
+        fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        fh.setFormatter(fmt)
+        logger.addHandler(fh)
+        self._report_logger = logger
+        return logger
+
+    def _get_mark_price(self, symbol: str) -> Optional[float]:
+        if self._price_provider:
+            try:
+                price = self._price_provider(symbol)
+                return float(price) if price is not None else None
+            except Exception:
+                logging.debug("RiskManager price provider failed", exc_info=True)
+        return None
+
+    def generate_risk_report_text(self, symbols: Optional[List[str]] = None) -> str:
+        """Create a human-readable risk report for the provided symbols (or all known)."""
+        syms = symbols or list(self.positions.keys() or ([] if not self.position else [self.position.symbol]))
+        lines: List[str] = []
+        lines.append(f"AUM={self.aum}")
+        # Global VaR (if set)
+        g_pv = self.symbol_portfolio_value.get('__GLOBAL__', 0.0)
+        g_var = self.symbol_var_value.get('__GLOBAL__', 0.0)
+        if g_pv > 0:
+            lines.append(f"Global VaR={g_var}, PV={g_pv}, Ratio={g_var/g_pv:.4f}")
+        lines.append(f"Loss reset at 08:00 US/Eastern; liquidation_threshold={self.liquidation_loss_threshold*100:.1f}% AUM")
+        for sym in syms:
+            pos = self.positions.get(sym)
+            if not pos and self.position and getattr(self.position, 'symbol', None) == sym:
+                pos = self.position
+            qty = getattr(pos, 'position_amount', 0.0) if pos else 0.0
+            open_orders = 0
+            if pos and hasattr(pos, 'get_open_orders'):
+                try:
+                    open_orders = int(pos.get_open_orders())
+                except Exception:
+                    open_orders = 0
+            price = self._get_mark_price(sym)
+            notional = abs(qty) * price if (price is not None) else None
+            leverage = (notional / self.aum) if (notional is not None and self.aum > 0) else None
+            dloss = self.symbol_daily_loss.get(sym, 0.0)
+            svar = self.symbol_var_value.get(sym, 0.0)
+            spv = self.symbol_portfolio_value.get(sym, 0.0)
+            var_ratio = (svar / spv) if spv > 0 else None
+            # Assemble line
+            line = (
+                f"[{sym}] qty={qty} open_orders={open_orders} daily_loss={dloss} "
+                f"price={price if price is not None else 'NA'} "
+                f"notional={notional if notional is not None else 'NA'} "
+                f"leverage={f'{leverage:.4f}' if leverage is not None else 'NA'} "
+                f"VaR={svar} PV={spv} ratio={f'{var_ratio:.4f}' if var_ratio is not None else 'NA'}"
+            )
+            lines.append(line)
+        return "\n".join(lines)
+
+    def start_periodic_risk_reports(self, report_file: str, interval_seconds: int = 600, symbols: Optional[List[str]] = None):
+        """Start a background thread that logs and writes a risk report every interval."""
+        self._report_interval_seconds = max(10, int(interval_seconds))
+        self._report_symbols = symbols
+        self._report_stop.clear()
+        self._ensure_report_logger(report_file)
+
+        def loop():
+            threading.current_thread().name = "risk_reporter"
+            while not self._report_stop.is_set():
+                try:
+                    text = self.generate_risk_report_text(self._report_symbols)
+                    # Log to standard logger and report logger
+                    logging.info("Risk report generated")
+                    if self._report_logger:
+                        self._report_logger.info("\n" + text)
+                except Exception:
+                    logging.error("Failed generating risk report", exc_info=True)
+                finally:
+                    self._report_stop.wait(self._report_interval_seconds)
+
+        if self._report_thread and self._report_thread.is_alive():
+            logging.info("Risk report thread already running")
+            return
+        self._report_thread = threading.Thread(target=loop, daemon=True)
+        self._report_thread.start()
+        logging.info(f"Started periodic risk reports every {self._report_interval_seconds}s -> {report_file}")
+
+    def stop_periodic_risk_reports(self):
+        self._report_stop.set()
+        if self._report_thread and self._report_thread.is_alive():
+            self._report_thread.join(timeout=3)
+        logging.info("Stopped periodic risk reports")
 
     def calculate_portfolio_var(self, portfolio_data, portfolio_value: float) -> float:
         # Placeholder: integrate with a real VaR model

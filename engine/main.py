@@ -38,6 +38,7 @@ from graph.plot import RealTimePlot
 
 from engine.core.order import Order
 from common.config_symbols import TRADING_SYMBOLS
+from common import config_risk
 
 
 def main():
@@ -116,6 +117,31 @@ def main():
     remote_market_data_client.add_mark_price_listener(
         reference_price_manager.on_reference_data_event
     )
+
+    # Maintain latest mark prices per symbol for risk reporting
+    latest_prices = {}
+
+    def _on_mark_price(mp):
+        try:
+            latest_prices[mp.symbol] = float(mp.price)
+        except Exception:
+            logging.debug("Failed to cache mark price", exc_info=True)
+
+    remote_market_data_client.add_mark_price_listener(_on_mark_price)
+
+    # Provide price provider to RiskManager for per-symbol reporting
+    risk_manager.set_price_provider(lambda s: latest_prices.get(s))
+
+    # Start periodic risk reports using config file defaults (env can override in config)
+    if config_risk.RISK_REPORT_ENABLED_DEFAULT:
+        risk_manager.start_periodic_risk_reports(
+            report_file=config_risk.RISK_REPORT_FILE_DEFAULT,
+            interval_seconds=config_risk.RISK_REPORT_INTERVAL_SECONDS_DEFAULT,
+            symbols=config_risk.RISK_REPORT_SYMBOLS_DEFAULT,
+        )
+        logging.info(
+            f"Risk reporting enabled -> {config_risk.RISK_REPORT_FILE_DEFAULT} every {config_risk.RISK_REPORT_INTERVAL_SECONDS_DEFAULT}s"
+        )
 
     reference_data_manager = ReferenceDataManager(reference_price_manager)
 
