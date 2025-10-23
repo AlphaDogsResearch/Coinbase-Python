@@ -1,22 +1,22 @@
 import logging
 import queue
 import threading
+import time
 from abc import ABC
 from decimal import Decimal
 from queue import Queue
 from typing import Dict, Optional
-import time
 
+from common.decimal_utils import convert_to_decimal, add_numbers
 from common.identifier import OrderIdGenerator
-from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderType
+from common.interface_order import Order, Side, OrderEvent, OrderStatus
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
-from engine.core.strategy import Strategy
 from engine.execution.executor import Executor
 from engine.pool.object_pool import ObjectPool
 from engine.reference_data.reference_data_manager import ReferenceDataManager
 from engine.risk.risk_manager import RiskManager
-from engine.core.sizing import SizingPolicy
+from engine.strategies.strategy_action import StrategyAction
 
 
 class FCFSOrderManager(OrderManager, ABC):
@@ -28,8 +28,9 @@ class FCFSOrderManager(OrderManager, ABC):
         self.orders: Dict[str, Order] = {}
         self.lock = threading.RLock()
         self.running = False
+        # TODO maybe should create a new order id generator for each strat
         self.id_generator = OrderIdGenerator("STRAT")
-        self.process_thread = threading.Thread(target=self._process_orders, daemon=True,name=self.name)
+        self.process_thread = threading.Thread(target=self._process_orders, daemon=True, name=self.name)
         self.risk_manager = risk_manager
         self.reference_data_manager = reference_data_manager
         self.single_asset_strategy_position = {}
@@ -45,8 +46,8 @@ class FCFSOrderManager(OrderManager, ABC):
         }
         self.stats_lock = threading.Lock()
 
-    def add_position_by_strategy(self, strategy_id: str, position: float , side :Side) -> None:
-        logging.info(f"New Position for Strategy:{strategy_id}: {position}")
+    def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
+        logging.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
         actual_position = position
         if side == Side.BUY:
             actual_position = actual_position * 1
@@ -56,9 +57,14 @@ class FCFSOrderManager(OrderManager, ABC):
         if strategy_id not in self.single_asset_strategy_position:
             self.single_asset_strategy_position[strategy_id] = actual_position
         else:
-            self.single_asset_strategy_position[strategy_id] += actual_position
+            current_pos = self.single_asset_strategy_position[strategy_id]
+            self.single_asset_strategy_position[strategy_id] = add_numbers(current_pos,actual_position)
 
-    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float) -> bool:
+    def get_single_asset_current_strategy_position(self, strategy_id: str) -> float:
+        return self.single_asset_strategy_position.get(strategy_id, 0)
+
+    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float,
+                  strategy_actions: StrategyAction) -> bool:
 
         try:
             order = self.order_pool.acquire()
@@ -70,21 +76,37 @@ class FCFSOrderManager(OrderManager, ABC):
                 side = Side.SELL
 
             min_effective_qty = self.reference_data_manager.get_effective_min_quantity(self.executor.order_type, symbol)
-            logging.info(f"min_effective_qty: {min_effective_qty} {type(min_effective_qty)}")
-            logging.info(f"side: {side} {type(side)}")
-            logging.info(f"symbol: {symbol} {type(symbol)}")
-            logging.info(f"trade_unit: {trade_unit} {type(trade_unit)}")
             trade_unit_in_decimal = Decimal(str(trade_unit))
-            logging.info(f"trade_unit_in_decimal: {trade_unit_in_decimal} {type(trade_unit_in_decimal)}")
             size_quantity = min_effective_qty * trade_unit_in_decimal
-            logging.info(f"Symbol {symbol} with  min_effective_qty {min_effective_qty}, trade_unit {trade_unit}, size_quantity {size_quantity}")
 
+            final_quantity = size_quantity
 
-            order.update_order_fields(side, float(size_quantity), symbol, current_milli_time(), price, strategy_id)
+            if strategy_actions == StrategyAction.POSITION_REVERSAL:
+                current_pos = self.get_single_asset_current_strategy_position(strategy_id)
+                logging.info(f"Current position: {current_pos} strategy_id {strategy_id}")
+                if current_pos !=0:
+                    final_quantity = size_quantity + convert_to_decimal(abs(current_pos))
+                    logging.info(f"Final Quantity: {final_quantity}")
+            elif strategy_actions == StrategyAction.OPEN_CLOSE_POSITION:
+                # normal do nothing since already calculated
+                pass
+            else:
+                # default to OPEN_CLOSE_POSITION
+                logging.info("Strategy Action Not Implemented , do nothing")
+            self.get_single_asset_current_strategy_position(strategy_id)
+
+            logging.info(
+                f"Symbol {symbol} with  min_effective_qty {min_effective_qty},"
+                f" trade_unit {trade_unit}, "
+                f"size_quantity {size_quantity} "
+                f"strategy_actions {strategy_actions} "
+                f"final_quantity {final_quantity}")
+
+            order.update_order_fields(side, float(final_quantity), symbol, current_milli_time(), price, strategy_id)
 
             return self.submit_order_internal(order)
         except Exception as e:
-            logging.error("Error Submitting Order on Signal:  %s",e)
+            logging.error("Error Submitting Order on Signal:  %s", exc_info=e)
             return False
 
     def submit_order_internal(self, order: Order) -> bool:
@@ -122,6 +144,7 @@ class FCFSOrderManager(OrderManager, ABC):
                 last_filled_quantity = float(order_event.last_filled_quantity)
                 last_filled_price = float(order_event.last_filled_price)
                 order.on_filled_event(last_filled_quantity, last_filled_price)
+                self.add_position_by_strategy(order.strategy_id, last_filled_quantity, order.side)
             elif status == OrderStatus.CANCELED:
                 order.on_order_cancel_event()
             elif status == OrderStatus.NEW:
@@ -130,7 +153,7 @@ class FCFSOrderManager(OrderManager, ABC):
                 logging.error("Unknown order status: {}".format(order_event.status))
 
         if order.is_in_order_done_state:
-            order = self.orders.pop(order_event.client_id,None)
+            order = self.orders.pop(order_event.client_id, None)
             if order is not None:
                 self.order_pool.release(order)
 
@@ -162,17 +185,16 @@ class FCFSOrderManager(OrderManager, ABC):
                     break
 
                 logging.info(f"Processing order {order.order_id} from {order.strategy_id} "
-                      f"(wait time: {time.time() - order.timestamp:.3f}s)")
+                             f"(wait time: {current_milli_time() - order.timestamp:.3f}s)")
 
                 # Execute immediately
                 self.executor.on_signal(order)
-                self.add_position_by_strategy(order.strategy_id, order.quantity,order.side)
                 self.order_queue.task_done()
 
             except queue.Empty:
                 pass
             except Exception as e:
-                logging.error("Exception processing order {order.id} from {order.strategy_id} ",exc_info=e)
+                logging.error("Exception processing order {order.id} from {order.strategy_id} ", exc_info=e)
                 # Timeout is expected, other errors should be handled
                 if not isinstance(e, Exception):  # Queue.Empty
                     logging.info(f"Order processing error: {e}")
@@ -195,7 +217,7 @@ class FCFSOrderManager(OrderManager, ABC):
     def log_order_stats(self):
         """Log order statistics"""
         orders_stats = self.get_orders_stats()
-        for order_id,order in orders_stats.items():
+        for order_id, order in orders_stats.items():
             logging.info(f"Order ID {order_id} : {order}")
 
     def get_orders_stats(self):

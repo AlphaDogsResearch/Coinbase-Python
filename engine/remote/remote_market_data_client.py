@@ -21,6 +21,7 @@ class RemoteMarketDataClient(MarketDataClient):
             []
         )  # list of callbacks
 
+        # TODO 1 worker only ??
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="MD")
         self.tick_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TICK")
 

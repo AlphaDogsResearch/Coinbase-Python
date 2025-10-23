@@ -1,10 +1,10 @@
 import logging
-from enum import Enum
 
 from engine.core.order_manager import OrderManager
 from engine.core.strategy import Strategy, StrategyMarketDataType
 from engine.execution.executor import Executor
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
+from engine.strategies.strategy_action import StrategyAction
 
 
 class StrategyManager:
@@ -43,9 +43,9 @@ class StrategyManager:
         self.strategies.pop(strategy_id)
         logging.info("Removed Strategy %s" % strategy_id)
 
-    def on_signal(self,strategy_id:str, signal: int, price: float,symbol: str, trade_unit: float):
-        logging.info("%s on_signal %s price %s symbol %s trade_unit %s",strategy_id, signal,price,symbol,trade_unit)
-        self.order_manager.on_signal(strategy_id=strategy_id,signal=signal, price=price,symbol=symbol,trade_unit=trade_unit)
+    def on_signal(self,strategy_id:str, signal: int, price: float,symbol: str, trade_unit: float,strategy_actions: StrategyAction):
+        logging.info("%s on_signal %s price %s symbol %s trade_unit %s strategy_actions %s",strategy_id, signal,price,symbol,trade_unit,strategy_actions)
+        self.order_manager.on_signal(strategy_id=strategy_id,signal=signal, price=price,symbol=symbol,trade_unit=trade_unit,strategy_actions=strategy_actions)
 
 
 

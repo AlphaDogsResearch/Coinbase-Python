@@ -2,11 +2,14 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from .order import Order
+from engine.strategies.strategy_action import StrategyAction
+
 
 class OrderManager(ABC):
 
     @abstractmethod
-    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float) -> bool:
+    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float,
+                  strategy_actions:StrategyAction) -> bool:
         """
         Do Something on signal
         """

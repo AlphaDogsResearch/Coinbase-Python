@@ -23,6 +23,7 @@ from engine.strategies.sma import SMAStrategy
 from engine.strategies.sma_crossover_inflection_strategy import (
     SMACrossoverInflectionStrategy,
 )
+from engine.strategies.strategy_action import StrategyAction
 from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.in_memory_tracker import InMemoryTracker
 from engine.tracking.telegram_alert import telegramAlert
@@ -173,15 +174,17 @@ def main():
         interval_seconds=2
     )
 
-    # smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",trade_unit=1,quantity_per_order=0.001,candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
-    # smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",trade_unit=1,quantity_per_order=0.005,candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
+    # smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
+    # smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
 
     # TODO figure out lot size,e.g. ETHUSDC minimum size is 20 USDC , meaning min size  =  roundup(current value / 20)
     # TODO https://www.binance.com/en/futures/trading-rules
     # use trade size to determine min qty
-    sma = SMAStrategy(symbol="BTCUSDC",trade_unit=1,short_window=10, long_window=20)
-    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",trade_unit=1,short_window=10, long_window=20)
-    smaXPUSDC = SMAStrategy(symbol="XRPUSDC",trade_unit=1,short_window=10, long_window=20)
+
+
+    sma = SMAStrategy(symbol="BTCUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
+    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
+    smaXPUSDC = SMAStrategy(symbol="XRPUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
 
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)

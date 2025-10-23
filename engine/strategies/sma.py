@@ -1,4 +1,5 @@
 import logging
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import datetime
 from typing import Callable, List
@@ -7,11 +8,13 @@ from common.interface_book import OrderBook
 from common.time_utils import convert_epoch_time_to_datetime_millis
 from engine.core.strategy import Strategy
 from engine.market_data.candle import MidPriceCandle
+from engine.strategies.strategy_action import StrategyAction
 
 
 class SMAStrategy(Strategy):
-    def __init__(self,symbol:str,trade_unit:float, short_window: int, long_window: int):
-        super().__init__(symbol,trade_unit)
+    def __init__(self, symbol: str, trade_unit: float, strategy_actions: StrategyAction, short_window: int,
+                 long_window: int):
+        super().__init__(symbol, trade_unit, strategy_actions)
         self.short_window = short_window
         self.long_window = long_window
         self.name = "SMA-" +str(symbol) +"-" + str(self.short_window) + "-" + str(self.long_window)
@@ -22,6 +25,7 @@ class SMAStrategy(Strategy):
         self.plot_sma2_listeners: List[Callable[[datetime.datetime, float], None]] = []  # list of callbacks
         self.signal = 0
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMA")
+        self._lock = threading.Lock()
 
     def moving_average(self, window: int):
         if len(self.prices) < window:
@@ -31,7 +35,7 @@ class SMAStrategy(Strategy):
     def on_candle_created(self, candle: MidPriceCandle):
         pass
 
-    def add_signal_listener(self, callback: Callable[[str,int, float,str,float], None]):
+    def add_signal_listener(self, callback: Callable[[str,int, float,str,float,StrategyAction], None]):
         self.listeners.append(callback)
 
     def add_plot_signal_listener(self, callback: Callable[[datetime, int, float], None]):
@@ -46,7 +50,7 @@ class SMAStrategy(Strategy):
     def on_signal(self, signal: int,price:float):
         for listener in self.listeners:
             try:
-                listener(self.name,signal,price,self.symbol,self.trade_unit)
+                listener(self.name,signal,price,self.symbol,self.trade_unit,self.strategy_actions)
             except Exception as e:
                 logging.error(self.name + " on_signal Listener raised an exception: %s", e)
 
@@ -81,44 +85,44 @@ class SMAStrategy(Strategy):
         self.executor.submit(run)
 
     def on_update(self, order_book: OrderBook):
-        price = order_book.get_best_mid()
-        self.prices.append(price)
+        with self._lock:  # 👈 synchronized block
+            price = order_book.get_best_mid()
+            self.prices.append(price)
 
-        short_sma = self.moving_average(self.short_window)
-        long_sma = self.moving_average(self.long_window)
+            short_sma = self.moving_average(self.short_window)
+            long_sma = self.moving_average(self.long_window)
 
-        if short_sma is not None:
-            self.on_sma_signal(order_book.timestamp,short_sma)
-        if long_sma is not None:
-            self.on_sma2_signal(order_book.timestamp,long_sma)
+            if short_sma is not None:
+                self.on_sma_signal(order_book.timestamp,short_sma)
+            if long_sma is not None:
+                self.on_sma2_signal(order_book.timestamp,long_sma)
 
-        if short_sma is None or long_sma is None:
-            self.signal = 0
-        elif short_sma > long_sma:
-            if self.signal == 1:
-                return
-            self.signal = 1
-            logging.info(
-                "%s changed signal to %d, current short %f current long %f",
-                self.name,
-                self.signal,
-                short_sma,
-                long_sma,
-            )
-            self.on_signal(self.signal,price)
-            self.on_tick_signal(order_book.timestamp, self.signal, price)
-        elif short_sma < long_sma:
-            if self.signal == -1:
-                return
-            self.signal = -1
-            logging.info(
-                "%s changed signal to %d, current short %f current long %f",
-                self.name,
-                self.signal,
-                short_sma,
-                long_sma,
-            )
-            self.on_signal(self.signal,price)
-            self.on_tick_signal(order_book.timestamp,self.signal,price)
-        else:
-            self.signal = 0
+            if short_sma is None or long_sma is None:
+                self.signal = 0
+                logging.info(f"{self.name} Signal set to 0")
+            elif short_sma > long_sma:
+                if self.signal == 1:
+                    return
+                self.signal = 1
+                logging.info(
+                    "%s changed signal to %d, current short %f current long %f",
+                    self.name,
+                    self.signal,
+                    short_sma,
+                    long_sma,
+                )
+                self.on_signal(self.signal,price)
+                self.on_tick_signal(order_book.timestamp, self.signal, price)
+            elif short_sma < long_sma:
+                if self.signal == -1:
+                    return
+                self.signal = -1
+                logging.info(
+                    "%s changed signal to %d, current short %f current long %f",
+                    self.name,
+                    self.signal,
+                    short_sma,
+                    long_sma,
+                )
+                self.on_signal(self.signal,price)
+                self.on_tick_signal(order_book.timestamp,self.signal,price)

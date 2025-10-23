@@ -36,7 +36,8 @@ class Position:
         self.open_orders: int = 0
         self.position_pnl: float = 0.0
         self.storage_path = storage_path
-        self._load_state()
+        # remove file loading for now
+        # self._load_state()
 
     def _save_state(self):
         state = {

@@ -4,6 +4,7 @@ from typing import Dict
 
 from _decimal import Decimal
 
+from common.decimal_utils import convert_str_to_decimal, convert_to_decimal
 from common.interface_order import OrderType
 from common.interface_reference_data import ReferenceData
 from engine.reference_data.reference_price_manager import ReferencePriceManager
@@ -28,22 +29,18 @@ class ReferenceDataManager:
     def get_effective_min_quantity(self, order_type:OrderType, symbol:str) -> Decimal | None:
         reference = self.reference_data[symbol]
         if reference is not None:
-            min_lot_size = self.convert_str_to_decimal("0")
+            min_lot_size = convert_str_to_decimal("0")
             if order_type == OrderType.Market:
-                min_lot_size = self.convert_float_to_decimal(reference.min_market_lot_size)
+                min_lot_size = convert_to_decimal(reference.min_market_lot_size)
             elif order_type == OrderType.Limit:
-                min_lot_size = self.convert_float_to_decimal(reference.min_lot_size)
+                min_lot_size = convert_to_decimal(reference.min_lot_size)
             market_step_size = reference.market_lot_step_size
             min_notional_lot_size = self.get_min_size_by_notional(symbol, market_step_size)
             logging.info(f"min_notional_lot_size {min_notional_lot_size}, min_lot_size {min_lot_size}")
             return max(min_notional_lot_size, min_lot_size)
         return None
 
-    def convert_float_to_decimal(self, float_value:float) -> Decimal:
-        return self.convert_str_to_decimal(str(float_value))
 
-    def convert_str_to_decimal(self, str_value:str) -> Decimal:
-        return Decimal(str_value)
 
     def min_notional(self,symbol:str) -> float | None:
         rd = self.reference_data[symbol]

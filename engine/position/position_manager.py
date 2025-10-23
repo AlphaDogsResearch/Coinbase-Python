@@ -38,9 +38,10 @@ class PositionManager:
 
             # init
             trading_cost = self.trading_cost_manager.get_trading_cost(symbol)
+
             self.positions[symbol] = Position(symbol, position_amt, entry_price, unrealized_pnl, maint_margin,
                                               trading_cost, self.on_realized_pnl_update)
-
+            logging.info(f"Init position for symbol {symbol} {self.positions[symbol]}")
             # trigger callback in another thread
             self.executor.submit(self.on_update_unrealized)
 
@@ -70,14 +71,13 @@ class PositionManager:
         is_taker = True
         if order_event.order_type != OrderType.Market:
             is_taker = False
-
-        if symbol in self.positions:
-            position = self.positions[symbol]
+        position = self.positions.get(symbol)
+        if position is not None:
             current_size = size
             if side == 'SELL':
                 current_size = current_size * -1
             position.add_trade(current_size, price,is_taker)
-
+            logging.info("Updating Position %s %s", symbol,position)
         else:
             current_size = size
             if side == 'SELL':
@@ -85,6 +85,7 @@ class PositionManager:
             trading_cost = self.trading_cost_manager.get_trading_cost(symbol)
             self.positions[symbol] = Position(symbol, current_size, price, price, 0, trading_cost,
                                               self.on_realized_pnl_update)
+            logging.info("Creating new Position %s %s", symbol,self.positions[symbol])
 
         # update_maint_margin
         position = self.positions[symbol]
