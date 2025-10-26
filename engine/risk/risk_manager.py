@@ -5,9 +5,6 @@ from common import config_risk
 from common.interface_order import Order
 from engine.position.position import Position
 import threading
-import time
-import datetime
-import pytz
 
 
 class RiskManager:
@@ -62,13 +59,23 @@ class RiskManager:
         # Backward-compat single-position path
         self.position = position
 
+        # Inbound state caches (for independent operation via listeners)
+        self.account_wallet_balance = 0.0
+        self.account_margin_balance = 0.0
+        self.account_maint_margin = 0.0
+        self.account_unrealised_pnl = 0.0
+        self.account_margin_ratio = None  # type: Optional[float]
+        self._position_amounts = {}
+        self._open_orders_count = {}
+        self._latest_prices = {}
+
         # Global portfolio/AUM
         self.aum = 1.0  # Should be set by account/wallet manager
 
         self.liquidation_loss_threshold = (
             config_risk.LIQUIDATION_LOSS_THRESHOLD_DEFAULT if liquidation_loss_threshold is None else liquidation_loss_threshold
         )
-        self._start_daily_loss_reset_thread()
+    # Daily loss reset is orchestrated by higher-level scheduler (e.g., Account/main)
 
         # If an initial position is provided, register its symbol
         if self.position and getattr(self.position, 'symbol', None):
@@ -82,24 +89,88 @@ class RiskManager:
         self._report_interval_seconds = 600
         self._report_symbols = None
 
-    def _start_daily_loss_reset_thread(self):
-        def reset_loop():
-            eastern = pytz.timezone('US/Eastern')
-            while True:
-                now = datetime.datetime.now(tz=eastern)
-                next_reset = now.replace(hour=8, minute=0, second=0, microsecond=0)
-                if now >= next_reset:
-                    next_reset += datetime.timedelta(days=1)
-                sleep_seconds = (next_reset - now).total_seconds()
-                time.sleep(sleep_seconds)
-                self.reset_daily_loss()
-                logging.info("Daily loss reset at 8am EST.")
-        t = threading.Thread(target=reset_loop, daemon=True, name="daily_loss_reset_thread")
-        t.start()
+    # Removed internal daily loss reset thread; handled by orchestrator
 
     def set_aum(self, aum: float):
         logging.info(f"Updating AUM to {aum}")
         self.aum = aum
+
+    # ------------------------
+    # Internal helpers (deduplicate logic)
+    # ------------------------
+    def _get_position_and_open_orders(self, symbol: str):
+        """Resolve position amount and open orders for a symbol using Position if present, otherwise cached listeners."""
+        pos = self.positions.get(symbol)
+        if not pos and self.position and getattr(self.position, 'symbol', None) == symbol:
+            pos = self.position
+        position_amt = 0.0
+        open_orders = 0
+        if pos:
+            position_amt = getattr(pos, 'position_amount', 0.0)
+            get_open = getattr(pos, 'get_open_orders', None)
+            if callable(get_open):
+                try:
+                    open_orders = int(get_open())
+                except Exception:
+                    open_orders = 0
+        else:
+            position_amt = float(self._position_amounts.get(symbol, 0.0))
+            open_orders = int(self._open_orders_count.get(symbol, 0))
+        return position_amt, open_orders
+
+    # ------------------------
+    # Inbound listeners (account/position/price)
+    # ------------------------
+    def on_wallet_balance_update(self, wallet_balance: float):
+        """Listener to receive wallet balance; updates AUM and cache."""
+        try:
+            self.account_wallet_balance = float(wallet_balance)
+        except Exception:
+            self.account_wallet_balance = wallet_balance
+        self.set_aum(self.account_wallet_balance)
+
+    def on_margin_ratio_update(self, margin_ratio: float):
+        """Listener to receive margin ratio from Account."""
+        self.account_margin_ratio = margin_ratio
+
+    def on_unrealised_pnl_update(self, unrealised_pnl: float):
+        """Listener to receive unrealised PnL from Position/Account."""
+        try:
+            self.account_unrealised_pnl = float(unrealised_pnl)
+        except Exception:
+            self.account_unrealised_pnl = unrealised_pnl
+
+        # Optionally incorporate into daily loss tracking if desired
+        # self.update_daily_loss(self.account_unrealised_pnl, symbol=None)
+
+    def on_maint_margin_update(self, maint_margin: float):
+        """Listener to receive maintenance margin updates."""
+        try:
+            self.account_maint_margin = float(maint_margin)
+        except Exception:
+            self.account_maint_margin = maint_margin
+
+    def on_position_amount_update(self, symbol: str, position_amount: float):
+        """Listener to receive per-symbol position amount updates when Position objects aren't provided."""
+        try:
+            self._position_amounts[symbol] = float(position_amount)
+        except Exception:
+            self._position_amounts[symbol] = position_amount
+
+    def on_open_orders_update(self, symbol: str, count: int):
+        """Listener to receive per-symbol open orders count when not deriving from Position."""
+        try:
+            self._open_orders_count[symbol] = int(count)
+        except Exception:
+            self._open_orders_count[symbol] = count
+
+    def on_mark_price_update(self, symbol: str, price: float):
+        """Listener to receive mark price updates; used as fallback price source if no provider is set."""
+        try:
+            self._latest_prices[symbol] = float(price)
+        except Exception:
+            # best effort
+            self._latest_prices[symbol] = price
 
     # ------------------------
     # Price provider
@@ -163,20 +234,7 @@ class RiskManager:
         """
         symbol = order.symbol
         notional = order.leaves_qty * (order.price if order.price else 1.0)
-        position_amt = 0.0
-        open_orders = 0
-        pos = self.positions.get(symbol)
-        if not pos and self.position and getattr(self.position, 'symbol', None) == symbol:
-            pos = self.position
-        if pos:
-            position_amt = getattr(pos, 'position_amount', 0.0)
-            # Different implementations may provide open orders API with different names
-            get_open = getattr(pos, 'get_open_orders', None)
-            if callable(get_open):
-                try:
-                    open_orders = int(get_open())
-                except Exception:
-                    open_orders = 0
+        position_amt, open_orders = self._get_position_and_open_orders(symbol)
 
         # 1. Compliance: symbol whitelist
         if self.allowed_symbols and symbol not in self.allowed_symbols:
@@ -264,6 +322,9 @@ class RiskManager:
                 return float(price) if price is not None else None
             except Exception:
                 logging.debug("RiskManager price provider failed", exc_info=True)
+        # Fallback to internal cache if available
+        if symbol in self._latest_prices:
+            return self._latest_prices.get(symbol)
         return None
 
     def generate_risk_report_text(self, symbols: Optional[List[str]] = None) -> str:
@@ -276,18 +337,9 @@ class RiskManager:
         g_var = self.symbol_var_value.get('__GLOBAL__', 0.0)
         if g_pv > 0:
             lines.append(f"Global VaR={g_var}, PV={g_pv}, Ratio={g_var/g_pv:.4f}")
-        lines.append(f"Loss reset at 08:00 US/Eastern; liquidation_threshold={self.liquidation_loss_threshold*100:.1f}% AUM")
+        lines.append(f"liquidation_threshold={self.liquidation_loss_threshold*100:.1f}% AUM (loss reset handled externally)")
         for sym in syms:
-            pos = self.positions.get(sym)
-            if not pos and self.position and getattr(self.position, 'symbol', None) == sym:
-                pos = self.position
-            qty = getattr(pos, 'position_amount', 0.0) if pos else 0.0
-            open_orders = 0
-            if pos and hasattr(pos, 'get_open_orders'):
-                try:
-                    open_orders = int(pos.get_open_orders())
-                except Exception:
-                    open_orders = 0
+            qty, open_orders = self._get_position_and_open_orders(sym)
             price = self._get_mark_price(sym)
             notional = abs(qty) * price if (price is not None) else None
             leverage = (notional / self.aum) if (notional is not None and self.aum > 0) else None
@@ -366,23 +418,4 @@ class RiskManager:
         for k in list(self.symbol_daily_loss.keys()):
             self.symbol_daily_loss[k] = 0.0
 
-    def check_and_liquidate_on_loss(self, symbol: Optional[str] = None):
-        """
-        If cumulative PnL of position(s) is below -threshold * AUM, close all positions and orders.
-        If symbol is provided, check only that symbol; otherwise check all registered symbols.
-        """
-        symbols = [symbol] if symbol else list(self.positions.keys() or ([] if not self.position else [self.position.symbol]))
-        for sym in symbols:
-            pos = self.positions.get(sym)
-            if not pos and self.position and getattr(self.position, 'symbol', None) == sym:
-                pos = self.position
-            if not pos:
-                continue
-            try:
-                cumulative_pnl = pos.get_position_pnl()
-            except Exception:
-                cumulative_pnl = 0.0
-            threshold = -self.liquidation_loss_threshold * self.aum
-            if cumulative_pnl <= threshold:
-                logging.warning(f"[{sym}] Cumulative PnL {cumulative_pnl} <= {threshold}: Closing all positions and orders!")
-                # Implement your close logic here, e.g. pos.reset() or send close orders
+    # Removed check_and_liquidate_on_loss; liquidation decisions should be orchestrated by Account/main
