@@ -1,8 +1,8 @@
 import logging
-from typing import Optional, Dict, Set, Callable, List
+from typing import Optional, Callable, List
 from common import config_risk
 
-from common.interface_order import Order
+from common.interface_order import Order, Side
 from engine.position.position import Position
 import threading
 
@@ -233,8 +233,19 @@ class RiskManager:
         Run all risk checks. Return True if order is allowed, False otherwise.
         """
         symbol = order.symbol
-        notional = order.leaves_qty * (order.price if order.price else 1.0)
+        # Determine signed delta quantity based on side
+        qty = float(abs(order.leaves_qty)) if order.leaves_qty is not None else 0.0
+        if getattr(order, 'side', None) == Side.SELL:
+            delta_qty = -qty
+        else:
+            # Treat missing side as BUY (positive) by default
+            delta_qty = qty
+
+        # Resolve current position and open orders
         position_amt, open_orders = self._get_position_and_open_orders(symbol)
+
+        # Resolve price to use (explicit price or latest mark)
+        exec_price = order.price if getattr(order, 'price', None) not in (None, 0) else self._get_mark_price(symbol)
 
         # 1. Compliance: symbol whitelist
         if self.allowed_symbols and symbol not in self.allowed_symbols:
@@ -246,17 +257,24 @@ class RiskManager:
         min_size = self.min_order_size
         if getattr(self, '_symbol_min_order_size', None) is not None:
             min_size = getattr(self, '_symbol_min_order_size').get(symbol, self.min_order_size)
-        if order.leaves_qty < min_size:
-            logging.warning(f"Order rejected: quantity {order.leaves_qty} below minimum {self.min_order_size}.")
+        if abs(qty) < min_size:
+            logging.warning(f"Order rejected: quantity {qty} below minimum {min_size}.")
+            return False
+
+        # Price-dependent checks require a price
+        if exec_price is None:
+            logging.warning("Order rejected: no price available to evaluate notional/leverage (missing order.price and mark price)")
             return False
 
         # 3. Max order notional
+        notional = abs(qty) * float(exec_price)
         if notional > self.max_order_value:
             logging.warning(f"Order rejected: notional {notional} exceeds max order value {self.max_order_value}.")
             return False
 
         # 4. Max position notional
-        if abs(position_amt + order.leaves_qty) * (order.price if order.price else 1.0) > self.max_position_value:
+        future_position_notional = abs(position_amt + delta_qty) * float(exec_price)
+        if future_position_notional > self.max_position_value:
             logging.warning(f"Order rejected: position size would exceed max position value {self.max_position_value}.")
             return False
 
@@ -267,7 +285,7 @@ class RiskManager:
 
         # 6. Leverage check (if applicable)
         if self.aum > 0:
-            leverage = abs((position_amt + order.leaves_qty) * (order.price if order.price else 1.0)) / self.aum
+            leverage = future_position_notional / self.aum
             if leverage > self.max_leverage:
                 logging.warning(f"Order rejected: leverage {leverage:.2f}x exceeds max {self.max_leverage}x.")
                 return False
