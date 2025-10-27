@@ -93,13 +93,13 @@ def test_max_position_value_and_leverage():
     o2 = make_order("2", "ETHUSDC", Side.BUY, 4.0, 100.0)
     assert rm.validate_order(o2) is False
 
-    # Much smaller: +1 => future notional 600 -> leverage 0.6 > 0.5 -> still reject
+    # Much smaller: +1 BUY would increase same-direction exposure -> reject by new directional rule
     o3 = make_order("3", "ETHUSDC", Side.BUY, 1.0, 100.0)
     assert rm.validate_order(o3) is False
 
-    # Relax leverage to 1.0 -> accept
-    rm.max_leverage = 1.0
-    assert rm.validate_order(o3) is True
+    # Opposite direction (SELL) should be allowed even under strict leverage caps, as it reduces exposure
+    s1 = make_order("4", "ETHUSDC", Side.SELL, 1.0, 100.0)
+    assert rm.validate_order(s1) is True
 
 
 def test_max_open_orders():
@@ -154,6 +154,20 @@ def test_sell_order_reduces_position_and_passes_under_caps():
     rm.on_position_amount_update(sym, 10.0)
     sell = make_order("s1", sym, Side.SELL, 5.0, 100.0)
     assert rm.validate_order(sell) is True
+
+
+def test_same_direction_add_is_rejected_when_position_open():
+    rm = setup_risk_manager(min_order_size=1.0, max_position_value=1e9, max_leverage=100.0)
+    sym = "BTCUSDC"
+    rm.on_mark_price_update(sym, 100.0)
+    # Long 2; same-direction BUY should be rejected by directional rule
+    rm.on_position_amount_update(sym, 2.0)
+    add_long = make_order("sd1", sym, Side.BUY, 1.0, 100.0)
+    assert rm.validate_order(add_long) is False
+    # Short position; same-direction SELL should be rejected
+    rm.on_position_amount_update(sym, -2.0)
+    add_short = make_order("sd2", sym, Side.SELL, 1.0, 100.0)
+    assert rm.validate_order(add_short) is False
 
 
 def test_per_symbol_min_order_size_override():

@@ -244,6 +244,21 @@ class RiskManager:
         # Resolve current position and open orders
         position_amt, open_orders = self._get_position_and_open_orders(symbol)
 
+        # 0. Directional gating: If a position is open, only allow trades in the opposite direction
+        # - Long position (>0): only SELL orders are allowed (delta < 0)
+        # - Short position (<0): only BUY orders are allowed (delta > 0)
+        # - Flat (==0): both BUY and SELL are allowed
+        if position_amt > 0 and delta_qty > 0:
+            logging.warning(
+                f"Order rejected: long position open ({position_amt}); adding to same direction (BUY) is disabled."
+            )
+            return False
+        if position_amt < 0 and delta_qty < 0:
+            logging.warning(
+                f"Order rejected: short position open ({position_amt}); adding to same direction (SELL) is disabled."
+            )
+            return False
+
         # Resolve price to use (explicit price or latest mark)
         exec_price = order.price if getattr(order, 'price', None) not in (None, 0) else self._get_mark_price(symbol)
 
