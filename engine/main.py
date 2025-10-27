@@ -80,6 +80,9 @@ def main():
 
     position_manager = PositionManager(margin_manager, trading_cost_manager,reference_price_manager)
     reference_price_manager.attach_mark_price_listener(position_manager.on_mark_price_event)
+    # Wire per-symbol position and open-orders listeners to RiskManager
+    position_manager.add_position_amount_listener(lambda sym, qty: risk_manager.on_position_amount_update(sym, qty))
+    position_manager.add_open_orders_listener(lambda sym, cnt: risk_manager.on_open_orders_update(sym, cnt))
 
     # --- BinanceGateway for selected instrument ---
     # from gateways.binance.binance_gateway import BinanceGateway
@@ -90,8 +93,8 @@ def main():
     # binance_gateway.connect()
 
     # Setup telegram Alert
-    base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located
-    dotenv_path = os.path.join(base_dir, 'vault', 'telegram_keys')  # adjust '..' if needed
+    base_dir = os.path.dirname(os.path.abspath(__file__)) 
+    dotenv_path = os.path.join(base_dir, 'vault', 'telegram_keys')  
     load_dotenv(dotenv_path=dotenv_path)
 
     telegram_api_key = os.getenv("API_KEY")
@@ -102,12 +105,18 @@ def main():
     # init account
     account = Account(telegram_alert, 0.8)
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
-    account.add_wallet_balance_listener(risk_manager.set_aum)
+    # Forward wallet balance updates into RiskManager (updates AUM internally)
+    account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
 
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)
+    # Also forward risk-relevant state to RiskManager
+    position_manager.add_maint_margin_listener(risk_manager.on_maint_margin_update)
+    position_manager.add_unrealized_pnl_listener(risk_manager.on_unrealised_pnl_update)
     position_manager.add_realized_pnl_listener(account.update_wallet_with_realized_pnl)
+    # Also treat realized PnL as part of daily loss tracking (aggregate)
+    position_manager.add_realized_pnl_listener(lambda pnl: risk_manager.update_daily_loss(pnl))
 
 
     # initialise remote client
@@ -120,19 +129,14 @@ def main():
         reference_price_manager.on_reference_data_event
     )
 
-    # Maintain latest mark prices per symbol for risk reporting
-    latest_prices = {}
-
-    def _on_mark_price(mp):
+    # Stream mark prices directly into RiskManager via listener
+    def _risk_on_mark_price(mp):
         try:
-            latest_prices[mp.symbol] = float(mp.price)
+            risk_manager.on_mark_price_update(mp.symbol, mp.price)
         except Exception:
-            logging.debug("Failed to cache mark price", exc_info=True)
+            logging.debug("Failed to forward mark price to RiskManager", exc_info=True)
 
-    remote_market_data_client.add_mark_price_listener(_on_mark_price)
-
-    # Provide price provider to RiskManager for per-symbol reporting
-    risk_manager.set_price_provider(lambda s: latest_prices.get(s))
+    remote_market_data_client.add_mark_price_listener(_risk_on_mark_price)
 
     # Start periodic risk reports using config file defaults (env can override in config)
     if config_risk.RISK_REPORT_ENABLED_DEFAULT:
@@ -205,6 +209,7 @@ def main():
 
 
     account.add_margin_ratio_listener(plotter.add_margin_ratio)
+    account.add_margin_ratio_listener(risk_manager.on_margin_ratio_update)
     plotter.add_capital(account.wallet_balance)
     account.add_wallet_balance_listener(plotter.add_capital)
     plotter.add_daily_sharpe(sharpe_calculator.sharpe)

@@ -1,7 +1,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from operator import truediv
-from typing import Callable, List
+from typing import Callable, List, Dict, Set
 
 from common.interface_order import OrderEvent, OrderStatus, OrderType
 from common.interface_reference_point import MarkPrice
@@ -22,6 +22,11 @@ class PositionManager:
         self.unrealized_pnl_listener: List[Callable[[float], None]] = []
         self.maint_margin_listener: List[Callable[[float], None]] = []
         self.realized_pnl_listener: List[Callable[[float], None]] = []
+        # New per-symbol listeners
+        self.position_amount_listener: List[Callable[[str, float], None]] = []
+        self.open_orders_listener: List[Callable[[str, int], None]] = []
+        # Track open orders by symbol and order id to avoid double counting
+        self._open_orders_by_symbol: Dict[str, Set[str]] = {}
         self.symbol_realized_pnl = {}
         self.reference_price_manager =reference_price_manager
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="POS")
@@ -42,6 +47,12 @@ class PositionManager:
             self.positions[symbol] = Position(symbol, position_amt, entry_price, unrealized_pnl, maint_margin,
                                               trading_cost, self.on_realized_pnl_update)
             logging.info(f"Init position for symbol {symbol} {self.positions[symbol]}")
+            # Emit initial position amount for listeners
+            for listener in self.position_amount_listener:
+                try:
+                    listener(symbol, position_amt)
+                except Exception as e:
+                    logging.error(self.name + " [POSITION_AMOUNT_INIT] Listener raised an exception: %s", e)
             # trigger callback in another thread
             self.executor.submit(self.on_update_unrealized)
 
@@ -57,6 +68,30 @@ class PositionManager:
             self.update_maint_margin(pos)
 
     def on_order_event(self, order_event: OrderEvent):
+        symbol = order_event.contract_name
+        # Maintain open orders counts using order status
+        order_id = getattr(order_event, 'order_id', None)
+        if order_id:
+            s = self._open_orders_by_symbol.setdefault(symbol, set())
+            if order_event.status in (OrderStatus.PENDING_NEW, OrderStatus.NEW, OrderStatus.OPEN, OrderStatus.PARTIALLY_FILLED):
+                s.add(order_id)
+            elif order_event.status in (OrderStatus.FILLED, OrderStatus.CANCELED, OrderStatus.FAILED, OrderStatus.EXPIRED):
+                s.discard(order_id)
+            # Emit open orders count
+            count = len(self._open_orders_by_symbol.get(symbol, set()))
+            # Update Position object if present
+            pos = self.positions.get(symbol)
+            if pos is not None:
+                try:
+                    pos.set_open_orders(count)
+                except Exception:
+                    logging.debug("Failed to set open orders on Position", exc_info=True)
+            for listener in self.open_orders_listener:
+                try:
+                    listener(symbol, count)
+                except Exception as e:
+                    logging.error(self.name + " [OPEN_ORDERS] Listener raised an exception: %s", e)
+
         if order_event.status == OrderStatus.FILLED:
             self.update_or_add_position(order_event)
 
@@ -90,6 +125,12 @@ class PositionManager:
         # update_maint_margin
         position = self.positions[symbol]
         self.update_maint_margin(position)
+        # Emit position amount update
+        try:
+            for listener in self.position_amount_listener:
+                listener(symbol, position.position_amount)
+        except Exception as e:
+            logging.error(self.name + " [POSITION_AMOUNT] Listener raised an exception: %s", e)
 
     '''
     update when mark price or position amount change 
@@ -167,3 +208,9 @@ class PositionManager:
 
     def add_maint_margin_listener(self, callback: Callable[[float], None]):
         self.maint_margin_listener.append(callback)
+
+    def add_position_amount_listener(self, callback: Callable[[str, float], None]):
+        self.position_amount_listener.append(callback)
+
+    def add_open_orders_listener(self, callback: Callable[[str, int], None]):
+        self.open_orders_listener.append(callback)
