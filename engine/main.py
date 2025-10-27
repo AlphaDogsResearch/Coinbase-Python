@@ -5,7 +5,7 @@ import sys
 from dotenv import load_dotenv
 
 from common.config_logging import to_stdout
-from common.interface_order import OrderType
+from common.interface_order import OrderType, OrderSizeMode
 from common.metrics.sharpe_calculator import BinanceFuturesSharpeCalculator
 from engine.account.account import Account
 from engine.database.database_connection import DatabaseConnectionPool
@@ -25,6 +25,7 @@ from engine.strategies.sma_crossover_inflection_strategy import (
 )
 from engine.strategies.strategy_action import StrategyAction
 from engine.strategies.strategy_manager import StrategyManager
+from engine.strategies.strategy_order_mode import StrategyOrderMode
 from engine.tracking.in_memory_tracker import InMemoryTracker
 from engine.tracking.telegram_alert import telegramAlert
 from engine.market_data.candle import CandleAggregator
@@ -181,16 +182,23 @@ def main():
     # TODO https://www.binance.com/en/futures/trading-rules
     # use trade size to determine min qty
 
+    BTCUSDC_notional = StrategyOrderMode(order_size_mode=OrderSizeMode.NOTIONAL, notional_value=100)
+    ETHUSDC_notional = StrategyOrderMode(order_size_mode=OrderSizeMode.NOTIONAL,notional_value=25)
+    ETHUSDC_quantity = StrategyOrderMode(order_size_mode=OrderSizeMode.QUANTITY,quantity=0.000655)
+    XRPUSDC_notional = StrategyOrderMode(order_size_mode=OrderSizeMode.NOTIONAL,notional_value=5)
 
-    sma = SMAStrategy(symbol="BTCUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
-    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
-    smaXPUSDC = SMAStrategy(symbol="XRPUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
+
+    sma = SMAStrategy(symbol="BTCUSDC",strategy_order_mode=BTCUSDC_notional,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
+    smaETHUSDC_10_20 = SMAStrategy(symbol="ETHUSDC",strategy_order_mode=ETHUSDC_notional,strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,short_window=10, long_window=20)
+    smaETHUSDC_10_30 = SMAStrategy(symbol="ETHUSDC",strategy_order_mode=ETHUSDC_quantity,strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,short_window=10, long_window=30)
+    smaXPUSDC = SMAStrategy(symbol="XRPUSDC",strategy_order_mode=XRPUSDC_notional,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
 
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
     # strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)
-    strategy_manager.add_strategy(sma)
-    strategy_manager.add_strategy(smaETHUSDC)
-    strategy_manager.add_strategy(smaXPUSDC)
+    # strategy_manager.add_strategy(sma)
+    strategy_manager.add_strategy(smaETHUSDC_10_20)
+    strategy_manager.add_strategy(smaETHUSDC_10_30)
+    # strategy_manager.add_strategy(smaXPUSDC)
 
     plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=300, update_interval_ms=100,
                            is_simulation=False)

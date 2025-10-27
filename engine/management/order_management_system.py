@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 from common.decimal_utils import convert_to_decimal, add_numbers
 from common.identifier import OrderIdGenerator
-from common.interface_order import Order, Side, OrderEvent, OrderStatus
+from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderSizeMode
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
 from engine.execution.executor import Executor
@@ -17,6 +17,7 @@ from engine.pool.object_pool import ObjectPool
 from engine.reference_data.reference_data_manager import ReferenceDataManager
 from engine.risk.risk_manager import RiskManager
 from engine.strategies.strategy_action import StrategyAction
+from engine.strategies.strategy_order_mode import StrategyOrderMode
 
 
 class FCFSOrderManager(OrderManager, ABC):
@@ -63,8 +64,8 @@ class FCFSOrderManager(OrderManager, ABC):
     def get_single_asset_current_strategy_position(self, strategy_id: str) -> float:
         return self.single_asset_strategy_position.get(strategy_id, 0)
 
-    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float,
-                  strategy_actions: StrategyAction) -> bool:
+    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str,
+                  strategy_actions: StrategyAction,strategy_order_mode:StrategyOrderMode) -> bool:
 
         try:
             order = self.order_pool.acquire()
@@ -75,18 +76,22 @@ class FCFSOrderManager(OrderManager, ABC):
             elif signal == -1:
                 side = Side.SELL
 
-            min_effective_qty = self.reference_data_manager.get_effective_min_quantity(self.executor.order_type, symbol)
-            trade_unit_in_decimal = Decimal(str(trade_unit))
-            size_quantity = min_effective_qty * trade_unit_in_decimal
-
-            final_quantity = size_quantity
+            order_quantity = 0
+            if strategy_order_mode.get_order_mode() == OrderSizeMode.NOTIONAL:
+                order_quantity = self.reference_data_manager.get_effective_quantity_by_notional(
+                    self.executor.order_type, symbol, strategy_order_mode.notional_value)
+            elif strategy_order_mode.get_order_mode() == OrderSizeMode.QUANTITY:
+                order_quantity = self.reference_data_manager.get_effective_quantity(self.executor.order_type, symbol,
+                                                                                    strategy_order_mode.quantity)
+            if order_quantity == 0:
+                logging.error(f"Something went wrong order_quantity:{order_quantity}")
 
             if strategy_actions == StrategyAction.POSITION_REVERSAL:
                 current_pos = self.get_single_asset_current_strategy_position(strategy_id)
                 logging.info(f"Current position: {current_pos} strategy_id {strategy_id}")
                 if current_pos !=0:
-                    final_quantity = size_quantity + convert_to_decimal(abs(current_pos))
-                    logging.info(f"Final Quantity: {final_quantity}")
+                    order_quantity = order_quantity + convert_to_decimal(abs(current_pos))
+                    logging.info(f"Final Quantity: {order_quantity}")
             elif strategy_actions == StrategyAction.OPEN_CLOSE_POSITION:
                 # normal do nothing since already calculated
                 pass
@@ -96,13 +101,14 @@ class FCFSOrderManager(OrderManager, ABC):
             self.get_single_asset_current_strategy_position(strategy_id)
 
             logging.info(
-                f"Symbol {symbol} with  min_effective_qty {min_effective_qty},"
-                f" trade_unit {trade_unit}, "
-                f"size_quantity {size_quantity} "
+                f"Symbol {symbol} with  "
+                f"quantity {strategy_order_mode.quantity}"
+                f"notional {strategy_order_mode.notional_value},"
+                f"calculated order_quantity {order_quantity} "
                 f"strategy_actions {strategy_actions} "
-                f"final_quantity {final_quantity}")
+                )
 
-            order.update_order_fields(side, float(final_quantity), symbol, current_milli_time(), price, strategy_id)
+            order.update_order_fields(side, float(order_quantity), symbol, current_milli_time(), price, strategy_id)
 
             return self.submit_order_internal(order)
         except Exception as e:

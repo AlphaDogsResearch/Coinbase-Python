@@ -9,17 +9,19 @@ from common.time_utils import convert_epoch_time_to_datetime_millis
 from engine.core.strategy import Strategy
 from engine.market_data.candle import MidPriceCandle
 from engine.strategies.strategy_action import StrategyAction
+from engine.strategies.strategy_order_mode import StrategyOrderMode
 
 
 class SMAStrategy(Strategy):
-    def __init__(self, symbol: str, trade_unit: float, strategy_actions: StrategyAction, short_window: int,
+    def __init__(self, symbol: str, strategy_order_mode: StrategyOrderMode, strategy_actions: StrategyAction,
+                 short_window: int,
                  long_window: int):
-        super().__init__(symbol, trade_unit, strategy_actions)
+        super().__init__(symbol, strategy_actions, strategy_order_mode)
         self.short_window = short_window
         self.long_window = long_window
         self.name = "SMA-" +str(symbol) +"-" + str(self.short_window) + "-" + str(self.long_window)
         self.prices = []
-        self.listeners: List[Callable[[str,int,float,str,float], None]] = []  # list of callbacks
+        self.listeners: List[Callable[[str,int,float,str,StrategyAction,StrategyOrderMode], None]] = []  # list of callbacks
         self.plot_signal_listeners: List[Callable[[datetime.datetime, int, float], None]] = []  # list of callbacks
         self.plot_sma_listeners: List[Callable[[datetime.datetime, float], None]] = []  # list of callbacks
         self.plot_sma2_listeners: List[Callable[[datetime.datetime, float], None]] = []  # list of callbacks
@@ -35,7 +37,7 @@ class SMAStrategy(Strategy):
     def on_candle_created(self, candle: MidPriceCandle):
         pass
 
-    def add_signal_listener(self, callback: Callable[[str,int, float,str,float,StrategyAction], None]):
+    def add_signal_listener(self, callback: Callable[[str,int, float,str,StrategyAction,StrategyOrderMode], None]):
         self.listeners.append(callback)
 
     def add_plot_signal_listener(self, callback: Callable[[datetime, int, float], None]):
@@ -50,7 +52,7 @@ class SMAStrategy(Strategy):
     def on_signal(self, signal: int,price:float):
         for listener in self.listeners:
             try:
-                listener(self.name,signal,price,self.symbol,self.trade_unit,self.strategy_actions)
+                listener(self.name,signal,price,self.symbol,self.strategy_actions,self.strategy_order_mode)
             except Exception as e:
                 logging.error(self.name + " on_signal Listener raised an exception: %s", e)
 
