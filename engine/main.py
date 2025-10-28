@@ -25,6 +25,13 @@ from engine.strategies.sma_crossover_inflection_strategy import (
 )
 from engine.strategies.strategy_action import StrategyAction
 from engine.strategies.strategy_manager import StrategyManager
+from engine.strategies.nautilus_strategy_factory import (
+    create_roc_mean_reversion_strategy,
+    create_cci_momentum_strategy,
+    create_apo_mean_reversion_strategy,
+    create_ppo_momentum_strategy,
+    create_adx_mean_reversion_strategy,
+)
 from engine.tracking.in_memory_tracker import InMemoryTracker
 from engine.tracking.telegram_alert import telegramAlert
 from engine.market_data.candle import CandleAggregator
@@ -32,9 +39,8 @@ from engine.trades.trades_manager import TradesManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
-from graph.ohlc_plot import  RealTimePlotWithCandlestick
+from graph.ohlc_plot import RealTimePlotWithCandlestick
 from graph.plot import RealTimePlot
-
 
 
 from engine.core.order import Order
@@ -43,9 +49,31 @@ from common import config_risk
 
 
 def main():
+    # Load environment variables from .env file
+    load_dotenv()
+
     # Configure logging with optional LOG_LEVEL env
     to_stdout()
     logging.info("Running Engine...")
+
+    # Get configuration from environment variables
+    environment = os.getenv("ENVIRONMENT", "development")
+    trade_unit = 1.0  # Fixed at 1.0 (minimum position size)
+
+    # Use TEST_INTERVAL only in development, otherwise default to 3600 (1-hour)
+    if environment == "development":
+        interval_seconds = int(os.getenv("TEST_INTERVAL", "1"))  # Default: 1 second for dev
+    else:
+        interval_seconds = 3600  # Always 1-hour for testnet/production
+
+    logging.info("Environment: %s", environment)
+    logging.info(
+        "Candle interval: %d seconds (%s)",
+        interval_seconds,
+        "1-second" if interval_seconds == 1 else "1-hour",
+    )
+    logging.info("Trade unit: %s", trade_unit)
+
     start = True
 
     # Get symbol from CLI argument
@@ -55,7 +83,9 @@ def main():
         sys.exit(1)
     input_symbol = sys.argv[1].upper()
     if input_symbol not in TRADING_SYMBOLS:
-        logging.error(f"'{input_symbol}' not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}")
+        logging.error(
+            f"'{input_symbol}' not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}"
+        )
         sys.exit(1)
     selected_symbol = input_symbol
 
@@ -66,7 +96,10 @@ def main():
     try:
         risk_manager.add_symbol(selected_symbol, position=position)
     except Exception:
-        logging.debug("RiskManager.add_symbol at startup failed (symbol may already be registered)", exc_info=True)
+        logging.debug(
+            "RiskManager.add_symbol at startup failed (symbol may already be registered)",
+            exc_info=True,
+        )
 
     margin_manager = MarginInfoManager()
     trading_cost_manager = TradingCostManager()
@@ -77,11 +110,17 @@ def main():
     # initialise reference price manager
     reference_price_manager = ReferencePriceManager()
 
-    position_manager = PositionManager(margin_manager, trading_cost_manager,reference_price_manager)
+    position_manager = PositionManager(
+        margin_manager, trading_cost_manager, reference_price_manager
+    )
     reference_price_manager.attach_mark_price_listener(position_manager.on_mark_price_event)
     # Wire per-symbol position and open-orders listeners to RiskManager
-    position_manager.add_position_amount_listener(lambda sym, qty: risk_manager.on_position_amount_update(sym, qty))
-    position_manager.add_open_orders_listener(lambda sym, cnt: risk_manager.on_open_orders_update(sym, cnt))
+    position_manager.add_position_amount_listener(
+        lambda sym, qty: risk_manager.on_position_amount_update(sym, qty)
+    )
+    position_manager.add_open_orders_listener(
+        lambda sym, cnt: risk_manager.on_open_orders_update(sym, cnt)
+    )
 
     # --- BinanceGateway for selected instrument ---
     # from gateways.binance.binance_gateway import BinanceGateway
@@ -92,21 +131,19 @@ def main():
     # binance_gateway.connect()
 
     # Setup telegram Alert
-    base_dir = os.path.dirname(os.path.abspath(__file__)) 
-    dotenv_path = os.path.join(base_dir, 'vault', 'telegram_keys')  
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    dotenv_path = os.path.join(base_dir, "vault", "telegram_keys")
     load_dotenv(dotenv_path=dotenv_path)
 
     telegram_api_key = os.getenv("API_KEY")
     telegram_user_id = os.getenv("USER_ID")
     telegram_alert = telegramAlert(telegram_api_key, telegram_user_id)
 
-
     # init account
     account = Account(telegram_alert, 0.8)
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
     # Forward wallet balance updates into RiskManager (updates AUM internally)
     account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
-
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)
@@ -117,11 +154,8 @@ def main():
     # Also treat realized PnL as part of daily loss tracking (aggregate)
     position_manager.add_realized_pnl_listener(lambda pnl: risk_manager.update_daily_loss(pnl))
 
-
     # initialise remote client
     remote_market_data_client = RemoteMarketDataClient()
-
-
 
     # attach position manager listener to remote client
     remote_market_data_client.add_mark_price_listener(
@@ -150,55 +184,102 @@ def main():
 
     reference_data_manager = ReferenceDataManager(reference_price_manager)
 
-    remote_order_client = RemoteOrderClient(margin_manager, position_manager, account,trading_cost_manager,trade_manager,reference_data_manager)
-
-
+    remote_order_client = RemoteOrderClient(
+        margin_manager,
+        position_manager,
+        account,
+        trading_cost_manager,
+        trade_manager,
+        reference_data_manager,
+    )
 
     # create executor
     order_type = OrderType.Market
     executor = Executor(order_type, remote_order_client)
     # create order manager
-    order_manager = FCFSOrderManager(executor, risk_manager,reference_data_manager)
+    order_manager = FCFSOrderManager(executor, risk_manager, reference_data_manager)
     order_manager.start()
 
     remote_order_client.add_order_event_listener(order_manager.on_order_event)
 
     # setup strategy manager
-    strategy_manager = StrategyManager(remote_market_data_client,order_manager)
+    strategy_manager = StrategyManager(remote_market_data_client, order_manager)
 
-    # actual
-    # init CandleAggregator and Strategy
-
-
-    inflectionSMACrossoverCandleAggregatorBTCUSDC = CandleAggregator(
-        interval_seconds=2
-    )  # should change to 5 min (300) price aggregator
-
-    inflectionSMACrossoverCandleAggregatorETHUSDC = CandleAggregator(
-        interval_seconds=2
+    # ===== STRATEGIES =====
+    # 1. ROC Mean Reversion Strategy (1-hour candles)
+    logging.info("Initializing ROC Mean Reversion Strategy...")
+    roc_strategy = create_roc_mean_reversion_strategy(
+        symbol=selected_symbol,
+        position_manager=position_manager,
+        trade_unit=trade_unit,
+        interval_seconds=interval_seconds,
+        strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
+    strategy_manager.add_strategy(roc_strategy)
+    roc_strategy.start()
+    logging.info("✅ ROC Mean Reversion strategy added")
 
-    # smaCrossoverInflectionStrategy = SMACrossoverInflectionStrategy(symbol="BTCUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,candle_aggregator=inflectionSMACrossoverCandleAggregatorBTCUSDC,short_window=5,long_window=10)  # need
-    # smaCrossoverInflectionStrategyETHUSDC = SMACrossoverInflectionStrategy(symbol="ETHUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,candle_aggregator=inflectionSMACrossoverCandleAggregatorETHUSDC,short_window=5,long_window=10)  # need
+    # 2. CCI Momentum Strategy (1-hour candles)
+    logging.info("Initializing CCI Momentum Strategy...")
+    cci_strategy = create_cci_momentum_strategy(
+        symbol=selected_symbol,
+        position_manager=position_manager,
+        trade_unit=trade_unit,
+        interval_seconds=interval_seconds,
+        strategy_actions=StrategyAction.POSITION_REVERSAL,
+    )
+    strategy_manager.add_strategy(cci_strategy)
+    cci_strategy.start()
+    logging.info("✅ CCI Momentum strategy added")
 
-    # TODO figure out lot size,e.g. ETHUSDC minimum size is 20 USDC , meaning min size  =  roundup(current value / 20)
-    # TODO https://www.binance.com/en/futures/trading-rules
-    # use trade size to determine min qty
+    # 3. APO Mean Reversion Strategy (1-hour candles)
+    logging.info("Initializing APO Mean Reversion Strategy...")
+    apo_strategy = create_apo_mean_reversion_strategy(
+        symbol=selected_symbol,
+        position_manager=position_manager,
+        trade_unit=trade_unit,
+        interval_seconds=interval_seconds,
+        strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
+    )
+    strategy_manager.add_strategy(apo_strategy)
+    apo_strategy.start()
+    logging.info("✅ APO Mean Reversion strategy added")
 
+    # 4. PPO Momentum Strategy (1-hour candles)
+    logging.info("Initializing PPO Momentum Strategy...")
+    ppo_strategy = create_ppo_momentum_strategy(
+        symbol=selected_symbol,
+        position_manager=position_manager,
+        trade_unit=trade_unit,
+        interval_seconds=interval_seconds,
+        strategy_actions=StrategyAction.POSITION_REVERSAL,
+    )
+    strategy_manager.add_strategy(ppo_strategy)
+    ppo_strategy.start()
+    logging.info("✅ PPO Momentum strategy added")
 
-    sma = SMAStrategy(symbol="BTCUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
-    smaETHUSDC = SMAStrategy(symbol="ETHUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
-    smaXPUSDC = SMAStrategy(symbol="XRPUSDC",trade_unit=1,strategy_actions=StrategyAction.POSITION_REVERSAL,short_window=10, long_window=20)
+    # 5. ADX Mean Reversion Strategy (1-hour candles)
+    logging.info("Initializing ADX Mean Reversion Strategy...")
+    adx_strategy = create_adx_mean_reversion_strategy(
+        symbol=selected_symbol,
+        position_manager=position_manager,
+        trade_unit=trade_unit,
+        interval_seconds=interval_seconds,
+        strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
+    )
+    strategy_manager.add_strategy(adx_strategy)
+    adx_strategy.start()
+    logging.info("✅ ADX Mean Reversion strategy added")
 
-    # strategy_manager.add_strategy(smaCrossoverInflectionStrategy)
-    # strategy_manager.add_strategy(smaCrossoverInflectionStrategyETHUSDC)
-    strategy_manager.add_strategy(sma)
-    strategy_manager.add_strategy(smaETHUSDC)
-    strategy_manager.add_strategy(smaXPUSDC)
+    logging.info(f"🎉 All 5 Nautilus strategies initialized for {selected_symbol}")
 
-    plotter = RealTimePlotWithCandlestick(ticker_name=selected_symbol, max_minutes=60, max_ticks=300, update_interval_ms=100,
-                           is_simulation=False)
-
+    plotter = RealTimePlotWithCandlestick(
+        ticker_name=selected_symbol,
+        max_minutes=60,
+        max_ticks=300,
+        update_interval_ms=100,
+        is_simulation=False,
+    )
 
     account.add_margin_ratio_listener(plotter.add_margin_ratio)
     account.add_margin_ratio_listener(risk_manager.on_margin_ratio_update)
@@ -210,45 +291,18 @@ def main():
     position_manager.add_unrealized_pnl_listener(plotter.add_unrealized_pnl)
     position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
 
-    # #tick
-    # smaCrossoverInflectionStrategy.candle_aggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
-    # #signal
-    # smaCrossoverInflectionStrategy.add_plot_signal_listener(plotter.add_signal)
-    # #sma
-    # smaCrossoverInflectionStrategy.add_plot_sma_listener(plotter.add_sma_point)
-    # smaCrossoverInflectionStrategy.add_plot_sma2_listener(plotter.add_sma2_point)
+    # ===== WIRE STRATEGIES TO PLOTTER =====
+    # Wire ROC strategy (1-minute) for candlestick visualization
+    roc_strategy.candle_aggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
 
+    # Wire all strategies for signal visualization
+    roc_strategy.add_plot_signal_listener(plotter.add_signal)
+    cci_strategy.add_plot_signal_listener(plotter.add_signal)
+    apo_strategy.add_plot_signal_listener(plotter.add_signal)
+    ppo_strategy.add_plot_signal_listener(plotter.add_signal)
+    adx_strategy.add_plot_signal_listener(plotter.add_signal)
 
-
-
-
-    # #### for testing only ####
-    # sma = SMAStrategy(10,20)
-    #
-    # remote_market_data_client.add_order_book_listener(
-    #     sma.on_update
-    # )
-    #
-    # plotter = RealTimePlot(ticker_name=contract, max_minutes=60, max_ticks=500, update_interval_ms=100,
-    #                        is_simulation=False)
-    #
-    # #add for plot
-    # account.add_margin_ratio_listener(plotter.add_margin_ratio)
-    # account.add_wallet_balance_listener(plotter.add_capital)
-    # sharpe_calculator.add_sharpe_listener(plotter.add_daily_sharpe)
-    # # add for plot
-    # position_manager.add_unrealized_pnl_listener(plotter.add_unrealized_pnl)
-    # position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
-    #
-    # sma.add_tick_signal_listener(plotter.add_signal)
-    # sma.add_tick_sma_listener(plotter.add_sma_point)
-    # sma.add_tick_sma2_listener(plotter.add_sma2_point)
-    #
-    # remote_market_data_client.add_tick_price(plotter.add_tick)
-    #
-    # strategy_manager.add_strategy(sma)
-    #
-    # ##testing####
+    logging.info("📊 All 5 Nautilus strategies wired to real-time plotter")
 
     tracker = InMemoryTracker(telegram_alert)
 
