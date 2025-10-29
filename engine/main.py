@@ -47,7 +47,7 @@ def main():
 
     # Get configuration from environment variables
     environment = os.getenv("ENVIRONMENT", "development")
-    notional_amount = 1.0  # Fixed at 1.0 (minimum position size)
+    notional_amount = 500.0  # Notional amount per trade
 
     # Use TEST_INTERVAL only in development, otherwise default to 3600 (1-hour)
     if environment == "development":
@@ -200,7 +200,9 @@ def main():
     roc_strategy = create_roc_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
+        strategy_order_mode=StrategyOrderMode(
+            OrderSizeMode.NOTIONAL, notional_value=notional_amount
+        ),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
@@ -213,7 +215,9 @@ def main():
     cci_strategy = create_cci_momentum_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
+        strategy_order_mode=StrategyOrderMode(
+            OrderSizeMode.NOTIONAL, notional_value=notional_amount
+        ),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.POSITION_REVERSAL,
     )
@@ -226,7 +230,9 @@ def main():
     apo_strategy = create_apo_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
+        strategy_order_mode=StrategyOrderMode(
+            OrderSizeMode.NOTIONAL, notional_value=notional_amount
+        ),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
@@ -234,13 +240,14 @@ def main():
     apo_strategy.start()
     logging.info("✅ APO Mean Reversion strategy added")
 
-
     # 4. PPO Momentum Strategy (1-hour candles)
     logging.info("Initializing PPO Momentum Strategy...")
     ppo_strategy = create_ppo_momentum_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
+        strategy_order_mode=StrategyOrderMode(
+            OrderSizeMode.NOTIONAL, notional_value=notional_amount
+        ),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.POSITION_REVERSAL,
     )
@@ -253,7 +260,9 @@ def main():
     adx_strategy = create_adx_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL, notional_value=notional_amount),
+        strategy_order_mode=StrategyOrderMode(
+            OrderSizeMode.NOTIONAL, notional_value=notional_amount
+        ),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
