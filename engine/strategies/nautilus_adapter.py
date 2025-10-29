@@ -129,7 +129,7 @@ class NautilusStrategyAdapter(Strategy):
         )
 
         # Signal listeners (inherited from Strategy)
-        self.listeners: List[Callable[[str, int, float, str, float, StrategyAction], None]] = []
+        self.listeners: List[Callable[[str, int, float, str, StrategyAction,StrategyOrderMode], None]] = []
 
         # Plot listeners (for compatibility)
         self.plot_signal_listeners: List[Callable[[datetime, int, float], None]] = []
@@ -375,7 +375,7 @@ class NautilusStrategyAdapter(Strategy):
         # Not used for candle-based Nautilus strategies
 
     def add_signal_listener(
-        self, callback: Callable[[str, int, float, str, float, StrategyAction], None]
+            self, callback: Callable[[str, int, float, str, StrategyAction, StrategyOrderMode], None]
     ):
         """
         Add a signal listener (required by Strategy base class).
@@ -400,7 +400,7 @@ class NautilusStrategyAdapter(Strategy):
         for listener in self.listeners:
             try:
                 listener(
-                    self.name, signal, price, self.symbol, self.trade_unit, self.strategy_actions
+                    self.name, signal, price, self.symbol, self.strategy_actions , self.strategy_order_mode
                 )
             except Exception as e:  # noqa: broad-except
                 logging.error("%s signal listener raised an exception: %s", self.name, e)
