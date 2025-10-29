@@ -4,11 +4,12 @@ import sys
 
 from dotenv import load_dotenv
 
+from common import config_risk
 from common.config_logging import to_stdout
-from common.interface_order import OrderType
+from common.config_symbols import TRADING_SYMBOLS
+from common.interface_order import OrderType, OrderSizeMode
 from common.metrics.sharpe_calculator import BinanceFuturesSharpeCalculator
 from engine.account.account import Account
-from engine.database.database_connection import DatabaseConnectionPool
 from engine.execution.executor import Executor
 from engine.management.order_management_system import FCFSOrderManager
 from engine.margin.margin_info_manager import MarginInfoManager
@@ -19,12 +20,6 @@ from engine.reference_data.reference_price_manager import ReferencePriceManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.risk.risk_manager import RiskManager
-from engine.strategies.sma import SMAStrategy
-from engine.strategies.sma_crossover_inflection_strategy import (
-    SMACrossoverInflectionStrategy,
-)
-from engine.strategies.strategy_action import StrategyAction
-from engine.strategies.strategy_manager import StrategyManager
 from engine.strategies.nautilus_strategy_factory import (
     create_roc_mean_reversion_strategy,
     create_cci_momentum_strategy,
@@ -32,20 +27,14 @@ from engine.strategies.nautilus_strategy_factory import (
     create_ppo_momentum_strategy,
     create_adx_mean_reversion_strategy,
 )
+from engine.strategies.strategy_action import StrategyAction
+from engine.strategies.strategy_manager import StrategyManager
+from engine.strategies.strategy_order_mode import StrategyOrderMode
 from engine.tracking.in_memory_tracker import InMemoryTracker
 from engine.tracking.telegram_alert import telegramAlert
-from engine.market_data.candle import CandleAggregator
 from engine.trades.trades_manager import TradesManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
-
-
 from graph.ohlc_plot import RealTimePlotWithCandlestick
-from graph.plot import RealTimePlot
-
-
-from engine.core.order import Order
-from common.config_symbols import TRADING_SYMBOLS
-from common import config_risk
 
 
 def main():
@@ -58,7 +47,7 @@ def main():
 
     # Get configuration from environment variables
     environment = os.getenv("ENVIRONMENT", "development")
-    trade_unit = 1.0  # Fixed at 1.0 (minimum position size)
+    notional_amount = 1.0  # Fixed at 1.0 (minimum position size)
 
     # Use TEST_INTERVAL only in development, otherwise default to 3600 (1-hour)
     if environment == "development":
@@ -72,7 +61,7 @@ def main():
         interval_seconds,
         "1-second" if interval_seconds == 1 else "1-hour",
     )
-    logging.info("Trade unit: %s", trade_unit)
+    logging.info("Notional Amount: %s", notional_amount)
 
     start = True
 
@@ -211,7 +200,7 @@ def main():
     roc_strategy = create_roc_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        trade_unit=trade_unit,
+        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
@@ -224,7 +213,7 @@ def main():
     cci_strategy = create_cci_momentum_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        trade_unit=trade_unit,
+        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.POSITION_REVERSAL,
     )
@@ -237,7 +226,7 @@ def main():
     apo_strategy = create_apo_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        trade_unit=trade_unit,
+        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
@@ -245,12 +234,13 @@ def main():
     apo_strategy.start()
     logging.info("✅ APO Mean Reversion strategy added")
 
+
     # 4. PPO Momentum Strategy (1-hour candles)
     logging.info("Initializing PPO Momentum Strategy...")
     ppo_strategy = create_ppo_momentum_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        trade_unit=trade_unit,
+        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL,notional_value=notional_amount),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.POSITION_REVERSAL,
     )
@@ -263,7 +253,7 @@ def main():
     adx_strategy = create_adx_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        trade_unit=trade_unit,
+        strategy_order_mode=StrategyOrderMode(OrderSizeMode.NOTIONAL, notional_value=notional_amount),
         interval_seconds=interval_seconds,
         strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )

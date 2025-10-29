@@ -3,13 +3,14 @@ from typing import Optional
 
 from .order import Order
 from engine.strategies.strategy_action import StrategyAction
+from ..strategies.strategy_order_mode import StrategyOrderMode
 
 
 class OrderManager(ABC):
 
     @abstractmethod
-    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str, trade_unit: float,
-                  strategy_actions:StrategyAction) -> bool:
+    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str,
+                  strategy_actions:StrategyAction,strategy_order_mode:StrategyOrderMode) -> bool:
         """
         Do Something on signal
         """

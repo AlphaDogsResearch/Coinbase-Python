@@ -14,6 +14,7 @@ from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.trading.strategy import Strategy as NautilusStrategy
 
 from common.interface_book import OrderBook
+from common.interface_order import OrderSizeMode
 from engine.core.strategy import Strategy
 from engine.market_data.candle import MidPriceCandle, CandleAggregator
 from engine.position.position_manager import PositionManager
@@ -28,6 +29,7 @@ from engine.strategies.nautilus_converters import (
     convert_candle_to_bar,
     parse_bar_type,
 )
+from engine.strategies.strategy_order_mode import StrategyOrderMode
 
 
 class NautilusStrategyAdapter(Strategy):
@@ -65,7 +67,7 @@ class NautilusStrategyAdapter(Strategy):
         self,
         nautilus_strategy_instance: NautilusStrategy,
         symbol: str,
-        trade_unit: float,
+        strategy_order_mode: StrategyOrderMode,
         strategy_actions: StrategyAction,
         candle_aggregator: CandleAggregator,
         position_manager: PositionManager,
@@ -92,7 +94,7 @@ class NautilusStrategyAdapter(Strategy):
         # Initialize parent Strategy class
         super().__init__(
             symbol=symbol,
-            trade_unit=trade_unit,
+            strategy_order_mode=strategy_order_mode,
             strategy_actions=strategy_actions,
             candle_aggregator=candle_aggregator,
         )

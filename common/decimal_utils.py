@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, ROUND_CEILING
 
 
 def convert_to_decimal(value) -> Decimal:
@@ -24,3 +24,9 @@ def convert_str_to_decimal(str_value: str) -> Decimal:
 
 def add_numbers(x: float, y: float) -> float:
     return float(convert_float_to_decimal(x) + convert_float_to_decimal(y))
+
+
+def round_up_decimal(value:float, step:float)->Decimal:
+    value = convert_float_to_decimal(value)
+    step = convert_float_to_decimal(step)
+    return (value / step).to_integral_value(rounding=ROUND_CEILING) * step

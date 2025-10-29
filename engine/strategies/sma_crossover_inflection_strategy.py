@@ -10,11 +10,12 @@ from common.interface_book import OrderBook
 from engine.core.strategy import Strategy
 from engine.market_data.candle import MidPriceCandle, CandleAggregator
 from engine.strategies.strategy_action import StrategyAction
+from engine.strategies.strategy_order_mode import StrategyOrderMode
 
 
 class SMACrossoverInflectionStrategy(Strategy):
-    def __init__(self, symbol: str, trade_unit: float, strategy_actions: StrategyAction,candle_aggregator: CandleAggregator, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10):
-        super().__init__(symbol=symbol,trade_unit=trade_unit,strategy_actions=strategy_actions,candle_aggregator=candle_aggregator)
+    def __init__(self, symbol: str, strategy_order_mode: StrategyOrderMode, strategy_actions: StrategyAction,candle_aggregator: CandleAggregator, short_window: int = 5, long_window: int = 200, smoothing_window: int = 10):
+        super().__init__(symbol=symbol,strategy_order_mode=strategy_order_mode,strategy_actions=strategy_actions,candle_aggregator=candle_aggregator)
         self.symbol = symbol
         self.name = f"InflectionSMA({symbol},{short_window},{long_window},{smoothing_window})"
         self.short_window = short_window
@@ -30,7 +31,7 @@ class SMACrossoverInflectionStrategy(Strategy):
         self.last_position = 0  # Current held position: 1 (long), -1 (short), 0 (flat)
 
         self.signal_history = []  # Optional for inspection
-        self.listeners: List[Callable[[str,int, float,str,float,StrategyAction], None]] = []
+        self.listeners: List[Callable[[str,int, float,str,StrategyAction,StrategyOrderMode], None]] = []
 
         self.plot_signal_listeners: List[Callable[[datetime, int, float], None]] = []  # list of callbacks
         self.plot_sma_listeners: List[Callable[[datetime, float], None]] = []  # list of callbacks
@@ -38,7 +39,7 @@ class SMACrossoverInflectionStrategy(Strategy):
 
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="SMACROSS")
 
-    def add_signal_listener(self, callback: Callable[[str,int, float,str,float,StrategyAction], None]):
+    def add_signal_listener(self, callback: Callable[[str,int, float,str,StrategyAction,StrategyOrderMode], None]):
         self.listeners.append(callback)
 
     def add_plot_signal_listener(self, callback: Callable[[datetime, int, float], None]):
@@ -53,7 +54,7 @@ class SMACrossoverInflectionStrategy(Strategy):
     def on_signal(self, signal: int, price: float):
         for listener in self.listeners:
             try:
-                listener(self.name,signal, price,self.symbol,self.trade_unit,self.strategy_actions)
+                listener(self.name, signal, price, self.symbol, self.strategy_actions, self.strategy_order_mode)
             except Exception as e:
                 logging.error(f"{self.name} on_signal listener raised an exception: %s", e)
 

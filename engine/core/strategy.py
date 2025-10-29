@@ -1,32 +1,29 @@
 import datetime
 from abc import abstractmethod, ABC
 from enum import Enum
-from typing import Callable, Optional, List
+from typing import Callable, Optional
 
 from common.interface_book import OrderBook
 from engine.market_data.candle import MidPriceCandle, CandleAggregator
 from engine.strategies.strategy_action import StrategyAction
+from engine.strategies.strategy_order_mode import StrategyOrderMode
 
 
 class Strategy(ABC):
-    def __init__(
-        self,
-        symbol: str,
-        trade_unit: float,
-        strategy_actions: StrategyAction,
-        candle_aggregator: Optional[CandleAggregator] = None,
-    ):
+    def __init__(self, symbol: str, strategy_actions: StrategyAction,
+                 strategy_order_mode: StrategyOrderMode,
+                 candle_aggregator: Optional[CandleAggregator] = None):
+
         self.signal = 0  # -1 = sell, 0 = hold, 1 = buy
         self.name = ""
-        """
+        '''
         trade unit is different from qty as min qty can change by price
-        e.g.  ETHUSDT min qty is 0.006 whereas XRPUSDT min qty is 0.001 due to min notional differences so we standardise by using trade unit
-        """
-        self.trade_unit = trade_unit
+        e.g.  ETHUSDC min qty is 0.006 whereas XRPUSDC min qty is 0.001 due to min notional differences so we standardise by using trade unit
+        '''
+        self.strategy_order_mode = strategy_order_mode
+
         self.strategy_actions = strategy_actions
 
-        if trade_unit <= 0:
-            raise ValueError("trade_unit must be greater than 0")
 
         self.symbol = symbol
         self.candle_aggregator = candle_aggregator
@@ -40,9 +37,8 @@ class Strategy(ABC):
         raise NotImplementedError("Must implement on_candle_created() in subclass")
 
     @abstractmethod
-    def add_signal_listener(
-        self, callback: Callable[[str, int, float, str, float, StrategyAction], None]
-    ):
+
+    def add_signal_listener(self, callback: Callable[[str, int, float, str, StrategyAction,StrategyOrderMode], None]):
         raise NotImplementedError("Must implement add_signal_listener() in subclass")
 
     @abstractmethod
