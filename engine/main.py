@@ -1,13 +1,14 @@
 import logging
 import os
 import sys
+import signal
 
 from dotenv import load_dotenv
 
 from common import config_risk
-from common.config_logging import to_stdout
+from common.config_logging import to_stdout_and_daily_file
 from common.config_symbols import TRADING_SYMBOLS
-from common.interface_order import OrderType, OrderSizeMode
+from common.interface_order import OrderType
 from common.metrics.sharpe_calculator import BinanceFuturesSharpeCalculator
 from engine.account.account import Account
 from engine.execution.executor import Executor
@@ -26,12 +27,10 @@ from engine.strategies.nautilus_strategy_factory import (
     create_apo_mean_reversion_strategy,
     create_ppo_momentum_strategy,
     create_adx_mean_reversion_strategy,
+    create_simple_order_test_strategy,
 )
-from engine.strategies.strategy_action import StrategyAction
 from engine.strategies.strategy_manager import StrategyManager
-from engine.strategies.strategy_order_mode import StrategyOrderMode
-from engine.tracking.in_memory_tracker import InMemoryTracker
-from engine.tracking.telegram_alert import telegramAlert
+from engine.tracking.telegram_notifier import TelegramNotifier
 from engine.trades.trades_manager import TradesManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
 from graph.ohlc_plot import RealTimePlotWithCandlestick
@@ -42,7 +41,8 @@ def main():
     load_dotenv()
 
     # Configure logging with optional LOG_LEVEL env
-    to_stdout()
+    # Configure logging to both console and daily rotating file (rotates at midnight UTC)
+    to_stdout_and_daily_file(log_dir="logs", log_prefix="trading")
     logging.info("Running Engine...")
 
     # Get configuration from environment variables
@@ -119,17 +119,20 @@ def main():
     # binance_gateway = BinanceGateway([selected_symbol], api_key=api_key, api_secret=api_secret, product_type=None)
     # binance_gateway.connect()
 
-    # Setup telegram Alert
+    # Setup telegram notifier
     base_dir = os.path.dirname(os.path.abspath(__file__))
     dotenv_path = os.path.join(base_dir, "vault", "telegram_keys")
     load_dotenv(dotenv_path=dotenv_path)
 
     telegram_api_key = os.getenv("API_KEY")
     telegram_user_id = os.getenv("USER_ID")
-    telegram_alert = telegramAlert(telegram_api_key, telegram_user_id)
+    telegram_exchange_env = os.getenv("EXCHANGE_ENV", "testnet")
+
+    # Note: Account and position_manager will be passed to notifier after they're created
+    # We'll initialize the notifier fully after account is created
 
     # init account
-    account = Account(telegram_alert, 0.8)
+    account = Account(0.8)
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
     # Forward wallet balance updates into RiskManager (updates AUM internally)
     account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
@@ -191,8 +194,49 @@ def main():
 
     remote_order_client.add_order_event_listener(order_manager.on_order_event)
 
+    # Initialize telegram notifier and wire as listener (non-blocking)
+    telegram_notifier = None
+    try:
+        telegram_notifier = TelegramNotifier(
+            api_key=telegram_api_key,
+            user_id=telegram_user_id,
+            exchange_env=telegram_exchange_env,
+            account=account,
+            position_manager=position_manager,
+        )
+
+        # Register telegram notifier as listener for all events
+        remote_order_client.add_order_event_listener(telegram_notifier.on_order_event)
+        account.add_margin_warning_listener(telegram_notifier.on_margin_warning)
+
+        # Register PnL listeners for profit/loss notifications
+        position_manager.add_unrealized_pnl_listener(telegram_notifier.on_unrealized_pnl_update)
+        position_manager.add_realized_pnl_listener(telegram_notifier.on_realized_pnl_update)
+
+        # Start telegram bot command listener (starts message sender + bot threads)
+        telegram_notifier.start_bot_listener()
+
+        if telegram_notifier.is_enabled():
+            logging.info("✅ Telegram notifier initialized and listeners registered")
+        else:
+            logging.warning(
+                "⚠️ Telegram notifier created but disabled - trading will continue normally"
+            )
+    except Exception as e:
+        logging.error(f"❌ Failed to initialize Telegram notifier: {e}", exc_info=True)
+        logging.warning("⚠️ Trading will continue without Telegram notifications")
+        telegram_notifier = None
+
     # setup strategy manager
     strategy_manager = StrategyManager(remote_market_data_client, order_manager)
+
+    if telegram_notifier:
+        strategy_manager.add_on_strategy_order_submitted_listener(
+            telegram_notifier.on_strategy_order_submitted
+        )
+
+    # Connect strategy manager to order manager for signal tags
+    order_manager.strategy_manager = strategy_manager
 
     # ===== STRATEGIES =====
     # 1. ROC Mean Reversion Strategy (1-hour candles)
@@ -200,11 +244,7 @@ def main():
     roc_strategy = create_roc_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(
-            OrderSizeMode.NOTIONAL, notional_value=notional_amount
-        ),
         interval_seconds=interval_seconds,
-        strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
     strategy_manager.add_strategy(roc_strategy)
     roc_strategy.start()
@@ -215,13 +255,9 @@ def main():
     cci_strategy = create_cci_momentum_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(
-            OrderSizeMode.NOTIONAL, notional_value=notional_amount
-        ),
         interval_seconds=interval_seconds,
-        strategy_actions=StrategyAction.POSITION_REVERSAL,
     )
-    strategy_manager.add_strategy(cci_strategy)
+    # strategy_manager.add_strategy(cci_strategy)
     cci_strategy.start()
     logging.info("✅ CCI Momentum strategy added")
 
@@ -230,11 +266,7 @@ def main():
     apo_strategy = create_apo_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(
-            OrderSizeMode.NOTIONAL, notional_value=notional_amount
-        ),
         interval_seconds=interval_seconds,
-        strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
     strategy_manager.add_strategy(apo_strategy)
     apo_strategy.start()
@@ -245,11 +277,7 @@ def main():
     ppo_strategy = create_ppo_momentum_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(
-            OrderSizeMode.NOTIONAL, notional_value=notional_amount
-        ),
         interval_seconds=interval_seconds,
-        strategy_actions=StrategyAction.POSITION_REVERSAL,
     )
     strategy_manager.add_strategy(ppo_strategy)
     ppo_strategy.start()
@@ -260,54 +288,93 @@ def main():
     adx_strategy = create_adx_mean_reversion_strategy(
         symbol=selected_symbol,
         position_manager=position_manager,
-        strategy_order_mode=StrategyOrderMode(
-            OrderSizeMode.NOTIONAL, notional_value=notional_amount
-        ),
         interval_seconds=interval_seconds,
-        strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
     )
     strategy_manager.add_strategy(adx_strategy)
     adx_strategy.start()
     logging.info("✅ ADX Mean Reversion strategy added")
 
-    logging.info(f"🎉 All 5 Nautilus strategies initialized for {selected_symbol}")
-
-    plotter = RealTimePlotWithCandlestick(
-        ticker_name=selected_symbol,
-        max_minutes=60,
-        max_ticks=300,
-        update_interval_ms=100,
-        is_simulation=False,
+    # 6. Simple Order Test Strategy (for testing)
+    logging.info("Initializing Simple Order Test Strategy...")
+    test_strategy = create_simple_order_test_strategy(
+        symbol=selected_symbol,
+        position_manager=position_manager,
+        interval_seconds=interval_seconds,
+        bars_per_trade=20,  # Trade every 20 bars
     )
+    strategy_manager.add_strategy(test_strategy)
+    test_strategy.start()
+    logging.info("✅ Simple Order Test strategy added")
 
-    account.add_margin_ratio_listener(plotter.add_margin_ratio)
-    account.add_margin_ratio_listener(risk_manager.on_margin_ratio_update)
-    plotter.add_capital(account.wallet_balance)
-    account.add_wallet_balance_listener(plotter.add_capital)
-    plotter.add_daily_sharpe(sharpe_calculator.sharpe)
-    sharpe_calculator.add_sharpe_listener(plotter.add_daily_sharpe)
-    # add for plot
-    position_manager.add_unrealized_pnl_listener(plotter.add_unrealized_pnl)
-    position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
+    logging.info(f"🎉 All 6 Nautilus strategies initialized for {selected_symbol}")
+
+    # plotter = RealTimePlotWithCandlestick(
+    #     ticker_name=selected_symbol,
+    #     max_minutes=60,
+    #     max_ticks=300,
+    #     update_interval_ms=100,
+    #     is_simulation=False,
+    # )
+
+    # account.add_margin_ratio_listener(plotter.add_margin_ratio)
+    # account.add_margin_ratio_listener(risk_manager.on_margin_ratio_update)
+    # plotter.add_capital(account.wallet_balance)
+    # account.add_wallet_balance_listener(plotter.add_capital)
+    # plotter.add_daily_sharpe(sharpe_calculator.sharpe)
+    # sharpe_calculator.add_sharpe_listener(plotter.add_daily_sharpe)
+    # # add for plot
+    # position_manager.add_unrealized_pnl_listener(plotter.add_unrealized_pnl)
+    # position_manager.add_realized_pnl_listener(plotter.add_realized_pnl)
 
     # ===== WIRE STRATEGIES TO PLOTTER =====
-    # Wire ROC strategy (1-minute) for candlestick visualization
-    roc_strategy.candle_aggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
+    # Wire test strategy for candlestick visualization
+    # ppo_strategy.candle_aggregator.add_tick_candle_listener(plotter.add_ohlc_candle)
 
-    # Wire all strategies for signal visualization
-    roc_strategy.add_plot_signal_listener(plotter.add_signal)
-    cci_strategy.add_plot_signal_listener(plotter.add_signal)
-    apo_strategy.add_plot_signal_listener(plotter.add_signal)
-    ppo_strategy.add_plot_signal_listener(plotter.add_signal)
-    adx_strategy.add_plot_signal_listener(plotter.add_signal)
+    # logging.info("📊 Simple Order Test strategy wired to real-time plotter")
 
-    logging.info("📊 All 5 Nautilus strategies wired to real-time plotter")
+    # Setup signal handler for graceful shutdown
+    shutdown_in_progress = False
 
-    tracker = InMemoryTracker(telegram_alert)
+    def signal_handler(_sig, _frame):
+        nonlocal start, shutdown_in_progress
+        if shutdown_in_progress:
+            logging.warning("⚠️ Shutdown already in progress, ignoring signal")
+            return
+        shutdown_in_progress = True
+        logging.info("🛑 Shutdown signal received (Ctrl+C), stopping...")
+        start = False
+        if telegram_notifier:
+            telegram_notifier.stop_bot_listener()
+        # Force exit after a short delay if graceful shutdown fails
+        import threading
 
-    while start:
-        plotter.start()
-        continue
+        def force_exit():
+            import time
+
+            time.sleep(3)  # Wait 3 seconds for graceful shutdown
+            logging.warning("⚠️ Forcing exit after timeout")
+            import os
+
+            os._exit(0)
+
+        force_thread = threading.Thread(target=force_exit, daemon=True)
+        force_thread.start()
+
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+    logging.info("✅ System ready. Press Ctrl+C to stop.")
+
+    try:
+        while start:
+            # plotter.start()
+            continue
+    except KeyboardInterrupt:
+        logging.info("🛑 Keyboard interrupt received, stopping...")
+        if telegram_notifier:
+            telegram_notifier.stop_bot_listener()
+        logging.info("✅ Application stopped gracefully")
+        sys.exit(0)
 
 
 if __name__ == "__main__":

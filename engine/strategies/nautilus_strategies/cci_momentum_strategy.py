@@ -4,10 +4,7 @@ CCI Momentum Strategy Implementation.
 Based on pine_script/cci_strategy.pine with momentum logic.
 """
 
-import csv
-from pathlib import Path
-from datetime import datetime, timezone
-
+import uuid
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.model.data import Bar, BarType
 from nautilus_trader.model.identifiers import InstrumentId
@@ -16,6 +13,7 @@ from nautilus_trader.trading.strategy import Strategy
 from nautilus_trader.model.objects import Price, Quantity
 
 from nautilus_trader.indicators import CommodityChannelIndex
+from engine.strategies.audit_logger import StrategyAuditLogger
 
 
 class CCIMomentumStrategyConfig(StrategyConfig, frozen=True):
@@ -67,16 +65,15 @@ class CCIMomentumStrategy(Strategy):
 
         # Position Management
         self.quantity = Quantity.from_str(config.quantity)
+
+        # Initialize audit logger
+        self.audit_logger = StrategyAuditLogger(
+            strategy_name=self.__class__.__name__, symbol=config.instrument_id.split(".")[0]
+        )
         self.stop_loss_percent = config.stop_loss_percent
 
         # Risk Management
         self.max_holding_bars = config.max_holding_bars
-
-        # Trace Mode
-        self.enable_trace = config.enable_trace
-        self.trace_output_dir = config.trace_output_dir
-        self._trace_file = None
-        self._trace_writer = None
 
         # Initialize CCI indicator
         self.cci = CommodityChannelIndex(period=self.cci_period)
@@ -101,14 +98,7 @@ class CCIMomentumStrategy(Strategy):
 
         # Register CCI indicator
         self.register_indicator_for_bars(self.bar_type, self.cci)
-
-        # Initialize trace logging if enabled
-        if self.enable_trace:
-            self._setup_trace_logging()
-
         self.log.info(f"CCIMomentumStrategy started for {self.instrument.id}")
-        if self.enable_trace:
-            self.log.info("Trace logging enabled")
 
     def on_bar(self, bar: Bar) -> None:
         """Called when a bar is received."""
@@ -119,8 +109,8 @@ class CCIMomentumStrategy(Strategy):
         # Execute momentum strategy
         self._execute_momentum_mode(bar)
 
-        # Log trace
-        self._log_trace(bar)
+        # Log audit information
+        self._log_audit(bar)
 
         # Update state for next bar
         self._previous_cci = self.cci.value
@@ -174,12 +164,25 @@ class CCIMomentumStrategy(Strategy):
         # Calculate stop loss price
         stop_loss_price = bar.close * (1 - self.stop_loss_percent / 100)
 
+        # Generate signal_id for this trade
+        signal_id = str(uuid.uuid4())
+
+        # Prepare indicator values for tags
+        bars_held = self._bars_processed - self._long_entry_bar if self._long_entry_bar else 0
+        tags = (
+            f"signal_id={signal_id}|"
+            f"reason={reason}|cci={current_cci:.2f}|"
+            f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
+            f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=ENTRY"
+        )
+
         # Submit market order
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.BUY,
             quantity=self.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
         self.submit_order(order)
 
@@ -190,6 +193,7 @@ class CCIMomentumStrategy(Strategy):
             quantity=self.quantity,
             trigger_price=Price.from_str(f"{stop_loss_price:.2f}"),
             time_in_force=TimeInForce.GTC,
+            tags=f"signal_id={signal_id}|action=STOP_LOSS",
         )
         self.submit_order(stop_order)
 
@@ -203,13 +207,6 @@ class CCIMomentumStrategy(Strategy):
             f"   CCI: {current_cci:.2f} | CCI Period: {self.cci_period}"
         )
 
-        # Log trace
-        self._log_trace(
-            bar,
-            action_taken="ENTER_LONG",
-            entry_price=float(bar.close),
-            stop_loss_price=stop_loss_price,
-        )
 
     def _enter_short(self, bar: Bar, current_cci: float, reason: str) -> None:
         """Enter short position with stop loss."""
@@ -219,12 +216,25 @@ class CCIMomentumStrategy(Strategy):
         # Calculate stop loss price
         stop_loss_price = bar.close * (1 + self.stop_loss_percent / 100)
 
+        # Generate signal_id for this trade
+        signal_id = str(uuid.uuid4())
+
+        # Prepare indicator values for tags
+        bars_held = self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
+        tags = (
+            f"signal_id={signal_id}|"
+            f"reason={reason}|cci={current_cci:.2f}|"
+            f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
+            f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=ENTRY"
+        )
+
         # Submit market order
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.SELL,
             quantity=self.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
         self.submit_order(order)
 
@@ -235,6 +245,7 @@ class CCIMomentumStrategy(Strategy):
             quantity=self.quantity,
             trigger_price=Price.from_str(f"{stop_loss_price:.2f}"),
             time_in_force=TimeInForce.GTC,
+            tags=f"signal_id={signal_id}|action=STOP_LOSS",
         )
         self.submit_order(stop_order)
 
@@ -248,13 +259,6 @@ class CCIMomentumStrategy(Strategy):
             f"   CCI: {current_cci:.2f} | CCI Period: {self.cci_period}"
         )
 
-        # Log trace
-        self._log_trace(
-            bar,
-            action_taken="ENTER_SHORT",
-            entry_price=float(bar.close),
-            stop_loss_price=stop_loss_price,
-        )
 
     def _close_position(self, bar: Bar, reason: str) -> None:
         """Close current position and cancel any pending orders."""
@@ -271,153 +275,94 @@ class CCIMomentumStrategy(Strategy):
 
         position = positions[0]
         if position.side == PositionSide.LONG:
+            # Prepare indicator values for tags
+            current_cci = self.cci.value
+            bars_held = self._bars_processed - self._long_entry_bar if self._long_entry_bar else 0
+            tags = (
+                f"reason={reason}|cci={current_cci:.2f}|"
+                f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
+                f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=CLOSE"
+            )
+
             # Close long position
             order = self.order_factory.market(
                 instrument_id=self.instrument.id,
                 order_side=OrderSide.SELL,
                 quantity=position.quantity,
                 time_in_force=TimeInForce.GTC,
+                tags=tags,
             )
             self.submit_order(order)
             self.log.info(f"🟡 LONG EXIT: {reason} | Price: {float(bar.close):.4f}")
 
-            # Log trace
-            self._log_trace(
-                bar,
-                action_taken="EXIT_LONG",
-                exit_price=float(bar.close),
-            )
 
         elif position.side == PositionSide.SHORT:
+            # Prepare indicator values for tags
+            current_cci = self.cci.value
+            bars_held = self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
+            tags = (
+                f"reason={reason}|cci={current_cci:.2f}|"
+                f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
+                f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=CLOSE"
+            )
+
             # Close short position
             order = self.order_factory.market(
                 instrument_id=self.instrument.id,
                 order_side=OrderSide.BUY,
                 quantity=position.quantity,
                 time_in_force=TimeInForce.GTC,
+                tags=tags,
             )
             self.submit_order(order)
             self.log.info(f"🟡 SHORT EXIT: {reason} | Price: {float(bar.close):.4f}")
 
-            # Log trace
-            self._log_trace(
-                bar,
-                action_taken="EXIT_SHORT",
-                exit_price=float(bar.close),
-            )
 
         self._position_side = None
 
-    def _setup_trace_logging(self) -> None:
-        """Setup trace logging CSV file."""
+    def _log_audit(self, bar: Bar) -> None:
+        """Log audit information for this bar."""
         try:
-            # Create output directory if it doesn't exist
-            output_dir = Path(self.trace_output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-
-            # Create trace file with UTC timestamp
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            trace_filename = f"cci_momentum_trace_{timestamp}.csv"
-            trace_path = output_dir / trace_filename
-
-            self._trace_file = open(trace_path, "w", newline="", encoding="utf-8")
-            self._trace_writer = csv.writer(self._trace_file)
-
-            # Write header
-            header = [
-                "timestamp",
-                "bar_index",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "cci_value",
-                "prev_cci_value",
-                "position_state",
-                "bars_held",
-                "entry_condition_long",
-                "entry_condition_short",
-                "exit_condition_long",
-                "exit_condition_short",
-                "max_bars_triggered",
-                "action_taken",
-                "entry_price",
-                "stop_loss_price",
-                "exit_price",
-            ]
-            self._trace_writer.writerow(header)
-            self._trace_file.flush()
-
-            self.log.info(f"Trace logging initialized: {trace_path}")
-        except Exception as e:  # noqa: broad-except
-            self.log.error(f"Failed to setup trace logging: {e}")
-            self.enable_trace = False
-
-    def _log_trace(
-        self,
-        bar: Bar,
-        action_taken: str = "",
-        entry_price: float = 0.0,
-        stop_loss_price: float = 0.0,
-        exit_price: float = 0.0,
-    ) -> None:
-        """Log detailed trace information for this bar."""
-        if not self.enable_trace or not self._trace_writer:
-            return
-
-        try:
-            current_cci = self.cci.value
-
-            # Calculate entry/exit conditions
-            entry_long = self._previous_cci < self.cci_upper and current_cci >= self.cci_upper
-            entry_short = self._previous_cci > self.cci_lower and current_cci <= self.cci_lower
-            exit_long = self._previous_cci > self.cci_mid and current_cci <= self.cci_mid
-            exit_short = self._previous_cci < self.cci_mid and current_cci >= self.cci_mid
-
-            # Calculate bars held
+            # Calculate current position state
+            position_state = "flat"
             bars_held = 0
-            if self._position_side == PositionSide.LONG and self._long_entry_bar is not None:
-                bars_held = self._bars_processed - self._long_entry_bar
-            elif self._position_side == PositionSide.SHORT and self._short_entry_bar is not None:
-                bars_held = self._bars_processed - self._short_entry_bar
+            entry_price = 0.0
+            stop_loss_price = 0.0
 
-            # Check max bars
-            max_bars_trigger = bars_held >= self.max_holding_bars if bars_held > 0 else False
+            if not self.portfolio.is_flat(self.instrument.id):
+                if self.portfolio.is_net_long(self.instrument.id):
+                    position_state = "long"
+                else:
+                    position_state = "short"
+                bars_held = getattr(self, "_bars_processed", 0) - getattr(
+                    self, "_position_entry_bar", 0
+                )
+                entry_price = getattr(self, "_entry_price", 0.0)
+                stop_loss_price = getattr(self, "_stop_loss_price", 0.0)
 
-            # Position state
-            pos_state = "flat"
-            if self._position_side == PositionSide.LONG:
-                pos_state = "long"
-            elif self._position_side == PositionSide.SHORT:
-                pos_state = "short"
+            # Basic indicators (strategy-specific indicators will be added per strategy)
+            indicators = {}
 
-            trace_row = [
-                bar.ts_init,  # timestamp
-                self._bars_processed,  # bar_index
-                float(bar.open),  # open
-                float(bar.high),  # high
-                float(bar.low),  # low
-                float(bar.close),  # close
-                float(bar.volume),  # volume
-                current_cci,  # cci_value
-                self._previous_cci,  # prev_cci_value
-                pos_state,  # position_state
-                bars_held,  # bars_held
-                entry_long,  # entry_condition_long
-                entry_short,  # entry_condition_short
-                exit_long,  # exit_condition_long
-                exit_short,  # exit_condition_short
-                max_bars_trigger,  # max_bars_triggered
-                action_taken,  # action_taken
-                entry_price,  # entry_price
-                stop_loss_price,  # stop_loss_price
-                exit_price,  # exit_price
-            ]
-            self._trace_writer.writerow(trace_row)
-            self._trace_file.flush()
-        except Exception as e:  # noqa: broad-except
-            self.log.error(f"Failed to write trace log: {e}")
+            # Basic conditions
+            conditions = {
+                "max_bars_triggered": bars_held >= getattr(self, "max_holding_bars", 1000)
+            }
+
+            # Log to audit logger
+            self.audit_logger.log(
+                bar=bar,
+                action="",  # Will be determined by strategy logic
+                indicators=indicators,
+                position_state={
+                    "state": position_state,
+                    "bars_held": bars_held,
+                    "entry_price": entry_price,
+                    "stop_loss_price": stop_loss_price,
+                },
+                conditions=conditions,
+            )
+        except Exception as e:
+            self.log.error(f"Error in audit logging: {e}")
 
     def on_stop(self) -> None:
         """Called when strategy is stopped."""
@@ -437,6 +382,10 @@ class CCIMomentumStrategy(Strategy):
 
         # Close all positions
         self.close_all_positions(self.instrument.id)
+
+        # Close audit logger
+        if self.audit_logger:
+            self.audit_logger.close()
 
         self.log.info(f"Strategy stopped | Bars processed: {self._bars_processed}")
 

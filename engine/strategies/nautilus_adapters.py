@@ -262,6 +262,22 @@ class NautilusPortfolioAdapter:
 
         return [NautilusPositionAdapter(position, instrument_id)]
 
+    def position(self, instrument_id: InstrumentId) -> Optional[NautilusPositionAdapter]:
+        """
+        Get a single position for the given instrument.
+
+        This is a convenience method that returns the first position from positions().
+        Nautilus strategies often call portfolio.position() instead of portfolio.positions().
+
+        Args:
+            instrument_id: Nautilus InstrumentId
+
+        Returns:
+            Single position adapter or None if no position
+        """
+        positions = self.positions(instrument_id)
+        return positions[0] if positions else None
+
 
 class NautilusCacheAdapter:
     """
@@ -318,24 +334,27 @@ class NautilusOrderFactoryAdapter:
     """
     Adapts to Nautilus OrderFactory API.
 
-    Captures order creation intents from Nautilus strategies and returns
-    lightweight order objects that can be converted to signals.
+    Creates order objects that work directly with OrderManager.submit_order.
     """
 
-    def __init__(self, order_callback):
+    def __init__(self, strategy_id: str, symbol: str, quantity: str):
         """
         Initialize order factory adapter.
 
         Args:
-            order_callback: Callback function to handle created orders
+            strategy_id: Strategy identifier
+            symbol: Trading symbol
+            quantity: Position size as string (e.g., "500.000")
         """
-        self.order_callback = order_callback
+        self.strategy_id = strategy_id
+        self.symbol = symbol
+        self.quantity = quantity
         self._order_id_counter = 0
 
     def _generate_order_id(self) -> str:
         """Generate a unique order ID."""
         self._order_id_counter += 1
-        return f"NAUTILUS-{self._order_id_counter}"
+        return f"{self.strategy_id}-{self._order_id_counter}"
 
     def market(
         self,
@@ -348,7 +367,7 @@ class NautilusOrderFactoryAdapter:
         tags: Optional[str] = None,  # noqa: unused-argument
     ):
         """
-        Create a market order.
+        Create a market order object.
 
         Args:
             instrument_id: Instrument to trade
@@ -360,22 +379,20 @@ class NautilusOrderFactoryAdapter:
             tags: Order tags
 
         Returns:
-            Mock order object
+            Order object (will be submitted via intercepted_submit_order)
         """
-        order = {
+        # Calculate price from quantity and notional (approximate for market orders)
+
+        # Return order object - submission handled by intercepted_submit_order
+        return {
             "type": "MARKET",
             "order_id": self._generate_order_id(),
             "instrument_id": instrument_id,
             "side": order_side,
             "quantity": quantity,
             "reduce_only": reduce_only,
+            "tags": tags,
         }
-
-        # Call the callback to handle the order
-        if self.order_callback:
-            self.order_callback(order)
-
-        return order
 
     def stop_market(
         self,
@@ -389,7 +406,7 @@ class NautilusOrderFactoryAdapter:
         tags: Optional[str] = None,  # noqa: unused-argument
     ):
         """
-        Create a stop market order.
+        Create a stop market order object.
 
         Args:
             instrument_id: Instrument to trade
@@ -402,9 +419,10 @@ class NautilusOrderFactoryAdapter:
             tags: Order tags
 
         Returns:
-            Mock order object
+            Order object (will be submitted via intercepted_submit_order)
         """
-        order = {
+        # Return order object - submission handled by intercepted_submit_order
+        return {
             "type": "STOP_MARKET",
             "order_id": self._generate_order_id(),
             "instrument_id": instrument_id,
@@ -412,13 +430,8 @@ class NautilusOrderFactoryAdapter:
             "quantity": quantity,
             "trigger_price": trigger_price,
             "reduce_only": reduce_only,
+            "tags": tags,
         }
-
-        # Call the callback to handle the order
-        if self.order_callback:
-            self.order_callback(order)
-
-        return order
 
     def limit(
         self,
@@ -433,7 +446,7 @@ class NautilusOrderFactoryAdapter:
         tags: Optional[str] = None,  # noqa: unused-argument
     ):
         """
-        Create a limit order.
+        Create a limit order object.
 
         Args:
             instrument_id: Instrument to trade
@@ -447,9 +460,10 @@ class NautilusOrderFactoryAdapter:
             tags: Order tags
 
         Returns:
-            Mock order object
+            Order object (will be submitted via intercepted_submit_order)
         """
-        order = {
+        # Return order object - submission handled by intercepted_submit_order
+        return {
             "type": "LIMIT",
             "order_id": self._generate_order_id(),
             "instrument_id": instrument_id,
@@ -458,10 +472,5 @@ class NautilusOrderFactoryAdapter:
             "price": price,
             "post_only": post_only,
             "reduce_only": reduce_only,
+            "tags": tags,
         }
-
-        # Call the callback to handle the order
-        if self.order_callback:
-            self.order_callback(order)
-
-        return order

@@ -7,6 +7,7 @@ existing StrategyManager, OrderManager, and PositionManager infrastructure.
 
 import logging
 from typing import Callable, List
+from common.interface_order import Side, OrderType
 from datetime import datetime
 
 from nautilus_trader.model.enums import OrderSide
@@ -14,11 +15,9 @@ from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.trading.strategy import Strategy as NautilusStrategy
 
 from common.interface_book import OrderBook
-from common.interface_order import OrderSizeMode
 from engine.core.strategy import Strategy
 from engine.market_data.candle import MidPriceCandle, CandleAggregator
 from engine.position.position_manager import PositionManager
-from engine.strategies.strategy_action import StrategyAction
 from engine.strategies.nautilus_adapters import (
     NautilusPortfolioAdapter,
     NautilusCacheAdapter,
@@ -29,7 +28,41 @@ from engine.strategies.nautilus_converters import (
     convert_candle_to_bar,
     parse_bar_type,
 )
-from engine.strategies.strategy_order_mode import StrategyOrderMode
+
+NOTIONAL_PER_ORDER = 500
+
+
+class NautilusLoggerAdapter:
+    """
+    Adapter to redirect Nautilus logger calls to Python's standard logging.
+
+    Nautilus strategies use self.log.info(), self.log.error(), etc.
+    This adapter redirects those calls to the standard logging framework.
+    """
+
+    def __init__(self, strategy_name: str):
+        """Initialize logger adapter with strategy name."""
+        self.logger = logging.getLogger(f"nautilus.{strategy_name}")
+
+    def debug(self, msg: str, *args, **kwargs) -> None:
+        """Log debug message."""
+        self.logger.debug(msg, *args, **kwargs)
+
+    def info(self, msg: str, *args, **kwargs) -> None:
+        """Log info message."""
+        self.logger.info(msg, *args, **kwargs)
+
+    def warning(self, msg: str, *args, **kwargs) -> None:
+        """Log warning message."""
+        self.logger.warning(msg, *args, **kwargs)
+
+    def error(self, msg: str, *args, **kwargs) -> None:
+        """Log error message."""
+        self.logger.error(msg, *args, **kwargs)
+
+    def critical(self, msg: str, *args, **kwargs) -> None:
+        """Log critical message."""
+        self.logger.critical(msg, *args, **kwargs)
 
 
 class NautilusStrategyAdapter(Strategy):
@@ -67,8 +100,6 @@ class NautilusStrategyAdapter(Strategy):
         self,
         nautilus_strategy_instance: NautilusStrategy,
         symbol: str,
-        strategy_order_mode: StrategyOrderMode,
-        strategy_actions: StrategyAction,
         candle_aggregator: CandleAggregator,
         position_manager: PositionManager,
         instrument_id: str,
@@ -82,8 +113,6 @@ class NautilusStrategyAdapter(Strategy):
         Args:
             nautilus_strategy_instance: An instantiated Nautilus strategy
             symbol: Your system's symbol (e.g., "ETHUSDT")
-            trade_unit: Trade unit size
-            strategy_actions: Strategy action type (OPEN_CLOSE_POSITION or POSITION_REVERSAL)
             candle_aggregator: Candle aggregator for this strategy
             position_manager: Your system's position manager
             instrument_id: Nautilus instrument ID (e.g., "ETHUSDT.BINANCE")
@@ -94,8 +123,6 @@ class NautilusStrategyAdapter(Strategy):
         # Initialize parent Strategy class
         super().__init__(
             symbol=symbol,
-            strategy_order_mode=strategy_order_mode,
-            strategy_actions=strategy_actions,
             candle_aggregator=candle_aggregator,
         )
 
@@ -125,14 +152,15 @@ class NautilusStrategyAdapter(Strategy):
         self.portfolio_adapter = NautilusPortfolioAdapter(position_manager)
         self.cache_adapter = NautilusCacheAdapter({instrument_id: self.instrument_adapter})
         self.order_factory_adapter = NautilusOrderFactoryAdapter(
-            order_callback=self._on_order_created
+            strategy_id=self.name,
+            symbol=symbol,
+            quantity="1.000",
         )
 
-        # Signal listeners (inherited from Strategy)
-        self.listeners: List[Callable[[str, int, float, str, StrategyAction,StrategyOrderMode], None]] = []
-
-        # Plot listeners (for compatibility)
-        self.plot_signal_listeners: List[Callable[[datetime, int, float], None]] = []
+        # Submit order listeners
+        self.submit_order_listeners: List[
+            Callable[[str, Side, OrderType, float, float, str, List[str]], bool]
+        ] = []
 
         # Inject adapters into Nautilus strategy
         self._inject_adapters()
@@ -147,10 +175,6 @@ class NautilusStrategyAdapter(Strategy):
         self._registered_indicators = []
 
         logging.info("Initialized %s with bar type %s", self.name, self.bar_type)
-        logging.info(
-            "Cache has instrument: %s",
-            self.cache_adapter.instrument(self.instrument_id) is not None,
-        )
 
     def _inject_adapters(self):
         """Inject adapter components into the Nautilus strategy."""
@@ -159,6 +183,11 @@ class NautilusStrategyAdapter(Strategy):
         self.nautilus_strategy.__dict__["_portfolio_adapter"] = self.portfolio_adapter
         self.nautilus_strategy.__dict__["_cache_adapter"] = self.cache_adapter
         self.nautilus_strategy.__dict__["_order_factory_adapter"] = self.order_factory_adapter
+
+        # Inject our intercepted submit_order method (will be defined later in this method)
+
+        # Redirect Nautilus logger to Python's standard logging
+        self._inject_logger()
 
         # Store original property accessors
         original_portfolio = self.nautilus_strategy.__class__.portfolio
@@ -194,93 +223,154 @@ class NautilusStrategyAdapter(Strategy):
 
         # Override submit_order to intercept order submissions
         def intercepted_submit_order(order, **kwargs):  # noqa: unused-argument
-            """Intercept order submission."""
-            logging.info("Intercepted order submission: %s", order)
-            # The order has already been handled by order_factory callback
-            # We don't actually submit to Nautilus execution system
+            """
+            Intercept order submissions from Nautilus strategies.
 
-        self.nautilus_strategy.submit_order = intercepted_submit_order
+            This method is called by Nautilus strategies when they call self.submit_order().
+            We redirect this to StrategyManager.on_submit_order().
+
+            Args:
+                order: Order object from Nautilus strategy
+            """
+            try:
+                # Extract order details from Nautilus order object
+                order_type = (
+                    order.get("type")
+                    if isinstance(order, dict)
+                    else getattr(order, "type", "MARKET")
+                )
+                order_side = (
+                    order.get("side") if isinstance(order, dict) else getattr(order, "side", None)
+                )
+                quantity = (
+                    order.get("quantity")
+                    if isinstance(order, dict)
+                    else getattr(order, "quantity", None)
+                )
+                price = (
+                    order.get("price") if isinstance(order, dict) else getattr(order, "price", None)
+                )
+                trigger_price = (
+                    order.get("trigger_price")
+                    if isinstance(order, dict)
+                    else getattr(order, "trigger_price", None)
+                )
+                tags_str = (
+                    order.get("tags") if isinstance(order, dict) else getattr(order, "tags", "")
+                )
+                # Parse tags string into list (split by | and filter empty strings)
+                tags = (
+                    [tag.strip() for tag in tags_str.split("|") if tag.strip()] if tags_str else []
+                )
+
+                # Convert order side to our Side enum
+                from common.interface_order import Side, OrderType
+
+                if order_side == OrderSide.BUY:
+                    side = Side.BUY
+                elif order_side == OrderSide.SELL:
+                    side = Side.SELL
+                else:
+                    logging.warning(f"Unknown order side: {order_side}, skipping order")
+                    return False
+
+                # Determine order type and price
+                if order_type == "MARKET":
+                    order_type_enum = OrderType.Market
+                    order_price = price.as_double() if price else self._last_price
+                elif order_type == "STOP_MARKET":
+                    order_type_enum = OrderType.StopMarket
+                    order_price = trigger_price.as_double() if trigger_price else self._last_price
+                elif order_type == "LIMIT":
+                    order_type_enum = OrderType.Limit
+                    order_price = price.as_double() if price else self._last_price
+                else:
+                    logging.warning(f"Unknown order type: {order_type}, defaulting to Market")
+                    order_type_enum = OrderType.Market
+                    order_price = self._last_price
+
+                # Submit order through callbacks
+                if self.submit_order_listeners:
+                    success = False
+                    for callback in self.submit_order_listeners:
+                        try:
+                            result = callback(
+                                strategy_id=self.name,
+                                side=side,
+                                order_type=order_type_enum,
+                                notional=NOTIONAL_PER_ORDER,
+                                price=order_price,
+                                symbol=self.symbol,
+                                tags=tags,
+                            )
+                            if result:
+                                success = True
+                                break
+                        except Exception as e:
+                            logging.error(f"Error in submit order callback: {e}", exc_info=True)
+
+                    if success:
+                        logging.info(
+                            f"✅ Intercepted order submitted via callback: {order_type} {side.name} {self.symbol} at {order_price}"
+                        )
+                    else:
+                        logging.error(
+                            f"❌ Failed to submit intercepted order via callback: {order_type} {side.name} {self.symbol} at {order_price}"
+                        )
+
+                    return success
+                else:
+                    logging.error("No submit order listeners available for order submission")
+                    return False
+
+            except Exception as e:
+                logging.error(f"Error in intercepted_submit_order: {e}", exc_info=True)
+                return False
+
+        # Store the intercepted function as a method and inject it
+        self.intercepted_submit_order = intercepted_submit_order
+        self.nautilus_strategy.__dict__["submit_order"] = intercepted_submit_order
 
         # Override other methods that Nautilus strategies might call
-        self.nautilus_strategy.cancel_order = lambda order: logging.info("Cancel order: %s", order)
-        self.nautilus_strategy.cancel_all_orders = lambda instrument_id: logging.info(
-            "Cancel all orders: %s", instrument_id
-        )
-        self.nautilus_strategy.close_all_positions = lambda instrument_id: logging.info(
-            "Close all positions: %s", instrument_id
-        )
+        self.nautilus_strategy.cancel_order = lambda order: None
+        self.nautilus_strategy.cancel_all_orders = lambda instrument_id: None
+        self.nautilus_strategy.close_all_positions = lambda instrument_id: None
 
         # Mock Nautilus lifecycle methods with indicator tracking
         def register_indicator_for_bars_impl(bar_type, indicator):
-            logging.info(
-                "🔔 Registered indicator %s for %s", indicator.__class__.__name__, bar_type
-            )
-            logging.info(
-                "Indicator details: period=%s, initialized=%s",
-                getattr(indicator, "period", "N/A"),
-                getattr(indicator, "initialized", "N/A"),
-            )
             self._registered_indicators.append(indicator)
-            logging.info("Total registered indicators: %d", len(self._registered_indicators))
 
         self.nautilus_strategy.register_indicator_for_bars = register_indicator_for_bars_impl
-        self.nautilus_strategy.subscribe_bars = lambda bar_type: logging.info(
-            "Subscribed to bars: %s", bar_type
-        )
-        self.nautilus_strategy.unsubscribe_bars = lambda bar_type: logging.info(
-            "Unsubscribed from bars: %s", bar_type
-        )
+        self.nautilus_strategy.subscribe_bars = lambda bar_type: None
+        self.nautilus_strategy.unsubscribe_bars = lambda bar_type: None
 
-    def _on_order_created(self, order: dict):
+    def _inject_logger(self):
         """
-        Handle order creation from Nautilus strategy.
+        Setup logging for Nautilus strategy.
 
-        This is called by the NautilusOrderFactoryAdapter when the Nautilus
-        strategy creates an order. We convert it to a signal and emit.
-
-        Args:
-            order: Dictionary containing order details
+        Inject our NautilusLoggerAdapter to redirect strategy logging to our logging system.
         """
-        order_type = order.get("type")
-        order_side = order.get("side")
+        strategy_class_name = self.nautilus_strategy.__class__.__name__
 
-        logging.info("Processing order: type=%s, side=%s", order_type, order_side)
+        # Create logger adapter
+        logger_adapter = NautilusLoggerAdapter(strategy_class_name)
 
-        # Convert order side to signal
-        if order_side == OrderSide.BUY:
-            signal = 1
-        elif order_side == OrderSide.SELL:
-            signal = -1
-        else:
-            logging.warning("Unknown order side: %s", order_side)
-            return
+        # Inject the logger adapter into the strategy
+        # We need to replace the log property on the instance
+        self.nautilus_strategy.__dict__["_log_adapter"] = logger_adapter
 
-        # Determine price for signal
-        price = self._last_price
+        # Create a property that returns our logger adapter
+        def get_log(instance):
+            return instance.__dict__["_log_adapter"]
 
-        # Handle different order types
-        if order_type == "MARKET":
-            # Emit signal immediately for market orders
-            self.on_signal(signal, price)
+        # Replace the log property on the instance
+        self.nautilus_strategy.__class__.log = property(get_log)
 
-        elif order_type == "STOP_MARKET":
-            # For stop orders, we could track them and trigger later
-            # For now, we'll emit the signal immediately
-            trigger_price = float(order.get("trigger_price"))
-            logging.info("Stop order with trigger price: %s", trigger_price)
-            # In a full implementation, you'd track this and trigger when price is hit
-            # For simplicity, emit immediately
-            self.on_signal(signal, trigger_price)
-
-        elif order_type == "LIMIT":
-            # For limit orders, similar to stops
-            limit_price = float(order.get("price"))
-            logging.info("Limit order with price: %s", limit_price)
-            # Emit immediately for simplicity
-            self.on_signal(signal, limit_price)
-
-        else:
-            logging.warning("Unhandled order type: %s", order_type)
+        logging.info(
+            "Nautilus strategy initialized: %s (symbol=%s) - using injected logger adapter",
+            strategy_class_name,
+            self.symbol,
+        )
 
     def on_candle_created(self, candle: MidPriceCandle):
         """
@@ -374,58 +464,21 @@ class NautilusStrategyAdapter(Strategy):
         """
         # Not used for candle-based Nautilus strategies
 
-    def add_signal_listener(
-            self, callback: Callable[[str, int, float, str, StrategyAction, StrategyOrderMode], None]
+    def add_submit_order_listener(
+        self,
+        callback: Callable[[str, Side, OrderType, float, float, str, List[str]], bool],
     ):
-        """
-        Add a signal listener (required by Strategy base class).
-
-        Args:
-            callback: Signal callback function
-        """
-        self.listeners.append(callback)
-
-    def on_signal(self, signal: int, price: float):
-        """
-        Emit a signal to registered listeners.
-
-        This is called when we've converted a Nautilus order to a signal.
-
-        Args:
-            signal: Signal value (1=BUY, -1=SELL, 0=HOLD)
-            price: Price for the signal
-        """
-        logging.info("%s emitting signal: %s at price %s", self.name, signal, price)
-
-        for listener in self.listeners:
-            try:
-                listener(
-                    self.name, signal, price, self.symbol, self.strategy_actions , self.strategy_order_mode
-                )
-            except Exception as e:  # noqa: broad-except
-                logging.error("%s signal listener raised an exception: %s", self.name, e)
-
-    def add_plot_signal_listener(self, callback: Callable[[datetime, int, float], None]):
-        """
-        Add a plot signal listener (for compatibility with your Strategy interface).
-
-        Args:
-            callback: Plot callback function
-        """
-        self.plot_signal_listeners.append(callback)
+        """Add a submit order listener callback."""
+        self.submit_order_listeners.append(callback)
 
     def start(self):
         """Start the Nautilus strategy."""
-        logging.info("🚀 Starting %s...", self.name)
+        logging.info("🚀 Starting %s", self.name)
         try:
             # Call Nautilus strategy's on_start if it exists
             if hasattr(self.nautilus_strategy, "on_start"):
-                logging.info("Calling nautilus_strategy.on_start()...")
                 self.nautilus_strategy.on_start()
-                logging.info("✅ nautilus_strategy.on_start() completed")
-            else:
-                logging.warning("Nautilus strategy has no on_start method")
-            logging.info("✅ %s started successfully", self.name)
+            logging.info("✅ %s started", self.name)
         except Exception as e:  # noqa: broad-except
             logging.error("❌ Error starting Nautilus strategy: %s", e, exc_info=True)
 

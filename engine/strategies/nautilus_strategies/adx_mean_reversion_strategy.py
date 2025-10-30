@@ -1,4 +1,5 @@
 from decimal import Decimal
+import uuid
 
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.model.data import Bar, BarType
@@ -79,6 +80,10 @@ class ADXMeanReversionStrategy(Strategy):
         # Risk Management
         self.max_holding_bars = config.max_holding_bars
 
+        # Initialize audit logger
+        self.audit_logger = StrategyAuditLogger(
+            strategy_name=self.__class__.__name__, symbol=config.instrument_id.split(".")[0]
+        )
         # Initialize custom ADX indicator (with proper ADX calculation)
         self.adx = ADX(period=self.adx_period)
 
@@ -137,6 +142,9 @@ class ADXMeanReversionStrategy(Strategy):
         # Execute strategy based on mode
         # Execute momentum mode (ADX strategy is momentum-based)
         self._execute_momentum_mode(bar)
+
+        # Log audit information
+        self._log_audit(bar)
 
         # Update state for next bar
         self._previous_plus_di = self.adx.pos
@@ -264,11 +272,24 @@ class ADXMeanReversionStrategy(Strategy):
         # Calculate stop loss
         stop_price = float(bar.close) * (1 - self.stop_loss_percent / 100)
 
+        # Generate signal_id for this trade
+        signal_id = str(uuid.uuid4())
+
+        # Prepare indicator values for tags
+        bars_held = self._bars_processed - self._long_entry_bar if self._long_entry_bar else 0
+        tags = (
+            f"signal_id={signal_id}|"
+            f"reason={reason}|adx={self.adx.value:.2f}|"
+            f"dmi_pos={self.adx.pos:.2f}|dmi_neg={self.adx.neg:.2f}|"
+            f"adx_threshold={self.adx_threshold:.2f}|bars_held={bars_held}|action=ENTRY"
+        )
+
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.BUY,
             quantity=self.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
         self.submit_order(order)
 
@@ -279,6 +300,7 @@ class ADXMeanReversionStrategy(Strategy):
             quantity=self.quantity,
             trigger_price=Price.from_str(f"{stop_price:.2f}"),
             time_in_force=TimeInForce.GTC,
+            tags=f"signal_id={signal_id}|action=STOP_LOSS",
         )
         self.submit_order(stop_order)
 
@@ -302,11 +324,24 @@ class ADXMeanReversionStrategy(Strategy):
         # Calculate stop loss
         stop_price = float(bar.close) * (1 + self.stop_loss_percent / 100)
 
+        # Generate signal_id for this trade
+        signal_id = str(uuid.uuid4())
+
+        # Prepare indicator values for tags
+        bars_held = self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
+        tags = (
+            f"signal_id={signal_id}|"
+            f"reason={reason}|adx={self.adx.value:.2f}|"
+            f"dmi_pos={self.adx.pos:.2f}|dmi_neg={self.adx.neg:.2f}|"
+            f"adx_threshold={self.adx_threshold:.2f}|bars_held={bars_held}|action=ENTRY"
+        )
+
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.SELL,
             quantity=self.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
         self.submit_order(order)
 
@@ -317,6 +352,7 @@ class ADXMeanReversionStrategy(Strategy):
             quantity=self.quantity,
             trigger_price=Price.from_str(f"{stop_price:.2f}"),
             time_in_force=TimeInForce.GTC,
+            tags=f"signal_id={signal_id}|action=STOP_LOSS",
         )
         self.submit_order(stop_order)
 
@@ -346,11 +382,24 @@ class ADXMeanReversionStrategy(Strategy):
 
         position = positions[0]  # Get first (should be only one per instrument)
 
+        # Prepare indicator values for tags
+        bars_held = (
+            self._bars_processed - self._long_entry_bar
+            if position.is_long and self._long_entry_bar
+            else self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
+        )
+        tags = (
+            f"reason={reason}|adx={self.adx.value:.2f}|"
+            f"dmi_pos={self.adx.pos:.2f}|dmi_neg={self.adx.neg:.2f}|"
+            f"adx_threshold={self.adx_threshold:.2f}|bars_held={bars_held}|action=CLOSE"
+        )
+
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.SELL if position.is_long else OrderSide.BUY,
             quantity=position.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
 
         self.submit_order(order)
@@ -372,6 +421,50 @@ class ADXMeanReversionStrategy(Strategy):
             f"ADX: {self.adx.value:.2f} (slope: {self.adx_slope:.2f})"
         )
 
+    def _log_audit(self, bar: Bar) -> None:
+        """Log audit information for this bar."""
+        try:
+            # Calculate current position state
+            position_state = "flat"
+            bars_held = 0
+            entry_price = 0.0
+            stop_loss_price = 0.0
+
+            if not self.portfolio.is_flat(self.instrument.id):
+                if self.portfolio.is_net_long(self.instrument.id):
+                    position_state = "long"
+                else:
+                    position_state = "short"
+                bars_held = getattr(self, "_bars_processed", 0) - getattr(
+                    self, "_position_entry_bar", 0
+                )
+                entry_price = getattr(self, "_entry_price", 0.0)
+                stop_loss_price = getattr(self, "_stop_loss_price", 0.0)
+
+            # Basic indicators (strategy-specific indicators will be added per strategy)
+            indicators = {}
+
+            # Basic conditions
+            conditions = {
+                "max_bars_triggered": bars_held >= getattr(self, "max_holding_bars", 1000)
+            }
+
+            # Log to audit logger
+            self.audit_logger.log(
+                bar=bar,
+                action="",  # Will be determined by strategy logic
+                indicators=indicators,
+                position_state={
+                    "state": position_state,
+                    "bars_held": bars_held,
+                    "entry_price": entry_price,
+                    "stop_loss_price": stop_loss_price,
+                },
+                conditions=conditions,
+            )
+        except Exception as e:
+            self.log.error(f"Error in audit logging: {e}")
+
     def on_stop(self) -> None:
         """Called when strategy is stopped."""
         # Unsubscribe from bars
@@ -383,6 +476,10 @@ class ADXMeanReversionStrategy(Strategy):
         # Close all positions
         self.close_all_positions(self.instrument.id)
 
+        # Close audit logger
+        if self.audit_logger:
+            self.audit_logger.close()
+
         self.log.info(f"Strategy stopped | Bars processed: {self._bars_processed}")
 
 
@@ -393,6 +490,7 @@ from nautilus_trader.model.identifiers import Venue, Symbol, InstrumentId
 from nautilus_trader.model.instruments import CryptoPerpetual
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig
 from nautilus_trader.model.currencies import USDT, ETH
+from engine.strategies.audit_logger import StrategyAuditLogger
 
 
 def run_backtest():

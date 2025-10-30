@@ -4,10 +4,7 @@ PPO Momentum Strategy Implementation.
 Based on pine_script/ppo_strategy.pine with momentum logic.
 """
 
-import csv
-from pathlib import Path
-from datetime import datetime, timezone
-
+import uuid
 from nautilus_trader.trading.config import StrategyConfig
 from nautilus_trader.model.data import Bar, BarType
 from nautilus_trader.model.identifiers import InstrumentId
@@ -15,6 +12,7 @@ from nautilus_trader.model.enums import OrderSide, PositionSide, TimeInForce
 from nautilus_trader.trading.strategy import Strategy
 from nautilus_trader.model.objects import Price, Quantity
 from nautilus_trader.core.uuid import UUID4
+from engine.strategies.audit_logger import StrategyAuditLogger
 
 from .indicators import PPO
 
@@ -40,10 +38,6 @@ class PPOMomentumStrategyConfig(StrategyConfig, frozen=True):
     # Risk Management
     max_holding_bars: int = 93  # Max holding period in bars (from Pine Script)
     use_stop_loss: bool = True
-
-    # Trace Mode (for auditing)
-    enable_trace: bool = False  # Enable detailed trace logging
-    trace_output_dir: str = "reports"  # Directory for trace output
 
 
 class PPOMomentumStrategy(Strategy):
@@ -74,13 +68,12 @@ class PPOMomentumStrategy(Strategy):
 
         # Risk Management
         self.max_holding_bars = config.max_holding_bars
-        self.use_stop_loss = config.use_stop_loss
 
-        # Trace Mode
-        self.enable_trace = config.enable_trace
-        self.trace_output_dir = config.trace_output_dir
-        self._trace_file = None
-        self._trace_writer = None
+        # Initialize audit logger
+        self.audit_logger = StrategyAuditLogger(
+            strategy_name=self.__class__.__name__, symbol=config.instrument_id.split(".")[0]
+        )
+        self.use_stop_loss = config.use_stop_loss
 
         # Initialize PPO indicator
         self.ppo = PPO(
@@ -111,15 +104,9 @@ class PPOMomentumStrategy(Strategy):
         # Subscribe to bars for the configured bar type
         self.subscribe_bars(self.bar_type)
 
-        # Initialize trace logging if enabled
-        if self.enable_trace:
-            self._setup_trace_logging()
-
         # Log strategy initialization
         self.log.info(f"PPOMomentumStrategy started for {self.instrument.id}")
         self.log.info(f"Subscribed to {self.bar_type}")
-        if self.enable_trace:
-            self.log.info("Trace logging enabled")
 
     def on_bars_loaded(self, request_id: UUID4):
         """Called when the bars request completes"""
@@ -134,11 +121,12 @@ class PPOMomentumStrategy(Strategy):
         # Execute momentum strategy
         self._execute_momentum_mode(bar)
 
-        # Log trace
-        self._log_trace(bar)
+        # Log audit information
+        self._log_audit(bar)
 
         # Update state for next bar
         self._previous_ppo = self.ppo.value
+        self._bars_processed += 1
 
     def _execute_momentum_mode(self, bar: Bar) -> None:
         """
@@ -190,11 +178,27 @@ class PPOMomentumStrategy(Strategy):
         # Calculate stop loss
         stop_price = float(bar.close) * (1 - self.stop_loss_percent / 100)
 
+        # Generate signal_id for this trade
+        signal_id = str(uuid.uuid4())
+
+        # Prepare indicator values for tags
+        current_ppo = self.ppo.value
+        bars_held = (
+            self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
+        )
+        tags = (
+            f"signal_id={signal_id}|"
+            f"reason={reason}|ppo={current_ppo:.2f}|"
+            f"ppo_upper={self.ppo_upper:.2f}|ppo_lower={self.ppo_lower:.2f}|"
+            f"ppo_mid={self.ppo_mid:.2f}|bars_held={bars_held}|action=ENTRY"
+        )
+
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.BUY,
             quantity=self.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
 
         self.submit_order(order)
@@ -207,6 +211,7 @@ class PPOMomentumStrategy(Strategy):
                 quantity=self.quantity,
                 trigger_price=Price(stop_price, precision=2),
                 time_in_force=TimeInForce.GTC,
+                tags=f"signal_id={signal_id}|action=STOP_LOSS",
             )
             self.submit_order(stop_order)
 
@@ -220,10 +225,6 @@ class PPOMomentumStrategy(Strategy):
         self._position_side = PositionSide.LONG
         self._position_entry_bar = self._bars_processed
 
-        # Log trace
-        self._log_trace(
-            bar, action_taken="ENTER_LONG", entry_price=float(bar.close), stop_loss_price=stop_price
-        )
 
     def _enter_short(self, bar: Bar, reason: str = "Momentum signal") -> None:
         """Enter short position with stop loss."""
@@ -234,11 +235,27 @@ class PPOMomentumStrategy(Strategy):
         # Calculate stop loss
         stop_price = float(bar.close) * (1 + self.stop_loss_percent / 100)
 
+        # Generate signal_id for this trade
+        signal_id = str(uuid.uuid4())
+
+        # Prepare indicator values for tags
+        current_ppo = self.ppo.value
+        bars_held = (
+            self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
+        )
+        tags = (
+            f"signal_id={signal_id}|"
+            f"reason={reason}|ppo={current_ppo:.2f}|"
+            f"ppo_upper={self.ppo_upper:.2f}|ppo_lower={self.ppo_lower:.2f}|"
+            f"ppo_mid={self.ppo_mid:.2f}|bars_held={bars_held}|action=ENTRY"
+        )
+
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.SELL,
             quantity=self.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
 
         self.submit_order(order)
@@ -251,6 +268,7 @@ class PPOMomentumStrategy(Strategy):
                 quantity=self.quantity,
                 trigger_price=Price(stop_price, precision=2),
                 time_in_force=TimeInForce.GTC,
+                tags=f"signal_id={signal_id}|action=STOP_LOSS",
             )
             self.submit_order(stop_order)
 
@@ -264,13 +282,6 @@ class PPOMomentumStrategy(Strategy):
         self._position_side = PositionSide.SHORT
         self._position_entry_bar = self._bars_processed
 
-        # Log trace
-        self._log_trace(
-            bar,
-            action_taken="ENTER_SHORT",
-            entry_price=float(bar.close),
-            stop_loss_price=stop_price,
-        )
 
     def _close_position(self, bar: Bar, reason: str) -> None:
         """Close current position and cancel any pending stop loss orders."""
@@ -287,126 +298,120 @@ class PPOMomentumStrategy(Strategy):
 
         position = positions[0]  # Get first (should be only one per instrument)
 
+        # Prepare indicator values for tags
+        current_ppo = self.ppo.value
+        bars_held = (
+            self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
+        )
+        tags = (
+            f"reason={reason}|ppo={current_ppo:.2f}|"
+            f"ppo_upper={self.ppo_upper:.2f}|ppo_lower={self.ppo_lower:.2f}|"
+            f"ppo_mid={self.ppo_mid:.2f}|bars_held={bars_held}|action=CLOSE"
+        )
+
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
             order_side=OrderSide.SELL if position.is_long else OrderSide.BUY,
             quantity=position.quantity,
             time_in_force=TimeInForce.GTC,
+            tags=tags,
         )
 
         self.submit_order(order)
 
         if position.is_long:
             self.log.info(f"🟡 LONG EXIT: {reason} | Price: {float(bar.close):.4f}")
-            self._log_trace(bar, action_taken="EXIT_LONG", exit_price=float(bar.close))
         else:
             self.log.info(f"🟡 SHORT EXIT: {reason} | Price: {float(bar.close):.4f}")
-            self._log_trace(bar, action_taken="EXIT_SHORT", exit_price=float(bar.close))
 
         self._position_side = None
 
-    def _setup_trace_logging(self) -> None:
-        """Setup trace logging CSV file."""
+    def _log_audit(self, bar: Bar) -> None:
+        """Log audit information for this bar."""
         try:
-            output_dir = Path(self.trace_output_dir)
-            output_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            trace_filename = f"ppo_momentum_trace_{timestamp}.csv"
-            trace_path = output_dir / trace_filename
-            self._trace_file = open(trace_path, "w", newline="", encoding="utf-8")
-            self._trace_writer = csv.writer(self._trace_file)
-            header = [
-                "timestamp",
-                "bar_index",
-                "open",
-                "high",
-                "low",
-                "close",
-                "volume",
-                "ppo_value",
-                "prev_ppo_value",
-                "position_state",
-                "bars_held",
-                "entry_condition_long",
-                "entry_condition_short",
-                "exit_condition_long",
-                "exit_condition_short",
-                "max_bars_triggered",
-                "action_taken",
-                "entry_price",
-                "stop_loss_price",
-                "exit_price",
-            ]
-            self._trace_writer.writerow(header)
-            self._trace_file.flush()
-            self.log.info(f"Trace logging initialized: {trace_path}")
-        except Exception as e:  # noqa: broad-except
-            self.log.error(f"Failed to setup trace logging: {e}")
-            self.enable_trace = False
-
-    def _log_trace(
-        self,
-        bar: Bar,
-        action_taken: str = "",
-        entry_price: float = 0.0,
-        stop_loss_price: float = 0.0,
-        exit_price: float = 0.0,
-    ) -> None:
-        """Log detailed trace information."""
-        if not self.enable_trace or not self._trace_writer:
-            return
-        try:
-            current_ppo = self.ppo.value
-            entry_long = self._previous_ppo < self.ppo_upper and current_ppo >= self.ppo_upper
-            entry_short = self._previous_ppo > self.ppo_lower and current_ppo <= self.ppo_lower
-            exit_long = self._previous_ppo > self.ppo_mid and current_ppo <= self.ppo_mid
-            exit_short = self._previous_ppo < self.ppo_mid and current_ppo >= self.ppo_mid
+            # Calculate current position state
+            position_state = "flat"
             bars_held = 0
-            if self._position_side is not None and self._position_entry_bar is not None:
+            entry_price = 0.0
+            stop_loss_price = 0.0
+
+            if not self.portfolio.is_flat(self.instrument.id):
+                if self.portfolio.is_net_long(self.instrument.id):
+                    position_state = "long"
+                else:
+                    position_state = "short"
                 bars_held = self._bars_processed - self._position_entry_bar
-            max_bars_trigger = bars_held >= self.max_holding_bars if bars_held > 0 else False
-            pos_state = "flat"
-            if self._position_side == PositionSide.LONG:
-                pos_state = "long"
-            elif self._position_side == PositionSide.SHORT:
-                pos_state = "short"
-            trace_row = [
-                bar.ts_init,
-                self._bars_processed,
-                float(bar.open),
-                float(bar.high),
-                float(bar.low),
-                float(bar.close),
-                float(bar.volume),
-                current_ppo,
-                self._previous_ppo,
-                pos_state,
-                bars_held,
-                entry_long,
-                entry_short,
-                exit_long,
-                exit_short,
-                max_bars_trigger,
-                action_taken,
-                entry_price,
-                stop_loss_price,
-                exit_price,
-            ]
-            self._trace_writer.writerow(trace_row)
-            self._trace_file.flush()
-        except Exception as e:  # noqa: broad-except
-            self.log.error(f"Failed to write trace log: {e}")
+                entry_price = self._entry_price if hasattr(self, "_entry_price") else 0.0
+                stop_loss_price = (
+                    self._stop_loss_price if hasattr(self, "_stop_loss_price") else 0.0
+                )
+
+            # Calculate condition checks
+            current_ppo = self.ppo.value
+            entry_condition_long = (
+                self._previous_ppo < self.ppo_upper and current_ppo >= self.ppo_upper
+            )
+            entry_condition_short = (
+                self._previous_ppo > self.ppo_lower and current_ppo <= self.ppo_lower
+            )
+
+            exit_condition_long = False
+            exit_condition_short = False
+            if not self.portfolio.is_flat(self.instrument.id):
+                if self.portfolio.is_net_long(self.instrument.id):
+                    exit_condition_long = (
+                        self._previous_ppo > self.ppo_mid and current_ppo <= self.ppo_mid
+                    )
+                else:
+                    exit_condition_short = (
+                        self._previous_ppo < self.ppo_mid and current_ppo >= self.ppo_mid
+                    )
+
+            # Check max bars condition
+            max_bars_triggered = bars_held >= self.max_holding_bars
+
+            # Determine action taken
+            action = ""
+            if entry_condition_long:
+                action = "ENTRY_LONG"
+            elif entry_condition_short:
+                action = "ENTRY_SHORT"
+            elif exit_condition_long or exit_condition_short:
+                action = "EXIT"
+            elif max_bars_triggered:
+                action = "EXIT_MAX_BARS"
+
+            # Log to audit logger
+            self.audit_logger.log(
+                bar=bar,
+                action=action,
+                indicators={
+                    "ppo": current_ppo,
+                    "ppo_lower": self.ppo_lower,
+                    "ppo_upper": self.ppo_upper,
+                    "ppo_mid": self.ppo_mid,
+                    "ppo_fast_period": self.ppo_fast_period,
+                    "ppo_slow_period": self.ppo_slow_period,
+                },
+                position_state={
+                    "state": position_state,
+                    "bars_held": bars_held,
+                    "entry_price": entry_price,
+                    "stop_loss_price": stop_loss_price,
+                },
+                conditions={
+                    "entry_long": entry_condition_long,
+                    "entry_short": entry_condition_short,
+                    "exit_long": exit_condition_long,
+                    "exit_short": exit_condition_short,
+                    "max_bars_triggered": max_bars_triggered,
+                },
+            )
+        except Exception as e:
+            self.log.error(f"Error in audit logging: {e}")
 
     def on_stop(self) -> None:
         """Called when strategy is stopped."""
-        # Close trace file
-        if self._trace_file:
-            try:
-                self._trace_file.close()
-                self.log.info("Trace logging closed")
-            except Exception as e:  # noqa: broad-except
-                self.log.error(f"Error closing trace file: {e}")
-
         # Unsubscribe from bars
         self.unsubscribe_bars(self.bar_type)
 
@@ -415,6 +420,10 @@ class PPOMomentumStrategy(Strategy):
 
         # Close all positions
         self.close_all_positions(self.instrument.id)
+
+        # Close audit logger
+        if self.audit_logger:
+            self.audit_logger.close()
 
         self.log.info(f"Strategy stopped | Bars processed: {self._bars_processed}")
 

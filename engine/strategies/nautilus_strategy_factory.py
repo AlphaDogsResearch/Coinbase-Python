@@ -35,27 +35,12 @@ from engine.strategies.nautilus_strategies.adx_mean_reversion_strategy import (
 )
 from engine.strategies.nautilus_adapter import NautilusStrategyAdapter
 from engine.market_data.candle import CandleAggregator
-from engine.strategies.strategy_action import StrategyAction
-from engine.strategies.strategy_order_mode import StrategyOrderMode
-
-
-def should_enable_trace() -> bool:
-    """
-    Determine if trace logging should be enabled based on ENABLE_TRACE env variable.
-
-    Returns:
-        bool: True if ENABLE_TRACE=true, False otherwise (default: False)
-    """
-    enable_trace_str = os.getenv("ENABLE_TRACE", "false").lower()
-    return enable_trace_str in ("true", "1", "yes")
 
 
 def create_roc_mean_reversion_strategy(
     symbol: str,
     position_manager,
-    strategy_order_mode : StrategyOrderMode,
     interval_seconds: int = 3600,  # 1 hour
-    strategy_actions: StrategyAction = StrategyAction.OPEN_CLOSE_POSITION,
 ):
     """
     Create a ROC Mean Reversion strategy adapted for your system.
@@ -63,9 +48,7 @@ def create_roc_mean_reversion_strategy(
     Args:
         symbol: Trading symbol (e.g., "ETHUSDT")
         position_manager: Your PositionManager instance
-        strategy_order_mode: Strategy Order Mode can be notional or quantity
         interval_seconds: Candle interval in seconds
-        strategy_actions: Strategy action type
 
     Returns:
         NautilusStrategyAdapter instance ready to add to StrategyManager
@@ -92,7 +75,6 @@ def create_roc_mean_reversion_strategy(
         quantity="1.000",
         stop_loss_percent=2.1,
         max_holding_bars=100,
-        enable_trace=should_enable_trace(),  # From ENABLE_TRACE env variable
     )
 
     # Create Nautilus strategy instance
@@ -105,8 +87,6 @@ def create_roc_mean_reversion_strategy(
     adapted_strategy = NautilusStrategyAdapter(
         nautilus_strategy_instance=nautilus_strategy,
         symbol=symbol,
-        strategy_order_mode=strategy_order_mode,
-        strategy_actions=strategy_actions,
         candle_aggregator=candle_agg,
         position_manager=position_manager,
         instrument_id=instrument_id,
@@ -120,9 +100,7 @@ def create_roc_mean_reversion_strategy(
 def create_cci_momentum_strategy(
     symbol: str,
     position_manager,
-    strategy_order_mode : StrategyOrderMode,
     interval_seconds: int = 3600,  # 1 hour
-    strategy_actions: StrategyAction = StrategyAction.OPEN_CLOSE_POSITION,
 ):
     """
     Create a CCI Momentum strategy adapted for your system.
@@ -130,9 +108,7 @@ def create_cci_momentum_strategy(
     Args:
         symbol: Trading symbol (e.g., "ETHUSDT")
         position_manager: Your PositionManager instance
-        strategy_order_mode: Strategy Order Mode can be notional or quantity
         interval_seconds: Candle interval in seconds
-        strategy_actions: Strategy action type
 
     Returns:
         NautilusStrategyAdapter instance ready to add to StrategyManager
@@ -159,7 +135,6 @@ def create_cci_momentum_strategy(
         quantity="1.000",
         stop_loss_percent=7.4,
         max_holding_bars=25,
-        enable_trace=should_enable_trace(),  # From ENABLE_TRACE env variable
     )
 
     # Create Nautilus strategy instance
@@ -172,8 +147,6 @@ def create_cci_momentum_strategy(
     adapted_strategy = NautilusStrategyAdapter(
         nautilus_strategy_instance=nautilus_strategy,
         symbol=symbol,
-        strategy_order_mode=strategy_order_mode,
-        strategy_actions=strategy_actions,
         candle_aggregator=candle_agg,
         position_manager=position_manager,
         instrument_id=instrument_id,
@@ -187,10 +160,8 @@ def create_cci_momentum_strategy(
 def create_simple_order_test_strategy(
     symbol: str,
     position_manager,
-    strategy_order_mode : StrategyOrderMode,
     interval_seconds: int = 1,  # 1 second for fast testing
     bars_per_trade: int = 5,  # Trade every 5 bars
-    strategy_actions: StrategyAction = StrategyAction.OPEN_CLOSE_POSITION,
 ):
     """
     Create a Simple Order Test strategy for testing order execution flow.
@@ -202,10 +173,8 @@ def create_simple_order_test_strategy(
     Args:
         symbol: Trading symbol (e.g., "ETHUSDT")
         position_manager: Your PositionManager instance
-        strategy_order_mode: Strategy Order Mode can be notional or quantity
         interval_seconds: Candle interval in seconds (default: 1 for fast testing)
         bars_per_trade: Execute trade every N bars (default: 5)
-        strategy_actions: Strategy action type
 
     Returns:
         NautilusStrategyAdapter instance ready to add to StrategyManager
@@ -227,7 +196,6 @@ def create_simple_order_test_strategy(
         bar_type=bar_type,
         bars_per_trade=bars_per_trade,
         quantity="1.000",
-        stop_loss_percent=2.0,
     )
 
     # Create Nautilus strategy instance
@@ -240,8 +208,6 @@ def create_simple_order_test_strategy(
     adapted_strategy = NautilusStrategyAdapter(
         nautilus_strategy_instance=nautilus_strategy,
         symbol=symbol,
-        strategy_order_mode=strategy_order_mode,
-        strategy_actions=strategy_actions,
         candle_aggregator=candle_agg,
         position_manager=position_manager,
         instrument_id=instrument_id,
@@ -259,9 +225,7 @@ def create_simple_order_test_strategy(
 def create_apo_mean_reversion_strategy(
     symbol: str,
     position_manager,
-    strategy_order_mode : StrategyOrderMode,
     interval_seconds: int = 3600,  # 1 hour
-    strategy_actions: StrategyAction = StrategyAction.OPEN_CLOSE_POSITION,
 ):
     """
     Create an APO Mean Reversion strategy adapted for your system.
@@ -269,9 +233,7 @@ def create_apo_mean_reversion_strategy(
     Args:
         symbol: Trading symbol (e.g., "ETHUSDT")
         position_manager: Your PositionManager instance
-        strategy_order_mode: Strategy Order Mode can be notional or quantity
         interval_seconds: Candle interval in seconds
-        strategy_actions: Strategy action type
 
     Returns:
         NautilusStrategyAdapter instance ready to add to StrategyManager
@@ -303,7 +265,6 @@ def create_apo_mean_reversion_strategy(
         quantity="1.000",
         stop_loss_percent=7.0,
         max_holding_bars=175,
-        enable_trace=should_enable_trace(),  # From ENABLE_TRACE env variable
     )
 
     nautilus_strategy = APOMeanReversionStrategy(config=nautilus_config)
@@ -312,8 +273,6 @@ def create_apo_mean_reversion_strategy(
     adapted_strategy = NautilusStrategyAdapter(
         nautilus_strategy_instance=nautilus_strategy,
         symbol=symbol,
-        strategy_order_mode=strategy_order_mode,
-        strategy_actions=strategy_actions,
         candle_aggregator=candle_agg,
         position_manager=position_manager,
         instrument_id=instrument_id,
@@ -327,9 +286,7 @@ def create_apo_mean_reversion_strategy(
 def create_ppo_momentum_strategy(
     symbol: str,
     position_manager,
-    strategy_order_mode : StrategyOrderMode,
     interval_seconds: int = 3600,  # 1 hour
-    strategy_actions: StrategyAction = StrategyAction.POSITION_REVERSAL,
 ):
     """
     Create a PPO Momentum strategy adapted for your system.
@@ -337,9 +294,7 @@ def create_ppo_momentum_strategy(
     Args:
         symbol: Trading symbol (e.g., "ETHUSDT")
         position_manager: Your PositionManager instance
-        strategy_order_mode: Strategy Order Mode can be notional or quantity
         interval_seconds: Candle interval in seconds
-        strategy_actions: Strategy action type
 
     Returns:
         NautilusStrategyAdapter instance ready to add to StrategyManager
@@ -372,7 +327,6 @@ def create_ppo_momentum_strategy(
         stop_loss_percent=10.4,
         max_holding_bars=93,
         use_stop_loss=True,
-        enable_trace=should_enable_trace(),  # From ENABLE_TRACE env variable
     )
 
     nautilus_strategy = PPOMomentumStrategy(config=nautilus_config)
@@ -381,8 +335,6 @@ def create_ppo_momentum_strategy(
     adapted_strategy = NautilusStrategyAdapter(
         nautilus_strategy_instance=nautilus_strategy,
         symbol=symbol,
-        strategy_order_mode=strategy_order_mode,
-        strategy_actions=strategy_actions,
         candle_aggregator=candle_agg,
         position_manager=position_manager,
         instrument_id=instrument_id,
@@ -396,9 +348,7 @@ def create_ppo_momentum_strategy(
 def create_adx_mean_reversion_strategy(
     symbol: str,
     position_manager,
-    strategy_order_mode : StrategyOrderMode,
     interval_seconds: int = 3600,  # 1 hour
-    strategy_actions: StrategyAction = StrategyAction.OPEN_CLOSE_POSITION,
 ):
     """
     Create an ADX Mean Reversion strategy adapted for your system.
@@ -406,9 +356,7 @@ def create_adx_mean_reversion_strategy(
     Args:
         symbol: Trading symbol (e.g., "ETHUSDT")
         position_manager: Your PositionManager instance
-        strategy_order_mode: Strategy Order Mode can be notional or quantity
         interval_seconds: Candle interval in seconds
-        strategy_actions: Strategy action type
 
     Returns:
         NautilusStrategyAdapter instance ready to add to StrategyManager
@@ -447,8 +395,6 @@ def create_adx_mean_reversion_strategy(
     adapted_strategy = NautilusStrategyAdapter(
         nautilus_strategy_instance=nautilus_strategy,
         symbol=symbol,
-        strategy_order_mode=strategy_order_mode,
-        strategy_actions=strategy_actions,
         candle_aggregator=candle_agg,
         position_manager=position_manager,
         instrument_id=instrument_id,
