@@ -169,12 +169,13 @@ class CCIMomentumStrategy(Strategy):
 
         # Prepare indicator values for tags
         bars_held = self._bars_processed - self._long_entry_bar if self._long_entry_bar else 0
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|cci={current_cci:.2f}|"
-            f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
-            f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        # ENTRY tags:
+        tags = [
+            f"signal_id={signal_id}",
+            f"cci_mid={self.cci_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY"
+        ]
 
         # Submit market order
         order = self.order_factory.market(
@@ -221,12 +222,13 @@ class CCIMomentumStrategy(Strategy):
 
         # Prepare indicator values for tags
         bars_held = self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|cci={current_cci:.2f}|"
-            f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
-            f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        # ENTRY tags:
+        tags = [
+            f"signal_id={signal_id}",
+            f"cci_mid={self.cci_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY"
+        ]
 
         # Submit market order
         order = self.order_factory.market(
@@ -278,11 +280,16 @@ class CCIMomentumStrategy(Strategy):
             # Prepare indicator values for tags
             current_cci = self.cci.value
             bars_held = self._bars_processed - self._long_entry_bar if self._long_entry_bar else 0
-            tags = (
-                f"reason={reason}|cci={current_cci:.2f}|"
-                f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
-                f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=CLOSE"
-            )
+            # CLOSE tags:
+            tags = [
+                f"reason={reason}",
+                f"cci={current_cci:.2f}",
+                f"cci_upper={self.cci_upper:.2f}",
+                f"cci_lower={self.cci_lower:.2f}",
+                f"cci_mid={self.cci_mid:.2f}",
+                f"bars_held={bars_held}",
+                "action=CLOSE"
+            ]
 
             # Close long position
             order = self.order_factory.market(
@@ -300,11 +307,16 @@ class CCIMomentumStrategy(Strategy):
             # Prepare indicator values for tags
             current_cci = self.cci.value
             bars_held = self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
-            tags = (
-                f"reason={reason}|cci={current_cci:.2f}|"
-                f"cci_upper={self.cci_upper:.2f}|cci_lower={self.cci_lower:.2f}|"
-                f"cci_mid={self.cci_mid:.2f}|bars_held={bars_held}|action=CLOSE"
-            )
+            # CLOSE tags:
+            tags = [
+                f"reason={reason}",
+                f"cci={current_cci:.2f}",
+                f"cci_upper={self.cci_upper:.2f}",
+                f"cci_lower={self.cci_lower:.2f}",
+                f"cci_mid={self.cci_mid:.2f}",
+                f"bars_held={bars_held}",
+                "action=CLOSE"
+            ]
 
             # Close short position
             order = self.order_factory.market(

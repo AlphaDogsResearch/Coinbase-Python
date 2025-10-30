@@ -6,7 +6,7 @@ existing StrategyManager, OrderManager, and PositionManager infrastructure.
 """
 
 import logging
-from typing import Callable, List
+from typing import Callable, List, Dict
 from common.interface_order import Side, OrderType
 from datetime import datetime
 
@@ -149,7 +149,7 @@ class NautilusStrategyAdapter(Strategy):
         )
 
         # Create adapters for Nautilus components
-        self.portfolio_adapter = NautilusPortfolioAdapter(position_manager)
+        self.portfolio_adapter = NautilusPortfolioAdapter(position_manager, strategy_id=self.name)
         self.cache_adapter = NautilusCacheAdapter({instrument_id: self.instrument_adapter})
         self.order_factory_adapter = NautilusOrderFactoryAdapter(
             strategy_id=self.name,
@@ -158,9 +158,7 @@ class NautilusStrategyAdapter(Strategy):
         )
 
         # Submit order listeners
-        self.submit_order_listeners: List[
-            Callable[[str, Side, OrderType, float, float, str, List[str]], bool]
-        ] = []
+        self.submit_order_listeners: Dict[str, Callable] = {}
 
         # Inject adapters into Nautilus strategy
         self._inject_adapters()
@@ -255,13 +253,20 @@ class NautilusStrategyAdapter(Strategy):
                     if isinstance(order, dict)
                     else getattr(order, "trigger_price", None)
                 )
-                tags_str = (
-                    order.get("tags") if isinstance(order, dict) else getattr(order, "tags", "")
+                tags_value = (
+                    order.get("tags") if isinstance(order, dict) else getattr(order, "tags", None)
                 )
-                # Parse tags string into list (split by | and filter empty strings)
-                tags = (
-                    [tag.strip() for tag in tags_str.split("|") if tag.strip()] if tags_str else []
-                )
+                if isinstance(tags_value, list):
+                    tags = tags_value
+                elif isinstance(tags_value, str):
+                    tags = [tag.strip() for tag in tags_value.split("|") if tag.strip()]
+                else:
+                    tags = []
+                # Extract signal_id if present
+                signal_id = None
+                for t in tags:
+                    if t.startswith("signal_id="):
+                        signal_id = t.split("=", 1)[1]
 
                 # Convert order side to our Side enum
                 from common.interface_order import Side, OrderType
@@ -289,39 +294,45 @@ class NautilusStrategyAdapter(Strategy):
                     order_type_enum = OrderType.Market
                     order_price = self._last_price
 
-                # Submit order through callbacks
-                if self.submit_order_listeners:
-                    success = False
-                    for callback in self.submit_order_listeners:
-                        try:
-                            result = callback(
-                                strategy_id=self.name,
-                                side=side,
-                                order_type=order_type_enum,
-                                notional=NOTIONAL_PER_ORDER,
-                                price=order_price,
-                                symbol=self.symbol,
-                                tags=tags,
-                            )
-                            if result:
-                                success = True
-                                break
-                        except Exception as e:
-                            logging.error(f"Error in submit order callback: {e}", exc_info=True)
-
-                    if success:
-                        logging.info(
-                            f"✅ Intercepted order submitted via callback: {order_type} {side.name} {self.symbol} at {order_price}"
-                        )
-                    else:
-                        logging.error(
-                            f"❌ Failed to submit intercepted order via callback: {order_type} {side.name} {self.symbol} at {order_price}"
-                        )
-
-                    return success
+                # Extract signal_id and action
+                signal_id = None
+                action = None
+                for t in tags:
+                    if t.startswith("signal_id="):
+                        signal_id = t.split("=", 1)[1]
+                    elif t.startswith("action="):
+                        action = t.split("=", 1)[1].strip().upper()
+                    elif t in ("ENTRY", "STOP_LOSS", "CLOSE"):
+                        action = t
+                # Dispatch by action/type
+                if action == "ENTRY" and "ENTRY" in self.submit_order_listeners:
+                    self.submit_order_listeners["ENTRY"](
+                        strategy_id=self.name,
+                        symbol=self.symbol,
+                        side=side,
+                        quantity=quantity,
+                        price=order_price,
+                        signal_id=signal_id,
+                        tags=tags,
+                    )
+                elif action == "CLOSE" and "CLOSE" in self.submit_order_listeners:
+                    self.submit_order_listeners["CLOSE"](
+                        strategy_id=self.name, symbol=self.symbol, price=order_price, tags=tags
+                    )
+                elif action == "STOP_LOSS" and "STOP_LOSS" in self.submit_order_listeners:
+                    self.submit_order_listeners["STOP_LOSS"](
+                        strategy_id=self.name,
+                        symbol=self.symbol,
+                        side=side,
+                        quantity=quantity,
+                        trigger_price=order_price,
+                        signal_id=signal_id,
+                        tags=tags,
+                    )
                 else:
-                    logging.error("No submit order listeners available for order submission")
-                    return False
+                    logging.error(
+                        f"Unknown or unhandled order action in intercepted_submit_order: {action}"
+                    )
 
             except Exception as e:
                 logging.error(f"Error in intercepted_submit_order: {e}", exc_info=True)
@@ -464,12 +475,8 @@ class NautilusStrategyAdapter(Strategy):
         """
         # Not used for candle-based Nautilus strategies
 
-    def add_submit_order_listener(
-        self,
-        callback: Callable[[str, Side, OrderType, float, float, str, List[str]], bool],
-    ):
-        """Add a submit order listener callback."""
-        self.submit_order_listeners.append(callback)
+    def add_submit_order_listener(self, action: str, callback: Callable):
+        self.submit_order_listeners[action] = callback
 
     def start(self):
         """Start the Nautilus strategy."""

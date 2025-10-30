@@ -175,12 +175,16 @@ class ROCMeanReversionStrategy(Strategy):
 
         # Prepare indicator values for tags
         current_roc = self.roc.value * 100
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|roc={current_roc:.2f}|"
-            f"roc_lower={self.roc_lower:.2f}|roc_upper={self.roc_upper:.2f}|"
-            f"roc_mid={self.roc_mid:.2f}|bars_held={self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"reason={reason}",
+            f"roc={current_roc:.2f}",
+            f"roc_lower={self.roc_lower:.2f}",
+            f"roc_upper={self.roc_upper:.2f}",
+            f"roc_mid={self.roc_mid:.2f}",
+            f"bars_held={self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0}",
+            "action=ENTRY"
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -224,12 +228,16 @@ class ROCMeanReversionStrategy(Strategy):
         # Prepare indicator values for tags
         current_roc = self.roc.value * 100
         signal_id = str(uuid.uuid4())
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|roc={current_roc:.2f}|"
-            f"roc_lower={self.roc_lower:.2f}|roc_upper={self.roc_upper:.2f}|"
-            f"roc_mid={self.roc_mid:.2f}|bars_held={self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"reason={reason}",
+            f"roc={current_roc:.2f}",
+            f"roc_lower={self.roc_lower:.2f}",
+            f"roc_upper={self.roc_upper:.2f}",
+            f"roc_mid={self.roc_mid:.2f}",
+            f"bars_held={self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0}",
+            "action=ENTRY"
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -282,11 +290,15 @@ class ROCMeanReversionStrategy(Strategy):
         bars_held = (
             self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
         )
-        tags = (
-            f"reason={reason}|roc={current_roc:.2f}|"
-            f"roc_lower={self.roc_lower:.2f}|roc_upper={self.roc_upper:.2f}|"
-            f"roc_mid={self.roc_mid:.2f}|bars_held={bars_held}|action=CLOSE"
-        )
+        tags = [
+            f"reason={reason}",
+            f"roc={current_roc:.2f}",
+            f"roc_lower={self.roc_lower:.2f}",
+            f"roc_upper={self.roc_upper:.2f}",
+            f"roc_mid={self.roc_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=CLOSE"
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,

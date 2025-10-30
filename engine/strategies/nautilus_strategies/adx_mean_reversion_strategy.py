@@ -277,12 +277,16 @@ class ADXMeanReversionStrategy(Strategy):
 
         # Prepare indicator values for tags
         bars_held = self._bars_processed - self._long_entry_bar if self._long_entry_bar else 0
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|adx={self.adx.value:.2f}|"
-            f"dmi_pos={self.adx.pos:.2f}|dmi_neg={self.adx.neg:.2f}|"
-            f"adx_threshold={self.adx_threshold:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"reason={reason}",
+            f"adx={self.adx.value:.2f}",
+            f"dmi_pos={self.adx.pos:.2f}",
+            f"dmi_neg={self.adx.neg:.2f}",
+            f"adx_threshold={self.adx_high:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY",
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -300,7 +304,7 @@ class ADXMeanReversionStrategy(Strategy):
             quantity=self.quantity,
             trigger_price=Price.from_str(f"{stop_price:.2f}"),
             time_in_force=TimeInForce.GTC,
-            tags=f"signal_id={signal_id}|action=STOP_LOSS",
+            tags=[f"signal_id={signal_id}", "action=STOP_LOSS"],
         )
         self.submit_order(stop_order)
 
@@ -329,12 +333,16 @@ class ADXMeanReversionStrategy(Strategy):
 
         # Prepare indicator values for tags
         bars_held = self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|adx={self.adx.value:.2f}|"
-            f"dmi_pos={self.adx.pos:.2f}|dmi_neg={self.adx.neg:.2f}|"
-            f"adx_threshold={self.adx_threshold:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"reason={reason}",
+            f"adx={self.adx.value:.2f}",
+            f"dmi_pos={self.adx.pos:.2f}",
+            f"dmi_neg={self.adx.neg:.2f}",
+            f"adx_threshold={self.adx_high:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY",
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -352,7 +360,7 @@ class ADXMeanReversionStrategy(Strategy):
             quantity=self.quantity,
             trigger_price=Price.from_str(f"{stop_price:.2f}"),
             time_in_force=TimeInForce.GTC,
-            tags=f"signal_id={signal_id}|action=STOP_LOSS",
+            tags=[f"signal_id={signal_id}", "action=STOP_LOSS"],
         )
         self.submit_order(stop_order)
 
@@ -388,11 +396,15 @@ class ADXMeanReversionStrategy(Strategy):
             if position.is_long and self._long_entry_bar
             else self._bars_processed - self._short_entry_bar if self._short_entry_bar else 0
         )
-        tags = (
-            f"reason={reason}|adx={self.adx.value:.2f}|"
-            f"dmi_pos={self.adx.pos:.2f}|dmi_neg={self.adx.neg:.2f}|"
-            f"adx_threshold={self.adx_threshold:.2f}|bars_held={bars_held}|action=CLOSE"
-        )
+        tags = [
+            f"reason={reason}",
+            f"adx={self.adx.value:.2f}",
+            f"dmi_pos={self.adx.pos:.2f}",
+            f"dmi_neg={self.adx.neg:.2f}",
+            f"adx_threshold={self.adx_high:.2f}",
+            f"bars_held={bars_held}",
+            "action=CLOSE",
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,

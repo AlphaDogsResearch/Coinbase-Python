@@ -213,11 +213,13 @@ class SimpleOrderTestStrategy(Strategy):
         signal_id = str(uuid.uuid4())
 
         # Prepare tags for test strategy
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|bar_count={self._bar_counter}|"
-            f"trade_count={self._trade_counter}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"reason={reason}",
+            f"bar_count={self._bar_counter}",
+            f"trade_count={self._trade_counter}",
+            "action=ENTRY"
+        ]
 
         # Create market order for entry
         market_order = self.order_factory.market(
@@ -250,11 +252,13 @@ class SimpleOrderTestStrategy(Strategy):
         signal_id = str(uuid.uuid4())
 
         # Prepare tags for test strategy
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|bar_count={self._bar_counter}|"
-            f"trade_count={self._trade_counter}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"reason={reason}",
+            f"bar_count={self._bar_counter}",
+            f"trade_count={self._trade_counter}",
+            "action=ENTRY"
+        ]
 
         # Create market order for entry
         market_order = self.order_factory.market(
@@ -294,10 +298,12 @@ class SimpleOrderTestStrategy(Strategy):
             close_side = OrderSide.BUY
 
         # Prepare tags for close
-        tags = (
-            f"reason={reason}|bar_count={self._bar_counter}|"
-            f"trade_count={self._trade_counter}|action=CLOSE"
-        )
+        tags = [
+            f"reason={reason}",
+            f"bar_count={self._bar_counter}",
+            f"trade_count={self._trade_counter}",
+            "action=CLOSE"
+        ]
 
         # Create market order to close
         close_order = self.order_factory.market(

@@ -184,12 +184,12 @@ class APOMeanReversionStrategy(Strategy):
         bars_held = (
             self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
         )
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|apo={current_apo:.2f}|"
-            f"apo_upper={self.apo_upper:.2f}|apo_lower={self.apo_lower:.2f}|"
-            f"apo_mid={self.apo_mid:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"apo_mid={self.apo_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY",
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -240,12 +240,12 @@ class APOMeanReversionStrategy(Strategy):
         bars_held = (
             self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
         )
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|apo={current_apo:.2f}|"
-            f"apo_upper={self.apo_upper:.2f}|apo_lower={self.apo_lower:.2f}|"
-            f"apo_mid={self.apo_mid:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"apo_mid={self.apo_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY",
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -299,11 +299,15 @@ class APOMeanReversionStrategy(Strategy):
         bars_held = (
             self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
         )
-        tags = (
-            f"reason={reason}|apo={current_apo:.2f}|"
-            f"apo_upper={self.apo_upper:.2f}|apo_lower={self.apo_lower:.2f}|"
-            f"apo_mid={self.apo_mid:.2f}|bars_held={bars_held}|action=CLOSE"
-        )
+        tags = [
+            f"reason={reason}",
+            f"apo={current_apo:.2f}",
+            f"apo_upper={self.apo_upper:.2f}",
+            f"apo_lower={self.apo_lower:.2f}",
+            f"apo_mid={self.apo_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=CLOSE",
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,

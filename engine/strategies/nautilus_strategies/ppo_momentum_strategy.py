@@ -186,12 +186,12 @@ class PPOMomentumStrategy(Strategy):
         bars_held = (
             self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
         )
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|ppo={current_ppo:.2f}|"
-            f"ppo_upper={self.ppo_upper:.2f}|ppo_lower={self.ppo_lower:.2f}|"
-            f"ppo_mid={self.ppo_mid:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"ppo_mid={self.ppo_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY"
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -243,12 +243,12 @@ class PPOMomentumStrategy(Strategy):
         bars_held = (
             self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
         )
-        tags = (
-            f"signal_id={signal_id}|"
-            f"reason={reason}|ppo={current_ppo:.2f}|"
-            f"ppo_upper={self.ppo_upper:.2f}|ppo_lower={self.ppo_lower:.2f}|"
-            f"ppo_mid={self.ppo_mid:.2f}|bars_held={bars_held}|action=ENTRY"
-        )
+        tags = [
+            f"signal_id={signal_id}",
+            f"ppo_mid={self.ppo_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=ENTRY"
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,
@@ -303,11 +303,15 @@ class PPOMomentumStrategy(Strategy):
         bars_held = (
             self._bars_processed - self._position_entry_bar if self._position_entry_bar else 0
         )
-        tags = (
-            f"reason={reason}|ppo={current_ppo:.2f}|"
-            f"ppo_upper={self.ppo_upper:.2f}|ppo_lower={self.ppo_lower:.2f}|"
-            f"ppo_mid={self.ppo_mid:.2f}|bars_held={bars_held}|action=CLOSE"
-        )
+        tags = [
+            f"reason={reason}",
+            f"ppo={current_ppo:.2f}",
+            f"ppo_upper={self.ppo_upper:.2f}",
+            f"ppo_lower={self.ppo_lower:.2f}",
+            f"ppo_mid={self.ppo_mid:.2f}",
+            f"bars_held={bars_held}",
+            "action=CLOSE"
+        ]
 
         order = self.order_factory.market(
             instrument_id=self.instrument.id,

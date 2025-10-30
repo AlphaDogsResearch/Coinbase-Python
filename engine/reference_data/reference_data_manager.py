@@ -89,7 +89,7 @@ class ReferenceDataManager:
         min_lot_size = convert_str_to_decimal("0")
         min_step_size = convert_str_to_decimal("0")
         if reference is not None:
-            if order_type == OrderType.Market:
+            if order_type == OrderType.Market or order_type == OrderType.StopMarket:
                 min_lot_size = convert_to_decimal(reference.min_market_lot_size)
                 min_step_size = reference.market_lot_step_size
             elif order_type == OrderType.Limit:

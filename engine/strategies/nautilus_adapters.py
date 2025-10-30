@@ -171,7 +171,7 @@ class NautilusPortfolioAdapter:
     - portfolio.positions(instrument_id)
     """
 
-    def __init__(self, position_manager: PositionManager):
+    def __init__(self, position_manager: PositionManager, strategy_id: Optional[str] = None):
         """
         Initialize portfolio adapter.
 
@@ -179,6 +179,8 @@ class NautilusPortfolioAdapter:
             position_manager: Your system's PositionManager
         """
         self.position_manager = position_manager
+        # If provided, restrict portfolio view to this strategy_id
+        self.strategy_id = strategy_id
 
     def is_flat(self, instrument_id: InstrumentId) -> bool:
         """
@@ -191,7 +193,11 @@ class NautilusPortfolioAdapter:
             True if position amount is 0
         """
         symbol = extract_symbol_from_instrument_id(str(instrument_id))
-        position = self.position_manager.positions.get(symbol)
+        position = (
+            self.position_manager.get_position(symbol, self.strategy_id)
+            if self.strategy_id is not None
+            else self.position_manager.positions.get(symbol)
+        )
 
         if position is None:
             return True
@@ -209,7 +215,11 @@ class NautilusPortfolioAdapter:
             True if position amount > 0
         """
         symbol = extract_symbol_from_instrument_id(str(instrument_id))
-        position = self.position_manager.positions.get(symbol)
+        position = (
+            self.position_manager.get_position(symbol, self.strategy_id)
+            if self.strategy_id is not None
+            else self.position_manager.positions.get(symbol)
+        )
 
         if position is None:
             return False
@@ -227,7 +237,11 @@ class NautilusPortfolioAdapter:
             True if position amount < 0
         """
         symbol = extract_symbol_from_instrument_id(str(instrument_id))
-        position = self.position_manager.positions.get(symbol)
+        position = (
+            self.position_manager.get_position(symbol, self.strategy_id)
+            if self.strategy_id is not None
+            else self.position_manager.positions.get(symbol)
+        )
 
         if position is None:
             return False
@@ -247,15 +261,28 @@ class NautilusPortfolioAdapter:
             List of adapted position objects
         """
         if instrument_id is None:
-            # Return all positions
-            return [
-                NautilusPositionAdapter(pos, InstrumentId.from_str(f"{symbol}.BINANCE"))
-                for symbol, pos in self.position_manager.positions.items()
-                if abs(pos.position_amount) > 1e-8
-            ]
+            # Return all positions for this strategy (or aggregate if strategy_id is None)
+            if self.strategy_id is None:
+                return [
+                    NautilusPositionAdapter(pos, InstrumentId.from_str(f"{symbol}.BINANCE"))
+                    for symbol, pos in self.position_manager.positions.items()
+                    if abs(pos.position_amount) > 1e-8
+                ]
+            else:
+                results: List[NautilusPositionAdapter] = []
+                for (sid, sym), pos in self.position_manager.positions_by_key.items():
+                    if sid == self.strategy_id and abs(pos.position_amount) > 1e-8:
+                        results.append(
+                            NautilusPositionAdapter(pos, InstrumentId.from_str(f"{sym}.BINANCE"))
+                        )
+                return results
 
         symbol = extract_symbol_from_instrument_id(str(instrument_id))
-        position = self.position_manager.positions.get(symbol)
+        position = (
+            self.position_manager.get_position(symbol, self.strategy_id)
+            if self.strategy_id is not None
+            else self.position_manager.positions.get(symbol)
+        )
 
         if position is None or abs(position.position_amount) < 1e-8:
             return []
