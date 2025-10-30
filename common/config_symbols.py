@@ -5,8 +5,9 @@
 # Example: ['BTCUSDT', 'ETHUSDT', 'BNBUSDT']
 
 TRADING_SYMBOLS = [
-    'BTCUSDC',
-    'ETHUSDC',
-    'XRPUSDC',
+    # "BTCUSDC",
+    # "ETHUSDC",
+    # "XRPUSDC",
+    "ETHUSDT",
     # Add more symbols as needed
 ]

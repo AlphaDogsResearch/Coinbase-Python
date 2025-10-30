@@ -5,11 +5,11 @@ import time
 from abc import ABC
 from decimal import Decimal
 from queue import Queue
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from common.decimal_utils import convert_to_decimal, add_numbers
 from common.identifier import OrderIdGenerator
-from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderSizeMode
+from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderSizeMode, OrderType
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
 from engine.execution.executor import Executor
@@ -21,7 +21,12 @@ from engine.strategies.strategy_order_mode import StrategyOrderMode
 
 
 class FCFSOrderManager(OrderManager, ABC):
-    def __init__(self, executor: Executor, risk_manager: RiskManager, reference_data_manager: ReferenceDataManager):
+    def __init__(
+        self,
+        executor: Executor,
+        risk_manager: RiskManager,
+        reference_data_manager: ReferenceDataManager,
+    ):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
         self.name = "FCFSOrderManager"
@@ -31,20 +36,19 @@ class FCFSOrderManager(OrderManager, ABC):
         self.running = False
         # TODO maybe should create a new order id generator for each strat
         self.id_generator = OrderIdGenerator("STRAT")
-        self.process_thread = threading.Thread(target=self._process_orders, daemon=True, name=self.name)
+        self.process_thread = threading.Thread(
+            target=self._process_orders, daemon=True, name=self.name
+        )
         self.risk_manager = risk_manager
         self.reference_data_manager = reference_data_manager
         self.single_asset_strategy_position = {}
 
-        self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(
-            self.id_generator.next()
-        ), size=100)
+        self.order_pool = ObjectPool(
+            create_func=lambda: Order.create_base_order(self.id_generator.next()), size=100
+        )
 
         # Statistics
-        self.stats = {
-            'total_orders': 0,
-            'by_strategy': {}
-        }
+        self.stats = {"total_orders": 0, "by_strategy": {}}
         self.stats_lock = threading.Lock()
 
     def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
@@ -59,13 +63,22 @@ class FCFSOrderManager(OrderManager, ABC):
             self.single_asset_strategy_position[strategy_id] = actual_position
         else:
             current_pos = self.single_asset_strategy_position[strategy_id]
-            self.single_asset_strategy_position[strategy_id] = add_numbers(current_pos,actual_position)
+            self.single_asset_strategy_position[strategy_id] = add_numbers(
+                current_pos, actual_position
+            )
 
     def get_single_asset_current_strategy_position(self, strategy_id: str) -> float:
         return self.single_asset_strategy_position.get(strategy_id, 0)
 
-    def on_signal(self, strategy_id: str, signal: int, price: float, symbol: str,
-                  strategy_actions: StrategyAction,strategy_order_mode:StrategyOrderMode) -> bool:
+    def on_signal(
+        self,
+        strategy_id: str,
+        signal: int,
+        price: float,
+        symbol: str,
+        strategy_actions: StrategyAction,
+        strategy_order_mode: StrategyOrderMode,
+    ) -> bool:
 
         try:
             order = self.order_pool.acquire()
@@ -79,17 +92,19 @@ class FCFSOrderManager(OrderManager, ABC):
             order_quantity = 0
             if strategy_order_mode.get_order_mode() == OrderSizeMode.NOTIONAL:
                 order_quantity = self.reference_data_manager.get_effective_quantity_by_notional(
-                    self.executor.order_type, symbol, strategy_order_mode.notional_value)
+                    self.executor.order_type, symbol, strategy_order_mode.notional_value
+                )
             elif strategy_order_mode.get_order_mode() == OrderSizeMode.QUANTITY:
-                order_quantity = self.reference_data_manager.get_effective_quantity(self.executor.order_type, symbol,
-                                                                                    strategy_order_mode.quantity)
+                order_quantity = self.reference_data_manager.get_effective_quantity(
+                    self.executor.order_type, symbol, strategy_order_mode.quantity
+                )
             if order_quantity == 0:
                 logging.error(f"Something went wrong order_quantity:{order_quantity}")
 
             if strategy_actions == StrategyAction.POSITION_REVERSAL:
                 current_pos = self.get_single_asset_current_strategy_position(strategy_id)
                 logging.info(f"Current position: {current_pos} strategy_id {strategy_id}")
-                if current_pos !=0:
+                if current_pos != 0:
                     order_quantity = order_quantity + convert_to_decimal(abs(current_pos))
                     logging.info(f"Final Quantity: {order_quantity}")
             elif strategy_actions == StrategyAction.OPEN_CLOSE_POSITION:
@@ -106,13 +121,75 @@ class FCFSOrderManager(OrderManager, ABC):
                 f"notional {strategy_order_mode.notional_value},"
                 f"calculated order_quantity {order_quantity} "
                 f"strategy_actions {strategy_actions} "
-                )
+            )
 
-            order.update_order_fields(side, float(order_quantity), symbol, current_milli_time(), price, strategy_id)
+            order.update_order_fields(
+                side, float(order_quantity), symbol, current_milli_time(), price, strategy_id
+            )
 
             return self.submit_order_internal(order)
         except Exception as e:
             logging.error("Error Submitting Order on Signal:  %s", exc_info=e)
+            return False
+
+    def submit_order(
+        self,
+        strategy_id: str,
+        side: Side,
+        order_type: OrderType,
+        notional: float,
+        price: float,
+        symbol: str,
+        tags: List[str] = None,
+    ) -> bool:
+        """
+        Submit order with explicit order type control.
+
+        Args:
+            strategy_id: Strategy identifier
+            side: Order side (BUY/SELL)
+            order_type: Order type (Market, Limit, StopMarket, etc.)
+            notional: Order notional value
+            price: Order price (for limit/stop orders)
+            symbol: Trading symbol
+            tags: List of order tags (optional, for future use)
+
+        Returns:
+            bool: True if order submitted successfully
+        """
+        try:
+            order = self.order_pool.acquire()
+            logging.info(f"Order ID from object Pool {order.order_id}")
+
+            # Calculate order quantity based on notional
+            order_quantity = self.reference_data_manager.get_effective_quantity_by_notional(
+                order_type, symbol, notional
+            )
+
+            if order_quantity == 0:
+                logging.error(f"Something went wrong order_quantity:{order_quantity}")
+                return False
+
+            # Log tags if provided (for future use)
+            if tags:
+                logging.info(f"Order tags: {tags}")
+
+            logging.info(
+                f"Symbol {symbol} with "
+                f"notional {notional}, "
+                f"calculated order_quantity {order_quantity} "
+                f"order_type {order_type}"
+            )
+
+            # Update order fields with the specified order type
+            order.update_order_fields(
+                side, float(order_quantity), symbol, current_milli_time(), price, strategy_id
+            )
+            order.order_type = order_type  # Set the specific order type
+
+            return self.submit_order_internal(order)
+        except Exception as e:
+            logging.error("Error Submitting Nautilus Order: %s", exc_info=e)
             return False
 
     def submit_order_internal(self, order: Order) -> bool:
@@ -132,12 +209,13 @@ class FCFSOrderManager(OrderManager, ABC):
 
         # Update statistics
         with self.stats_lock:
-            self.stats['total_orders'] += 1
-            if strategy_id not in self.stats['by_strategy']:
-                self.stats['by_strategy'][strategy_id] = 0
-            self.stats['by_strategy'][strategy_id] += 1
+            self.stats["total_orders"] += 1
+            if strategy_id not in self.stats["by_strategy"]:
+                self.stats["by_strategy"][strategy_id] = 0
+            self.stats["by_strategy"][strategy_id] += 1
 
         logging.info(f"Order {order.order_id} from {strategy_id} submitted at {order.timestamp}")
+
         return True
 
     def on_order_event(self, order_event: OrderEvent):
@@ -190,8 +268,10 @@ class FCFSOrderManager(OrderManager, ABC):
                     logging.info("Order is None")
                     break
 
-                logging.info(f"Processing order {order.order_id} from {order.strategy_id} "
-                             f"(wait time: {current_milli_time() - order.timestamp:.3f}s)")
+                logging.info(
+                    f"Processing order {order.order_id} from {order.strategy_id} "
+                    f"(wait time: {current_milli_time() - order.timestamp:.3f}s)"
+                )
 
                 # Execute immediately
                 self.executor.on_signal(order)
@@ -200,7 +280,9 @@ class FCFSOrderManager(OrderManager, ABC):
             except queue.Empty:
                 pass
             except Exception as e:
-                logging.error("Exception processing order {order.id} from {order.strategy_id} ", exc_info=e)
+                logging.error(
+                    "Exception processing order {order.id} from {order.strategy_id} ", exc_info=e
+                )
                 # Timeout is expected, other errors should be handled
                 if not isinstance(e, Exception):  # Queue.Empty
                     logging.info(f"Order processing error: {e}")
