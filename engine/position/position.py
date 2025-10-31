@@ -10,18 +10,22 @@ class Position:
     Manages a single trading position, open orders, PnL, and persistence for each symbol.
     Combines position logic and persistence for institutional trading systems.
     """
+
     def __init__(
         self,
         symbol: str,
+        strategy_id: Optional[str] = None,
         position_amount: float = 0.0,
         entry_price: float = 0.0,
         unrealised_pnl: float = 0.0,
         maint_margin: float = 0.0,
         trading_cost: Optional[TradingCost] = None,
         realized_pnl_listener: Optional[Callable[[str, float], None]] = None,
-        storage_path: str = "position_state.json"
+        storage_path: str = "position_state.json",
     ):
         self.symbol = symbol
+        # Optional strategy identifier for per-strategy isolation. None indicates aggregate.
+        self.strategy_id = strategy_id
         self.position_amount = position_amount
         self.entry_price = entry_price
         self.unrealised_pnl = unrealised_pnl
@@ -42,6 +46,7 @@ class Position:
     def _save_state(self):
         state = {
             "symbol": self.symbol,
+            "strategy_id": self.strategy_id,
             "position_amount": self.position_amount,
             "entry_price": self.entry_price,
             "unrealised_pnl": self.unrealised_pnl,
@@ -51,7 +56,7 @@ class Position:
             "maker_fee": self.maker_fee,
             "total_trading_cost": self.total_trading_cost,
             "open_orders": self.open_orders,
-            "position_pnl": self.position_pnl
+            "position_pnl": self.position_pnl,
         }
         try:
             with open(self.storage_path, "w") as f:
@@ -64,6 +69,7 @@ class Position:
             with open(self.storage_path, "r") as f:
                 state = json.load(f)
                 self.symbol = state.get("symbol", self.symbol)
+                self.strategy_id = state.get("strategy_id", None)
                 self.position_amount = state.get("position_amount", 0.0)
                 self.entry_price = state.get("entry_price", 0.0)
                 self.unrealised_pnl = state.get("unrealised_pnl", 0.0)
@@ -94,7 +100,9 @@ class Position:
         logging.debug("Updated Unrealized Pnl for %s: %s", self.symbol, self)
         return self.unrealised_pnl
 
-    def update_maintenance_margin(self, mark_price: float, maint_margin_rate: float, maint_amount: float):
+    def update_maintenance_margin(
+        self, mark_price: float, maint_margin_rate: float, maint_amount: float
+    ):
         notional_value = abs(self.position_amount) * mark_price
         self.maint_margin = (notional_value * maint_margin_rate) + maint_amount
         self.maint_margin = round(self.maint_margin, self.maint_margin_decimal_place)
@@ -109,8 +117,14 @@ class Position:
         fee_rate = self.taker_fee if is_taker else self.maker_fee
         trading_cost = round(executed_notional * fee_rate, 9)
         self.total_trading_cost += trading_cost
-        logging.info("Trading Cost for %s, qty %s , price %s , fee %s -> %s", self.symbol, trade_qty, trade_price,
-                     fee_rate, trading_cost)
+        logging.info(
+            "Trading Cost for %s, qty %s , price %s , fee %s -> %s",
+            self.symbol,
+            trade_qty,
+            trade_price,
+            fee_rate,
+            trading_cost,
+        )
         if old_qty * trade_qty < 0:  # Opposite direction: closing or flipping
             close_qty = min(abs(trade_qty), abs(old_qty))
             realized_pnl = close_qty * (trade_price - self.entry_price)
@@ -159,6 +173,7 @@ class Position:
     def __str__(self):
         return (
             f"Symbol={self.symbol}, "
+            f"Strategy={self.strategy_id}, "
             f"Position Amount={self.position_amount}, "
             f"Entry Price={self.entry_price}, "
             f"Unrealized PNL={self.unrealised_pnl}, "
@@ -170,6 +185,7 @@ class Position:
     def to_dict(self):
         return {
             "symbol": self.symbol,
+            "strategy_id": self.strategy_id,
             "position_amount": self.position_amount,
             "entry_price": self.entry_price,
             "unrealised_pnl": self.unrealised_pnl,
@@ -179,22 +195,25 @@ class Position:
             "maker_fee": self.maker_fee,
             "total_trading_cost": self.total_trading_cost,
             "open_orders": self.open_orders,
-            "position_pnl": self.position_pnl
+            "position_pnl": self.position_pnl,
         }
 
     @classmethod
     def from_dict(cls, d):
         dummy_listener = lambda symbol, pnl: None
-        dummy_trading_cost = TradingCost(maker_fee=d.get("maker_fee", 0.0), taker_fee=d.get("taker_fee", 0.0))
+        dummy_trading_cost = TradingCost(
+            maker_fee=d.get("maker_fee", 0.0), taker_fee=d.get("taker_fee", 0.0)
+        )
         pos = cls(
             symbol=d["symbol"],
+            strategy_id=d.get("strategy_id", None),
             position_amount=d.get("position_amount", 0.0),
             entry_price=d.get("entry_price", 0.0),
             unrealised_pnl=d.get("unrealised_pnl", 0.0),
             maint_margin=d.get("maint_margin", 0.0),
             trading_cost=dummy_trading_cost,
             realized_pnl_listener=dummy_listener,
-            storage_path="position_state.json"
+            storage_path="position_state.json",
         )
         pos.net_realized_pnl = d.get("net_realized_pnl", 0.0)
         pos.total_trading_cost = d.get("total_trading_cost", 0.0)

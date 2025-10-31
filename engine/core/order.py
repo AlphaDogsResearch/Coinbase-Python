@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 from common.interface_order import OrderType
 
+
 @dataclass
 class Order:
     symbol: str
