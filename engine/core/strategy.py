@@ -13,6 +13,7 @@ class Strategy(ABC):
     def __init__(self, symbol: str, strategy_actions: StrategyAction,
                  strategy_order_mode: StrategyOrderMode,
                  candle_aggregator: Optional[CandleAggregator] = None):
+
         self.signal = 0  # -1 = sell, 0 = hold, 1 = buy
         self.name = ""
         '''
@@ -20,6 +21,7 @@ class Strategy(ABC):
         e.g.  ETHUSDC min qty is 0.006 whereas XRPUSDC min qty is 0.001 due to min notional differences so we standardise by using trade unit
         '''
         self.strategy_order_mode = strategy_order_mode
+
         self.strategy_actions = strategy_actions
 
 
@@ -35,14 +37,13 @@ class Strategy(ABC):
         raise NotImplementedError("Must implement on_candle_created() in subclass")
 
     @abstractmethod
+
     def add_signal_listener(self, callback: Callable[[str, int, float, str, StrategyAction,StrategyOrderMode], None]):
         raise NotImplementedError("Must implement add_signal_listener() in subclass")
 
     @abstractmethod
     def add_plot_signal_listener(self, callback: Callable[[datetime.datetime, int, float], None]):
-        raise NotImplementedError(
-            "Must implement _notify_signal_generated() in subclass"
-        )
+        raise NotImplementedError("Must implement _notify_signal_generated() in subclass")
 
     @abstractmethod
     def on_update(self, order_book: OrderBook):
