@@ -23,6 +23,8 @@ lib64/
 parts/
 sdist/
 var/
+reports/
+audit_logs/
 wheels/
 share/python-wheels/
 *.egg-info/
