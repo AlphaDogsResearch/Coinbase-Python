@@ -35,7 +35,7 @@ class StrategyManager:
                 self.remote_market_data_client.add_order_book_listener(
                     strategy.symbol, strategy.on_update
                 )
-            logging.info("Added Strategy %s" % strategy_id)
+            logging.info("[Strategy] Added %s" % strategy_id)
             if hasattr(strategy, "add_submit_order_listener"):
                 strategy.add_submit_order_listener("ENTRY", self.on_submit_market_entry)
                 strategy.add_submit_order_listener("CLOSE", self.on_submit_market_close)

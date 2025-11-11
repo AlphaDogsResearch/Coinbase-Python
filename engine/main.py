@@ -6,11 +6,11 @@ import signal
 from dotenv import load_dotenv
 
 from common import config_risk
+from common.config_loader import basic_config_loader
 from common.config_logging import to_stdout_and_daily_file
 from common.config_symbols import TRADING_SYMBOLS
 from common.interface_order import OrderType
 from common.metrics.sharpe_calculator import BinanceFuturesSharpeCalculator
-from common.upload_google_drive import DriveAPI
 from engine.account.account import Account
 from engine.execution.executor import Executor
 from engine.management.order_management_system import FCFSOrderManager
@@ -46,17 +46,21 @@ def main():
     to_stdout_and_daily_file(log_dir="logs", log_prefix="trading")
     logging.info("Running Engine...")
 
+
     # Get configuration from environment variables
     environment = os.getenv("ENVIRONMENT", "development")
-    notional_amount = 500.0  # Notional amount per trade
-
-    # Use TEST_INTERVAL only in development, otherwise default to 3600 (1-hour)
-    if environment == "development":
-        interval_seconds = int(os.getenv("TEST_INTERVAL", "1"))  # Default: 1 second for dev
-    else:
-        interval_seconds = 3600  # Always 1-hour for testnet/production
-
     logging.info("Environment: %s", environment)
+
+    config = basic_config_loader.load_config(environment)
+    logging.info(f"Config loaded. {config}")
+    components = basic_config_loader.create_objects(config)
+    logging.info(f"Components Created. {components}")
+
+    default_settings_parameters = components['default_settings']
+    notional_amount= default_settings_parameters['notional_amount']
+
+    interval_seconds= default_settings_parameters['interval_seconds']
+
     logging.info(
         "Candle interval: %d seconds (%s)",
         interval_seconds,
@@ -77,11 +81,13 @@ def main():
             f"'{input_symbol}' not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}"
         )
         sys.exit(1)
-    selected_symbol = input_symbol
+
+
+    selected_symbol = default_settings_parameters['selected_symbol']
 
     # Initialize Position and RiskManager
-    position = Position(symbol=selected_symbol)
-    risk_manager = RiskManager(position=position)
+    position = components['position']
+    risk_manager = components['risk_manager']
     # Ensure symbol is registered for per-symbol risk tracking
     try:
         risk_manager.add_symbol(selected_symbol, position=position)
@@ -91,18 +97,17 @@ def main():
             exc_info=True,
         )
 
-    margin_manager = MarginInfoManager()
-    trading_cost_manager = TradingCostManager()
-    sharpe_calculator = BinanceFuturesSharpeCalculator()
+    margin_manager = components['margin_manager']
+    trading_cost_manager = components['trading_cost_manager']
+    sharpe_calculator = components['sharpe_calculator']
 
-    trade_manager = TradesManager(sharpe_calculator)
+    trade_manager = components['trade_manager']
 
     # initialise reference price manager
-    reference_price_manager = ReferencePriceManager()
+    reference_price_manager = components['reference_price_manager']
 
-    position_manager = PositionManager(
-        margin_manager, trading_cost_manager, reference_price_manager
-    )
+    position_manager = components['position_manager']
+
     reference_price_manager.attach_mark_price_listener(position_manager.on_mark_price_event)
     # Wire per-symbol position and open-orders listeners to RiskManager
     position_manager.add_position_amount_listener(
@@ -133,7 +138,7 @@ def main():
     # We'll initialize the notifier fully after account is created
 
     # init account
-    account = Account(0.8)
+    account = components['account']
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
     # Forward wallet balance updates into RiskManager (updates AUM internally)
     account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
@@ -148,7 +153,7 @@ def main():
     position_manager.add_realized_pnl_listener(lambda pnl: risk_manager.update_daily_loss(pnl))
 
     # initialise remote client
-    remote_market_data_client = RemoteMarketDataClient()
+    remote_market_data_client = components['remote_market_data_client']
 
     # attach position manager listener to remote client
     remote_market_data_client.add_mark_price_listener(
@@ -164,7 +169,7 @@ def main():
 
     remote_market_data_client.add_mark_price_listener(_risk_on_mark_price)
 
-    # Start periodic risk reports using config file defaults (env can override in config)
+    # Start periodic risk reports using config_loader file defaults (env can override in config_loader)
     if config_risk.RISK_REPORT_ENABLED_DEFAULT:
         risk_manager.start_periodic_risk_reports(
             report_file=config_risk.RISK_REPORT_FILE_DEFAULT,
@@ -175,22 +180,14 @@ def main():
             f"Risk reporting enabled -> {config_risk.RISK_REPORT_FILE_DEFAULT} every {config_risk.RISK_REPORT_INTERVAL_SECONDS_DEFAULT}s"
         )
 
-    reference_data_manager = ReferenceDataManager(reference_price_manager)
+    reference_data_manager = components['reference_data_manager']
 
-    remote_order_client = RemoteOrderClient(
-        margin_manager,
-        position_manager,
-        account,
-        trading_cost_manager,
-        trade_manager,
-        reference_data_manager,
-    )
+    remote_order_client = components['remote_order_client']
 
     # create executor
-    order_type = OrderType.Market
-    executor = Executor(order_type, remote_order_client)
+    executor = components['executor']
     # create order manager
-    order_manager = FCFSOrderManager(executor, risk_manager, reference_data_manager)
+    order_manager = components['order_manager']
     order_manager.start()
 
     remote_order_client.add_order_event_listener(order_manager.on_order_event)
@@ -234,7 +231,7 @@ def main():
         telegram_notifier = None
 
     # setup strategy manager
-    strategy_manager = StrategyManager(remote_market_data_client, order_manager)
+    strategy_manager = components['strategy_manager']
 
     if telegram_notifier:
         strategy_manager.add_on_strategy_order_submitted_listener(
@@ -242,77 +239,11 @@ def main():
         )
 
     # Connect strategy manager to order manager for signal tags
-    order_manager.strategy_manager = strategy_manager
-
-    # ===== STRATEGIES =====
-    # 1. ROC Mean Reversion Strategy (1-hour candles)
-    logging.info("Initializing ROC Mean Reversion Strategy...")
-    roc_strategy = create_roc_mean_reversion_strategy(
-        symbol=selected_symbol,
-        position_manager=position_manager,
-        interval_seconds=interval_seconds,
-    )
-    strategy_manager.add_strategy(roc_strategy)
-    roc_strategy.start()
-    logging.info("✅ ROC Mean Reversion strategy added")
-
-    # 2. CCI Momentum Strategy (1-hour candles)
-    logging.info("Initializing CCI Momentum Strategy...")
-    cci_strategy = create_cci_momentum_strategy(
-        symbol=selected_symbol,
-        position_manager=position_manager,
-        interval_seconds=interval_seconds,
-    )
-    # strategy_manager.add_strategy(cci_strategy)
-    cci_strategy.start()
-    logging.info("✅ CCI Momentum strategy added")
-
-    # 3. APO Mean Reversion Strategy (1-hour candles)
-    logging.info("Initializing APO Mean Reversion Strategy...")
-    apo_strategy = create_apo_mean_reversion_strategy(
-        symbol=selected_symbol,
-        position_manager=position_manager,
-        interval_seconds=interval_seconds,
-    )
-    strategy_manager.add_strategy(apo_strategy)
-    apo_strategy.start()
-    logging.info("✅ APO Mean Reversion strategy added")
-
-    # 4. PPO Momentum Strategy (1-hour candles)
-    logging.info("Initializing PPO Momentum Strategy...")
-    ppo_strategy = create_ppo_momentum_strategy(
-        symbol=selected_symbol,
-        position_manager=position_manager,
-        interval_seconds=interval_seconds,
-    )
-    strategy_manager.add_strategy(ppo_strategy)
-    ppo_strategy.start()
-    logging.info("✅ PPO Momentum strategy added")
-
-    # 5. ADX Mean Reversion Strategy (1-hour candles)
-    logging.info("Initializing ADX Mean Reversion Strategy...")
-    adx_strategy = create_adx_mean_reversion_strategy(
-        symbol=selected_symbol,
-        position_manager=position_manager,
-        interval_seconds=interval_seconds,
-    )
-    strategy_manager.add_strategy(adx_strategy)
-    adx_strategy.start()
-    logging.info("✅ ADX Mean Reversion strategy added")
-
-    # 6. Simple Order Test Strategy (for testing)
-    logging.info("Initializing Simple Order Test Strategy...")
-    test_strategy = create_simple_order_test_strategy(
-        symbol=selected_symbol,
-        position_manager=position_manager,
-        interval_seconds=interval_seconds,
-        bars_per_trade=20,  # Trade every 20 bars
-    )
-    strategy_manager.add_strategy(test_strategy)
-    test_strategy.start()
-    logging.info("✅ Simple Order Test strategy added")
-
-    logging.info(f"🎉 All 6 Nautilus strategies initialized for {selected_symbol}")
+    strategies = components['strategy_map']
+    logging.info("========================== Adding strategies ==========================")
+    for key,strategy in strategies.items():
+        strategy_manager.add_strategy(strategy)
+    logging.info("========================== Done adding strategies ==========================")
 
     # plotter = RealTimePlotWithCandlestick(
     #     ticker_name=selected_symbol,
