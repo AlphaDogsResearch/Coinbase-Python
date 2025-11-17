@@ -44,10 +44,10 @@ if __name__ == '__main__':
     binance.connect()
     market_data_port = 8080
     order_port = 8081
+    gateway_name = "Binance"
+    market_data_connection = MarketDataConnection(gateway_name,market_data_port, binance)
 
-    market_data_connection = MarketDataConnection(market_data_port, binance)
-
-    order_connection = OrderConnection(order_port, binance)
+    order_connection = OrderConnection(gateway_name,order_port, binance)
 
     while True:
         time.sleep(2)

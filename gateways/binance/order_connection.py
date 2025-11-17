@@ -6,6 +6,7 @@ from common.interface_req_res import WalletRequest, AccountRequest, PositionRequ
     CommissionRateRequest, TradesRequest, ReferenceDataRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
 from gateways.binance.binance_gateway import BinanceGateway
+from gateways.gateway_interface import GatewayInterface
 
 
 def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
@@ -19,8 +20,8 @@ def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
 
 
 class OrderConnection:
-    def __init__(self, port: int, gateway: BinanceGateway):
-        self.order_listener_server = PairConnection(port, True, "Binance Order Listener")
+    def __init__(self,name:str, port: int, gateway: GatewayInterface):
+        self.order_listener_server = PairConnection(port, True, name+" Order Listener")
         self.order_listener_server.start_receiving(self.on_event)
         self.gateway = gateway
         self.margin_infos = {}

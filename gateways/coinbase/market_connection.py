@@ -8,7 +8,7 @@ from gateways.gateway_interface import GatewayInterface
 
 
 class MarketDataConnection:
-    def __init__(self,name:str, port: int, gateway: CoinbaseAdvancedGateway):
+    def __init__(self,name:str, port: int, gateway: GatewayInterface):
         self.name = name + " Market Data Connection"
         self.market_data_server = PairConnection(port, True, self.name)
         self.market_data_server.start_receiving(self.on_event)
