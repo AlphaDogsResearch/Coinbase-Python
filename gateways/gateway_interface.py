@@ -39,6 +39,42 @@ class GatewayInterface:
     def register_market_trades_callback(self, callback):
         pass
 
+    """ register a mark price callback function takes 2 argument: 
+         (self, symbol: str, price: float) """
+    def register_mark_price_callback(self, callback):
+        pass
+
+    '''
+    Order Related
+    '''
+
+    def submit_order(self, new_order_single):
+        pass
+
+    def get_filled_price(self, initial_er):
+        pass
+
+    def _get_wallet_balances(self):
+        pass
+
+    def _get_account_info(self):
+        pass
+
+    def get_reference_data(self):
+        pass
+
+    def _get_margin_tier_info(self):
+        pass
+
+    def _get_positions(self):
+        pass
+
+    def get_commission_rate(self, symbol):
+        pass
+
+    def _get_all_trades(self, symbol):
+        pass
+
 
 class ReadyCheck:
     """ Class to maintain readiness check """

@@ -5,7 +5,7 @@ from common.interface_reference_data import ReferenceData
 from common.interface_req_res import WalletRequest, AccountRequest, PositionRequest, MarginInfoRequest, \
     CommissionRateRequest, TradesRequest, ReferenceDataRequest
 from common.subscription.single_pair_connection.single_pair import PairConnection
-from gateways.binance.binance_gateway import BinanceGateway
+from gateways.gateway_interface import GatewayInterface
 
 
 def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
@@ -19,8 +19,8 @@ def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
 
 
 class OrderConnection:
-    def __init__(self, port: int, gateway: BinanceGateway):
-        self.order_listener_server = PairConnection(port, True, "Binance Order Listener")
+    def __init__(self,name :str, port: int, gateway: GatewayInterface):
+        self.order_listener_server = PairConnection(port, True, name+" Order Listener")
         self.order_listener_server.start_receiving(self.on_event)
         self.gateway = gateway
         self.margin_infos = {}
@@ -57,7 +57,7 @@ class OrderConnection:
                 filled_order_event = self.on_execution_report(filled_er)
                 self.order_listener_server.publish_order_event(filled_order_event)
 
-    def on_execution_report(self, execution_report: dict)->OrderEvent:
+    def on_execution_report(self, execution_report: dict) -> OrderEvent:
         logging.info("Execution Report %s" % execution_report)
         code = execution_report.get('code')
         msg = execution_report.get('msg')
@@ -84,10 +84,9 @@ class OrderConnection:
             if type == "MARKET":
                 order_type_type = OrderType.Market
 
-
             order_event = OrderEvent(symbol, external_order_id, ExecutionType.TRADE, OrderStatus.FILLED, None,
-                                     client_order_id,order_type_type)
-            order_event.side  = side
+                                     client_order_id, order_type_type)
+            order_event.side = side
             order_event.last_filled_quantity = float(last_filled_quantity)
             order_event.last_filled_price = float(last_filled_price)
             order_event.last_filled_time = last_filled_time
@@ -172,11 +171,7 @@ class OrderConnection:
             reference_data_response = reference_data_request.handle(reference_data_dict)
             self.order_listener_server.send_reference_data_response(reference_data_response)
 
-
-
-
-
-    def get_margin_info(self,margin_info_request:MarginInfoRequest):
+    def get_margin_info(self, margin_info_request: MarginInfoRequest):
         request_symbol = margin_info_request.symbol
 
         if request_symbol not in self.margin_infos:
@@ -186,29 +181,27 @@ class OrderConnection:
                 bracket = md['brackets']
                 self.margin_infos[symbol] = bracket
 
-
         margin_i = self.margin_infos.get(request_symbol, None)
 
-        mi_res= margin_info_request.handle(request_symbol,margin_i)
+        mi_res = margin_info_request.handle(request_symbol, margin_i)
         self.order_listener_server.send_margin_info_response(mi_res)
-
 
     def get_position_info(self, position_request: PositionRequest):
         account_position = self.gateway._get_positions()
         positions = position_request.handle(account_position)
         self.order_listener_server.send_position_response(positions)
 
-    def get_commission_rates(self,commission_rate_request:CommissionRateRequest):
+    def get_commission_rates(self, commission_rate_request: CommissionRateRequest):
         symbol = commission_rate_request.symbol
         commission_rate_data = self.gateway.get_commission_rate(symbol)
         if commission_rate_data is not None:
             returned_symbol = commission_rate_data['symbol']
             maker_trading_cost = commission_rate_data['makerCommissionRate']
             taker_trading_cost = commission_rate_data['takerCommissionRate']
-            commission_rate = commission_rate_request.handle(returned_symbol,maker_trading_cost,taker_trading_cost)
+            commission_rate = commission_rate_request.handle(returned_symbol, maker_trading_cost, taker_trading_cost)
             self.order_listener_server.send_commission_rate_response(commission_rate)
 
-    def get_trades(self,trades_request:TradesRequest):
+    def get_trades(self, trades_request: TradesRequest):
         logging.info("Received Trades Request %s" % trades_request)
         symbol = trades_request.symbol
         trades = self.gateway._get_all_trades(symbol)
@@ -224,10 +217,10 @@ class OrderConnection:
                 qty = trade['qty']
                 realized_pnl = trade['realizedPnl']
 
-                trade_obj = Trade(time,symbol,price,qty,Side[side.upper()],realized_pnl,False)
+                trade_obj = Trade(time, symbol, price, qty, Side[side.upper()], realized_pnl, False)
                 trade_obj.order_id = order_id
 
                 all_trades.append(trade_obj)
 
-        trade_response= trades_request.handle(symbol,all_trades)
+        trade_response = trades_request.handle(symbol, all_trades)
         self.order_listener_server.send_trades_response(trade_response)

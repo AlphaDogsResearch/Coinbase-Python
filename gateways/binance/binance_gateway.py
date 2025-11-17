@@ -688,7 +688,7 @@ class BinanceGateway(GatewayInterface):
         return response_map
 
     # external_order_id is binance order_id
-    def _get_filled_price(self,post_response_data:dict):
+    def get_filled_price(self, post_response_data:dict):
         # GET filled price
         timestamp = int(time.time() * 1000)
         symbol = post_response_data['symbol']
