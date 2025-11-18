@@ -1,0 +1,15 @@
+{
+  "default_settings": {
+    "module": "builtins",
+    "class": "dict",
+    "params": {
+      "gateway_name": "BINANCE",
+      "trading_symbols": [
+        "BTCUSDT",
+        "ETHUSDT"
+      ],
+      "market_data_connection_port": 8080,
+      "order_connection_port": 8081
+    }
+  }
+}

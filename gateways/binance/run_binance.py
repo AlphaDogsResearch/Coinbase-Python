@@ -21,6 +21,7 @@ import time
 
 from dotenv import load_dotenv
 
+from common.config_loader import basic_config_loader
 from common.config_logging import to_stdout
 from gateways.binance.binance_gateway import BinanceGateway, ProductType
 from gateways.binance.market_connection import MarketDataConnection
@@ -39,15 +40,29 @@ if __name__ == '__main__':
     API_KEY = os.getenv('BINANCE_API_KEY')
     API_SECRET = os.getenv('BINANCE_API_SECRET')
 
-    # Use global config for trading symbols
-    binance = BinanceGateway(symbols=TRADING_SYMBOLS, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
-    binance.connect()
-    market_data_port = 8080
-    order_port = 8081
-    gateway_name = "Binance"
-    market_data_connection = MarketDataConnection(gateway_name,market_data_port, binance)
+    # json config for gateway variables
+    environment = os.getenv("ENVIRONMENT", "development")
+    logging.info("Environment: %s", environment)
 
-    order_connection = OrderConnection(gateway_name,order_port, binance)
+    config = basic_config_loader.load_config(environment)
+    logging.info(f"Config loaded. {config}")
+    components = basic_config_loader.create_objects(config)
+    logging.info(f"Components Created. {components}")
+
+    default_settings_parameters = components['default_settings']
+
+    gateway_name= default_settings_parameters['gateway_name']
+    trading_symbols= default_settings_parameters['trading_symbols']
+    market_data_connection_port= default_settings_parameters['market_data_connection_port']
+    order_connection_port= default_settings_parameters['order_connection_port']
+
+    # Use global config for trading symbols
+    binance = BinanceGateway(symbols=trading_symbols, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
+    binance.connect()
+
+    market_data_connection = MarketDataConnection(gateway_name,market_data_connection_port, binance)
+
+    order_connection = OrderConnection(gateway_name,order_connection_port, binance)
 
     while True:
         time.sleep(2)
