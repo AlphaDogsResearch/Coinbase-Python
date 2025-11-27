@@ -23,7 +23,7 @@ class RemoteOrderClient:
     def __init__(self, margin_manager: MarginInfoManager, position_manager: PositionManager, account: Account,
                  trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager):
         # make port configurable
-        self.port = 8081
+        self.port = 5556  # Must match gateway's order_connection_port
         self.name = "Remote Order Order Connection"
         self.order_event_listeners: List[Callable[[OrderEvent], None]] = []  # list of callbacks
 

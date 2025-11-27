@@ -122,6 +122,10 @@ class StrategyManager:
 
             # Wire market data to candle aggregator
             self.remote_market_data_client.add_order_book_listener(symbol, candle_agg.on_order_book)
+            logging.debug(
+                f"[StrategyManager] Registered order book listener for {symbol} "
+                f"(total listeners: {len(self.remote_market_data_client.order_book_listeners.get(symbol, []))})"
+            )
 
             # Store strategy metadata
             self.strategies[strategy_id] = {
