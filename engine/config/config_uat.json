@@ -115,7 +115,7 @@
         "class": "ADXMeanReversionStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-10s",
+            "bar_type": "ETHUSDT-1s",
             "adx_period": 22,
             "adx_smoothing": 22,
             "notional_amount": 500.0,
@@ -133,7 +133,7 @@
         "class": "APOMeanReversionStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-10s",
+            "bar_type": "ETHUSDT-1s",
             "apo_fast_period": 10,
             "apo_slow_period": 122,
             "matype": 1,
@@ -150,7 +150,7 @@
         "class": "PPOMomentumStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-10s",
+            "bar_type": "ETHUSDT-1s",
             "ppo_fast_period": 38,
             "ppo_slow_period": 205,
             "matype": 3,
@@ -168,7 +168,7 @@
         "class": "CCIMomentumStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-10s",
+            "bar_type": "ETHUSDT-1s",
             "cci_period": 14,
             "cci_upper": 205.0,
             "cci_lower": -101.0,
@@ -183,7 +183,7 @@
         "class": "ROCMeanReversionStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-10s",
+            "bar_type": "ETHUSDT-1s",
             "roc_period": 22,
             "roc_upper": 3.4,
             "roc_lower": -3.6,
@@ -198,47 +198,12 @@
         "class": "SimpleOrderTestStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-10s",
+            "bar_type": "ETHUSDT-1s",
             "bars_per_trade": 20,
             "notional_amount": 500.0
         }
     },
     "strategy_map": {
-        "adx_mean_reversion_strategy": {
-            "module": "engine.strategies.adx_mean_reversion_strategy",
-            "class": "ADXMeanReversionStrategy",
-            "params": {
-                "config": "@adx_strategy_config"
-            }
-        },
-        "apo_mean_reversion_strategy": {
-            "module": "engine.strategies.apo_mean_reversion_strategy",
-            "class": "APOMeanReversionStrategy",
-            "params": {
-                "config": "@apo_strategy_config"
-            }
-        },
-        "ppo_momentum_strategy": {
-            "module": "engine.strategies.ppo_momentum_strategy",
-            "class": "PPOMomentumStrategy",
-            "params": {
-                "config": "@ppo_strategy_config"
-            }
-        },
-        "cci_momentum_strategy": {
-            "module": "engine.strategies.cci_momentum_strategy",
-            "class": "CCIMomentumStrategy",
-            "params": {
-                "config": "@cci_strategy_config"
-            }
-        },
-        "roc_mean_reversion_strategy": {
-            "module": "engine.strategies.roc_mean_reversion_strategy",
-            "class": "ROCMeanReversionStrategy",
-            "params": {
-                "config": "@roc_strategy_config"
-            }
-        },
         "simple_order_test_strategy": {
             "module": "engine.strategies.simple_order_test_strategy",
             "class": "SimpleOrderTestStrategy",
