@@ -1,6 +1,5 @@
 from typing import Dict, List, Optional, Any
 from engine.market_data.candle import MidPriceCandle
-from common.interface_order import Side
 from .models import Position, Instrument
 from .strategy_action import StrategyAction
 from .strategy_order_mode import StrategyOrderMode
@@ -149,6 +148,7 @@ class Strategy:
         price: float,
         strategy_actions: StrategyAction,
         strategy_order_mode: StrategyOrderMode,
+        tags: List[str] = None,
     ) -> bool:
         """Submit an order via the on_signal method on the order manager."""
         if not self._order_manager:
@@ -162,47 +162,7 @@ class Strategy:
             symbol=self._symbol,
             strategy_actions=strategy_actions,
             strategy_order_mode=strategy_order_mode,
-        )
-
-    def submit_market_entry(
-        self,
-        side: Side,
-        quantity: float,
-        price: float,
-        signal_id: str = None,
-        tags: List[str] = None,
-    ) -> bool:
-        """Submit a market entry order directly to order manager."""
-        if not self._order_manager:
-            self.log.warning("Order manager not set, order not submitted")
-            return False
-
-        system_tags = tags or []
-        if "ENTRY" not in system_tags:
-            system_tags = ["ENTRY"] + system_tags
-
-        return self._order_manager.submit_market_entry(
-            strategy_id=self._strategy_id,
-            symbol=self._symbol,
-            side=side,
-            quantity=quantity,
-            price=price,
-            signal_id=signal_id,
-            tags=system_tags,
-        )
-
-    def submit_market_close(self, price: float, tags: List[str] = None) -> bool:
-        """Close all positions for this strategy."""
-        if not self._order_manager:
-            self.log.warning("Order manager not set, order not submitted")
-            return False
-
-        system_tags = tags or []
-        if "CLOSE" not in system_tags:
-            system_tags = ["CLOSE"] + system_tags
-
-        return self._order_manager.submit_market_close(
-            strategy_id=self._strategy_id, symbol=self._symbol, price=price, tags=system_tags
+            tags=tags,
         )
 
     def cancel_all_orders(self, instrument_id: str):
@@ -211,11 +171,16 @@ class Strategy:
 
     def close_all_positions(self, instrument_id: str):
         """Close all positions for instrument."""
-        if instrument_id == self._symbol:
+        if instrument_id == self._symbol and self._order_manager:
             # Get current price from cache or use a default
             pos = self.cache.position(instrument_id)
             if pos:
                 # Use entry price as fallback, but ideally should get mark price
                 price = pos.entry_price if hasattr(pos, "entry_price") else 0.0
-                return self.submit_market_close(price, ["action=CLOSE"])
+                return self._order_manager.submit_market_close(
+                    strategy_id=self._strategy_id,
+                    symbol=self._symbol,
+                    price=price,
+                    tags=["action=CLOSE"],
+                )
         return True

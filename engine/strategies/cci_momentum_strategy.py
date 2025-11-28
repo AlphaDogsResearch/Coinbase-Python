@@ -214,9 +214,11 @@ class CCIMomentumStrategy(Strategy):
         tags = [f"reason={reason}"]
 
         # Submit market close order directly
-        ok = self.submit_market_close(
+        ok = self._order_manager.submit_market_close(
+            strategy_id=self._strategy_id,
+            symbol=self._symbol,
             price=close_price,
-            tags=tags,
+            tags=tags
         )
 
         if ok:

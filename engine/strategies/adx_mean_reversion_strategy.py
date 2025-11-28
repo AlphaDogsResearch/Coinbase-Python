@@ -293,7 +293,9 @@ class ADXMeanReversionStrategy(Strategy):
         close_price = candle.close if candle.close is not None else 0.0
 
         # Submit market close order directly
-        ok = self.submit_market_close(close_price, tags)
+        ok = self._order_manager.submit_market_close(
+            strategy_id=self._strategy_id, symbol=self._symbol, price=close_price, tags=tags
+        )
 
         if ok:
             if position.is_long:
