@@ -1,11 +1,11 @@
 from dataclasses import dataclass
-import uuid
-from typing import Optional
 
 from .base import Strategy
 from .models import Bar, PositionSide
 from .indicators import CommodityChannelIndex
-from common.interface_order import Side
+from common.interface_order import OrderSizeMode
+from .strategy_action import StrategyAction
+from .strategy_order_mode import StrategyOrderMode
 
 
 @dataclass(frozen=True)
@@ -137,25 +137,20 @@ class CCIMomentumStrategy(Strategy):
         if close_price == 0.0:
             return
 
-        # Calculate quantity from notional amount
-        quantity = self.notional_amount / close_price
-
         stop_loss_price = close_price * (1 - self.stop_loss_percent)
-        signal_id = str(uuid.uuid4())
 
-        tags = [
-            f"signal_id={signal_id}",
-            f"cci_mid={self.cci_mid:.2f}",
-            f"reason={reason}",
-        ]
+        # Create strategy order mode with notional
+        strategy_order_mode = StrategyOrderMode(
+            order_size_mode=OrderSizeMode.NOTIONAL,
+            notional_value=self.notional_amount
+        )
 
-        # Submit market entry order directly
-        ok = self.submit_market_entry(
-            side=Side.BUY,
-            quantity=quantity,
+        # Submit order via on_signal
+        ok = self.on_signal(
+            signal=1,  # BUY
             price=close_price,
-            signal_id=signal_id,
-            tags=tags,
+            strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
+            strategy_order_mode=strategy_order_mode,
         )
 
         if ok:
@@ -177,25 +172,20 @@ class CCIMomentumStrategy(Strategy):
         if close_price == 0.0:
             return
 
-        # Calculate quantity from notional amount
-        quantity = self.notional_amount / close_price
-
         stop_loss_price = close_price * (1 + self.stop_loss_percent)
-        signal_id = str(uuid.uuid4())
 
-        tags = [
-            f"signal_id={signal_id}",
-            f"cci_mid={self.cci_mid:.2f}",
-            f"reason={reason}",
-        ]
+        # Create strategy order mode with notional
+        strategy_order_mode = StrategyOrderMode(
+            order_size_mode=OrderSizeMode.NOTIONAL,
+            notional_value=self.notional_amount
+        )
 
-        # Submit market entry order directly
-        ok = self.submit_market_entry(
-            side=Side.SELL,
-            quantity=quantity,
+        # Submit order via on_signal
+        ok = self.on_signal(
+            signal=-1,  # SELL
             price=close_price,
-            signal_id=signal_id,
-            tags=tags,
+            strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
+            strategy_order_mode=strategy_order_mode,
         )
 
         if ok:

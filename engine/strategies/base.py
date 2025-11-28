@@ -2,6 +2,8 @@ from typing import Dict, List, Optional, Any
 from engine.market_data.candle import MidPriceCandle
 from common.interface_order import Side
 from .models import Position, Instrument
+from .strategy_action import StrategyAction
+from .strategy_order_mode import StrategyOrderMode
 
 
 class Logger:
@@ -140,6 +142,27 @@ class Strategy:
     def register_indicator_for_bars(self, bar_type: str, indicator):
         """Register indicator for automatic updates (placeholder)."""
         ...
+
+    def on_signal(
+        self,
+        signal: int,
+        price: float,
+        strategy_actions: StrategyAction,
+        strategy_order_mode: StrategyOrderMode,
+    ) -> bool:
+        """Submit an order via the on_signal method on the order manager."""
+        if not self._order_manager:
+            self.log.warning("Order manager not set, order not submitted")
+            return False
+
+        return self._order_manager.on_signal(
+            strategy_id=self._strategy_id,
+            signal=signal,
+            price=price,
+            symbol=self._symbol,
+            strategy_actions=strategy_actions,
+            strategy_order_mode=strategy_order_mode,
+        )
 
     def submit_market_entry(
         self,
