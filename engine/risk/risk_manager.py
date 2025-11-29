@@ -18,12 +18,13 @@ class RiskManager:
         max_position_value: Optional[float] = None,
         max_leverage: Optional[float] = None,
         max_open_orders: Optional[int] = None,
-        max_loss_per_day: Optional[float] = None,  # 15% of AUM
+        max_loss_per_day: Optional[float] = 0.10,  # 15% of AUM
         max_var_ratio: Optional[float] = None,     # 15% of AUM
         allowed_symbols: Optional[list] = None,
         min_order_size: Optional[float] = None,
         position: Optional[Position] = None,
         liquidation_loss_threshold: Optional[float] = None,  # 25% loss threshold
+        max_drawdown: Optional[float] = 0.10,  # 10% drawdown cap until reset
     ):
         # Global limits (applied per symbol unless overridden)
         self.max_order_value = (
@@ -75,6 +76,10 @@ class RiskManager:
         self.liquidation_loss_threshold = (
             config_risk.LIQUIDATION_LOSS_THRESHOLD_DEFAULT if liquidation_loss_threshold is None else liquidation_loss_threshold
         )
+        # Lifetime drawdown tracking
+        self.max_drawdown = max_drawdown if max_drawdown is not None else 0.10
+        self._peak_aum = None  # highest observed AUM since last reset
+        self._current_drawdown_ratio = 0.0
     # Daily loss reset is orchestrated by higher-level scheduler (e.g., Account/main)
 
         # If an initial position is provided, register its symbol
@@ -94,6 +99,13 @@ class RiskManager:
     def set_aum(self, aum: float):
         logging.info(f"Updating AUM to {aum}")
         self.aum = aum
+        # Update peak and drawdown
+        if self._peak_aum is None or aum > self._peak_aum:
+            self._peak_aum = aum
+            self._current_drawdown_ratio = 0.0
+        elif self._peak_aum > aum and self._peak_aum > 0:
+            dd = (self._peak_aum - aum) / self._peak_aum
+            self._current_drawdown_ratio = max(self._current_drawdown_ratio, dd)
 
     # ------------------------
     # Internal helpers (deduplicate logic)
@@ -259,6 +271,13 @@ class RiskManager:
             )
             return False
 
+        # max drawdown gating: block all new orders (including potential hedge adds) once drawdown exceeded
+        if self._peak_aum > 0 and self._current_drawdown_ratio > self.max_drawdown:
+            logging.warning(
+                f"Order rejected: drawdown {self._current_drawdown_ratio*100:.2f}% exceeds max lifetime drawdown {self.max_drawdown*100:.2f}% (peak AUM={self._peak_aum}, current AUM={self.aum})."
+            )
+            return False
+
         # Resolve price to use (explicit price or latest mark)
         exec_price = order.price if getattr(order, 'price', None) not in (None, 0) else self._get_mark_price(symbol)
 
@@ -365,6 +384,10 @@ class RiskManager:
         syms = symbols or list(self.positions.keys() or ([] if not self.position else [self.position.symbol]))
         lines: List[str] = []
         lines.append(f"AUM={self.aum}")
+        if self._peak_aum is not None:
+            lines.append(
+                f"peak_AUM={self._peak_aum} drawdown={self._current_drawdown_ratio*100:.2f}% limit={self.max_drawdown*100:.2f}%"
+            )
         # Global VaR (if set)
         g_pv = self.symbol_portfolio_value.get('__GLOBAL__', 0.0)
         g_var = self.symbol_var_value.get('__GLOBAL__', 0.0)
@@ -451,4 +474,21 @@ class RiskManager:
         for k in list(self.symbol_daily_loss.keys()):
             self.symbol_daily_loss[k] = 0.0
 
-    # Removed check_and_liquidate_on_loss; liquidation decisions should be orchestrated by Account/main
+    # ------------------------
+    # Drawdown reset
+    # ------------------------
+    def reset_drawdown(self):
+        """Reset peak AUM to current AUM, clearing drawdown lockout."""
+        self._peak_aum = self.aum
+        self._current_drawdown_ratio = 0.0
+        logging.info("RiskManager: drawdown reset; peak AUM set to current AUM")
+
+    def get_drawdown_info(self):
+        """Return current drawdown stats dict."""
+        return {
+            'aum': self.aum,
+            'peak_aum': self._peak_aum,
+            'drawdown_ratio': self._current_drawdown_ratio,
+            'limit': self.max_drawdown,
+            'exceeded': self._current_drawdown_ratio > self.max_drawdown if self._peak_aum else False,
+        }
