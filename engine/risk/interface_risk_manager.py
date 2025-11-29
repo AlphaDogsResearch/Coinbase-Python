@@ -1,0 +1,93 @@
+"""Public interface for RiskManager to be used by other modules.
+
+This facade exposes a stable set of methods to interact with the risk engine
+without relying on internal/private helpers. Other modules (gateway, strategy,
+portfolio) should depend on this interface rather than RiskManager directly.
+"""
+
+from typing import Callable, Optional, List, Dict, Any
+import logging
+
+from engine.risk.risk_manager import RiskManager
+from common.interface_order import Order
+from engine.position.position import Position
+
+
+class RiskEngineInterface:
+    """Facade wrapping RiskManager with a stable public API."""
+
+    def __init__(self, risk_manager: Optional[RiskManager] = None):
+        self._rm = risk_manager or RiskManager()
+
+    # -----------------
+    # Configuration
+    # -----------------
+    def set_price_provider(self, provider: Callable[[str], Optional[float]]) -> None:
+        self._rm.set_price_provider(provider)
+
+    def add_symbol(self, symbol: str, position: Optional[Position] = None, min_order_size: Optional[float] = None) -> None:
+        self._rm.add_symbol(symbol, position, min_order_size)
+
+    def remove_symbol(self, symbol: str) -> None:
+        self._rm.remove_symbol(symbol)
+
+    def set_symbol_position(self, symbol: str, position: Position) -> None:
+        self._rm.set_symbol_position(symbol, position)
+
+    def set_symbol_var(self, symbol: str, var_value: float, portfolio_value: float) -> None:
+        self._rm.set_symbol_var(symbol, var_value, portfolio_value)
+
+    # -----------------
+    # Inbound updates (listeners)
+    # -----------------
+    def update_wallet_balance(self, wallet_balance: float) -> None:
+        self._rm.on_wallet_balance_update(wallet_balance)
+
+    def update_margin_ratio(self, margin_ratio: float) -> None:
+        self._rm.on_margin_ratio_update(margin_ratio)
+
+    def update_unrealised_pnl(self, unrealised_pnl: float) -> None:
+        self._rm.on_unrealised_pnl_update(unrealised_pnl)
+
+    def update_maint_margin(self, maint_margin: float) -> None:
+        self._rm.on_maint_margin_update(maint_margin)
+
+    def update_position_amount(self, symbol: str, position_amount: float) -> None:
+        self._rm.on_position_amount_update(symbol, position_amount)
+
+    def update_open_orders(self, symbol: str, count: int) -> None:
+        self._rm.on_open_orders_update(symbol, count)
+
+    def update_mark_price(self, symbol: str, price: float) -> None:
+        self._rm.on_mark_price_update(symbol, price)
+
+    # -----------------
+    # Queries and actions
+    # -----------------
+    def validate_order(self, order: Order) -> bool:
+        return self._rm.validate_order(order)
+
+    def generate_risk_report_text(self, symbols: Optional[List[str]] = None) -> str:
+        return self._rm.generate_risk_report_text(symbols)
+
+    def start_periodic_risk_reports(self, report_file: str, interval_seconds: int = 600, symbols: Optional[List[str]] = None) -> None:
+        self._rm.start_periodic_risk_reports(report_file, interval_seconds, symbols)
+
+    def stop_periodic_risk_reports(self) -> None:
+        self._rm.stop_periodic_risk_reports()
+
+    def reset_drawdown(self) -> None:
+        self._rm.reset_drawdown()
+
+    def get_drawdown_info(self) -> Dict[str, Any]:
+        return self._rm.get_drawdown_info()
+
+    def set_aum(self, aum: float) -> None:
+        self._rm.set_aum(aum)
+
+    # -----------------
+    # Access underlying RM if needed (read-only preferred)
+    # -----------------
+    @property
+    def risk_manager(self) -> RiskManager:
+        return self._rm
