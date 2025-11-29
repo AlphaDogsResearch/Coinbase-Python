@@ -5,6 +5,7 @@ from typing import Callable, List, Dict
 
 from common.interface_book import OrderBook
 from common.interface_reference_point import MarkPrice
+from common.processor.sequential_queue_processor import SelfMonitoringQueueProcessor
 from common.subscription.single_pair_connection.single_pair import PairConnection
 from common.time_utils import convert_epoch_time_to_datetime_millis
 from engine.market_data.market_data_client import MarketDataClient
@@ -21,9 +22,26 @@ class RemoteMarketDataClient(MarketDataClient):
             []
         )  # list of callbacks
 
-        # TODO 1 worker only ??
-        self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="MD")
-        self.tick_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="TICK")
+
+        #queue size to adjust accordingly base on instrument
+        self.market_data_queue_processor = SelfMonitoringQueueProcessor(
+            name="MarketDataProcessor",
+            max_queue_size=128
+        )
+
+
+        self.mark_price_queue_processor = SelfMonitoringQueueProcessor(
+            name="MarkPriceProcessor",
+            max_queue_size=8
+        )
+
+        # Register event handlers
+        self.market_data_queue_processor.register_handler(OrderBook, self._handle_order_book)
+        self.mark_price_queue_processor.register_handler(MarkPrice, self._handle_mark_price)
+
+        # Start the processor
+        self.market_data_queue_processor.start()
+        self.mark_price_queue_processor.start()
 
         self.remote_market_data_server = PairConnection(self.port, False, self.name)
         self.remote_market_data_server.start_receiving(self.on_event)
@@ -73,10 +91,18 @@ class RemoteMarketDataClient(MarketDataClient):
                     self.name + "[Mark Price] Listener raised an exception: %s", e
                 )
 
+    def _handle_order_book(self, order_book: OrderBook):
+        """Handle OrderBook events sequentially"""
+        self.notify_order_book_listeners(order_book)
+        self.notify_tick_listeners(order_book)
+
+    def _handle_mark_price(self, mark_price: MarkPrice):
+        """Handle MarkPrice events sequentially"""
+        self.update_mark_price(mark_price)
+
     # dont block the thread
     def on_event(self, obj: object):
         if isinstance(obj, OrderBook):
-            self.executor.submit(self.notify_order_book_listeners, obj)
-            self.tick_executor.submit(self.notify_tick_listeners, obj)
+            self.market_data_queue_processor.submit(obj)
         elif isinstance(obj, MarkPrice):
-            self.executor.submit(self.update_mark_price, obj)
+            self.mark_price_queue_processor.submit(obj)

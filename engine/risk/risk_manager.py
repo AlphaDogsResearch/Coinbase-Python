@@ -106,6 +106,7 @@ class RiskManager:
         elif self._peak_aum > aum and self._peak_aum > 0:
             dd = (self._peak_aum - aum) / self._peak_aum
             self._current_drawdown_ratio = max(self._current_drawdown_ratio, dd)
+        logging.info(f"Current peak_aum:{self._peak_aum}, current_drawdown_ratio {self._current_drawdown_ratio}")
 
     # ------------------------
     # Internal helpers (deduplicate logic)
@@ -135,9 +136,11 @@ class RiskManager:
     # ------------------------
     def on_wallet_balance_update(self, wallet_balance: float):
         """Listener to receive wallet balance; updates AUM and cache."""
+        logging.info(f"On Wallet Balance Update {wallet_balance}")
         try:
             self.account_wallet_balance = float(wallet_balance)
         except Exception:
+            logging.error("Failed to get wallet balance", exc_info=True)
             self.account_wallet_balance = wallet_balance
         self.set_aum(self.account_wallet_balance)
 

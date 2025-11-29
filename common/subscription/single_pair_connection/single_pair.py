@@ -64,7 +64,7 @@ class PairConnection:
         self.latency_history = deque(maxlen=1000)  # Keep last 1000 latencies
         self.drop_history = deque(maxlen=500)  # Keep last 500 drop events
         self.monitoring_enabled = True
-        self.stats_log_interval = 60  # Log stats every 60 seconds
+        self.stats_log_interval = 300  # Log stats every 5 minute
 
         self.name = name
 

@@ -43,10 +43,10 @@ class RemoteOrderClient:
         self.reference_data_manager = reference_data_manager
 
 
-
+    def start(self):
+        logging.info("Starting Remote Order Client.....")
         # init request
         self.init_request()
-
         # tradable
         self.tradable = True
 

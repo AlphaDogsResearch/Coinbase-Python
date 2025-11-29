@@ -9,7 +9,7 @@ PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, find_dotenv
 
 from common import config_risk
 from common.config_loader import basic_config_loader
@@ -43,6 +43,9 @@ def main():
     # Configure logging with optional LOG_LEVEL env
     # Configure logging to both console and daily rotating file (rotates at midnight UTC)
     to_stdout_and_daily_file(log_dir="logs", log_prefix="trading")
+    env_path = find_dotenv()
+    logging.info(f"Loading environment from {env_path}")
+
     logging.info("Running Engine...")
 
     # Get configuration from environment variables
@@ -139,6 +142,7 @@ def main():
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
     # Forward wallet balance updates into RiskManager (updates AUM internally)
     account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
+    logging.info("Attaching balance listener")
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)
@@ -180,6 +184,7 @@ def main():
     reference_data_manager = components["reference_data_manager"]
 
     remote_order_client = components["remote_order_client"]
+    remote_order_client.start()
 
     # create executor
     executor = components["executor"]
