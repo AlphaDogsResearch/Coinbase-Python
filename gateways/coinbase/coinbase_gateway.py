@@ -460,11 +460,12 @@ class CoinbaseAdvancedGateway(GatewayInterface):
     def _get_wallet_balances(self):
         try:
             if hasattr(self.rest_client, 'get_accounts'):
-                accounts = self.rest_client.get_accounts() or []
+                all_accounts = self.rest_client.get_accounts() or []
+                accounts = all_accounts.accounts
                 wallet = {}
                 for acc in accounts:
-                    currency = acc.get('currency') or acc.get('asset')
-                    balance = acc.get('available_balance') or acc.get('balance')
+                    currency = acc['currency'] or acc['asset']
+                    balance = acc['available_balance'] or acc['balance']
                     try:
                         bal_float = float(balance)
                     except Exception:
@@ -480,7 +481,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
         try:
             if hasattr(self.rest_client, 'list_orders'):
                 orders = self.rest_client.list_orders()
-                logging.info("Open orders count=%s", len(orders) if orders else 0)
+                logging.info(f"Open orders count=%s", len(orders['orders']) if orders else 0)
                 return orders
         except Exception as e:
             logging.error("_get_open_orders failed error=%s", e, exc_info=True)
