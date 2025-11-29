@@ -32,7 +32,7 @@ from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.telegram_notifier import TelegramNotifier
 from engine.trades.trades_manager import TradesManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
-from engine.market_data.mock_market_data_generator import MockMarketDataGenerator
+# from engine.market_data.mock_market_data_generator import MockMarketDataGenerator
 from graph.ohlc_plot import RealTimePlotWithCandlestick
 
 
@@ -281,13 +281,13 @@ def main():
         update_interval_ms = int(os.getenv("MOCK_UPDATE_INTERVAL_MS", "100"))
         price_volatility = float(os.getenv("MOCK_PRICE_VOLATILITY", "0.001"))
 
-        mock_market_data_generator = MockMarketDataGenerator(
-            remote_market_data_client=remote_market_data_client,
-            symbol=selected_symbol,
-            base_price=base_price,
-            update_interval_ms=update_interval_ms,
-            price_volatility=price_volatility,
-        )
+        # mock_market_data_generator = MockMarketDataGenerator(
+        #     remote_market_data_client=remote_market_data_client,
+        #     symbol=selected_symbol,
+        #     base_price=base_price,
+        #     update_interval_ms=update_interval_ms,
+        #     price_volatility=price_volatility,
+        # )
         # Small delay to ensure all listeners are registered
         import time
 

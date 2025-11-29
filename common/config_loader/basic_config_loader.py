@@ -36,7 +36,7 @@ def load_config(env: str):
     base_dir = os.getcwd()
 
     # Default: look for config folder under engine/config
-    config_dir = os.path.join(base_dir, "engine", "config")
+    config_dir = os.path.join(base_dir, "config")
     filename = os.path.join(config_dir, f"config_{env}.json")
 
     # Allow override via CONFIG_PATH environment variable
