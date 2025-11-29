@@ -35,7 +35,7 @@ def load_config(env: str):
     # Base path = where the main script is executed
     base_dir = os.getcwd()
 
-    # Default: look for config folder under that path
+    # Default: look for config folder under engine/config
     config_dir = os.path.join(base_dir, "config")
     filename = os.path.join(config_dir, f"config_{env}.json")
 
@@ -168,17 +168,29 @@ def create_objects(config: dict, verbose: bool = False, test_mode: bool = False)
         else:
             raise ValueError(f"Spec for '{key_name}' must have 'class' or 'factory'")
 
-        # Inject additional resolved refs after creation
-        for k, v in raw_params.items():
-            resolved = resolve_ref(v)
-            if resolved is not None:
-                if isinstance(obj, dict):
-                    obj[k] = resolved
+        # Inject additional resolved refs after creation (skip for frozen dataclasses)
+        try:
+            # Check if object is a frozen dataclass
+            import dataclasses
+            is_frozen_dataclass = dataclasses.is_dataclass(obj) and obj.__dataclass_params__.frozen
+        except (AttributeError, TypeError):
+            is_frozen_dataclass = False
+
+        if not is_frozen_dataclass:
+            # Inject additional resolved refs after creation
+            for k, v in raw_params.items():
+                resolved = resolve_ref(v)
+                if resolved is not None:
+                    if isinstance(obj, dict):
+                        obj[k] = resolved
+                    else:
+                        try:
+                            setattr(obj, k, resolved)
+                            log(f"Injected reference for '{key_name}': {k} -> {resolved}")
+                        except (AttributeError, dataclasses.FrozenInstanceError) as e:
+                            log(f"⚠️ Skipped injection for '{key_name}.{k}' (frozen/immutable): {e}")
                 else:
-                    setattr(obj, k, resolved)
-                log(f"Injected reference for '{key_name}': {k} -> {resolved}")
-            else:
-                log(f"Skipped injection for '{key_name}.{k}' (None)")
+                    log(f"Skipped injection for '{key_name}.{k}' (None)")
 
         return obj
 

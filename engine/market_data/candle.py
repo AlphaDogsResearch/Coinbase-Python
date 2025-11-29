@@ -42,28 +42,29 @@ class MidPriceCandle:
 
 
 class CandleAggregator:
-    def __init__(
-        self, *, interval_seconds: float = None, interval_milliseconds: int = None
-    ):
+    def __init__(self, *, interval_seconds: float = None, interval_milliseconds: int = None):
         if interval_milliseconds is not None:
             self.interval = timedelta(milliseconds=interval_milliseconds)
         elif interval_seconds is not None:
             self.interval = timedelta(seconds=interval_seconds)
         else:
-            raise ValueError(
-                "Must provide either interval_seconds or interval_milliseconds"
-            )
+            raise ValueError("Must provide either interval_seconds or interval_milliseconds")
         self.current_candle: Optional[MidPriceCandle] = None
         self.candle_callback: Optional[Callable[[MidPriceCandle], None]] = None
 
-        self.tick_candle_listener: List[Callable[[datetime,float,float,float,float], None]] = []
+        self.tick_candle_listener: List[Callable[[datetime, float, float, float, float], None]] = []
 
     def on_order_book(self, order_book: OrderBook):
         mid_price = (order_book.get_best_bid() + order_book.get_best_ask()) / 2
         timestamp_sec = order_book.timestamp / 1000.0  # Convert from ms to sec
+        logging.debug(
+            f"[CandleAggregator] Received OrderBook: mid_price={mid_price:.2f}, "
+            f"timestamp={timestamp_sec}"
+        )
         completed_candle = self._update(timestamp_sec, mid_price)
 
         if completed_candle:
+            logging.info(f"[CandleAggregator] Completed candle: {completed_candle}")
             self._notify_candle_created(completed_candle)
 
     def _update(self, timestamp: float, mid_price: float) -> Optional[MidPriceCandle]:
@@ -81,7 +82,8 @@ class CandleAggregator:
             finished = self.current_candle
             self.current_candle = MidPriceCandle(start_time=candle_start)
             self.current_candle.add_tick(mid_price)
-            logging.info(finished)
+            if finished:
+                logging.info(f"🕯️ [CandleAggregator] Completed candle: {finished}")
             return finished
         else:
             self.current_candle.add_tick(mid_price)
@@ -95,19 +97,20 @@ class CandleAggregator:
             self.candle_callback(completed_candle)
             self.on_candle_update(completed_candle)
 
-    def add_tick_candle_listener(self, callback: Callable[[datetime,float,float,float,float], None]):
+    def add_tick_candle_listener(
+        self, callback: Callable[[datetime, float, float, float, float], None]
+    ):
         """Register a callback to receive OrderBook updates"""
         self.tick_candle_listener.append(callback)
 
-    def on_candle_update(self,completed_candle: MidPriceCandle):
-        timestamp= convert_epoch_time_to_datetime_millis(current_milli_time())
-        c_open= completed_candle.open
-        c_high= completed_candle.high
-        c_low= completed_candle.low
+    def on_candle_update(self, completed_candle: MidPriceCandle):
+        timestamp = convert_epoch_time_to_datetime_millis(current_milli_time())
+        c_open = completed_candle.open
+        c_high = completed_candle.high
+        c_low = completed_candle.low
         c_close = completed_candle.close
         for listener in self.tick_candle_listener:
             try:
-                listener(timestamp,c_open,c_high,c_low,c_close)
+                listener(timestamp, c_open, c_high, c_low, c_close)
             except Exception as e:
                 logging.error("Candle Aggregator Listener raised an exception: %s", e)
-

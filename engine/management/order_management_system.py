@@ -86,16 +86,27 @@ class FCFSOrderManager(OrderManager, ABC):
         symbol: str,
         strategy_actions: StrategyAction,
         strategy_order_mode: StrategyOrderMode,
+        tags: List[str] = None,
     ) -> bool:
 
         try:
             order = self.order_pool.acquire()
             logging.info(f"Order ID from object Pool {order.order_id}")
             side = None
+            side_str = "UNKNOWN"
             if signal == 1:
                 side = Side.BUY
+                side_str = "BUY"
             elif signal == -1:
                 side = Side.SELL
+                side_str = "SELL"
+
+            # Log signal and tags
+            logging.info(
+                f"Signal: {signal} ({side_str}) for {strategy_id} {symbol} at price {price}"
+            )
+            if tags:
+                logging.info(f"Tags: {tags}")
 
             order_quantity = 0
             if strategy_order_mode.get_order_mode() == OrderSizeMode.NOTIONAL:
@@ -125,15 +136,31 @@ class FCFSOrderManager(OrderManager, ABC):
 
             logging.info(
                 f"Symbol {symbol} with  "
-                f"quantity {strategy_order_mode.quantity}"
-                f"notional {strategy_order_mode.notional_value},"
+                f"quantity {strategy_order_mode.quantity} "
+                f"notional {strategy_order_mode.notional_value}, "
                 f"calculated order_quantity {order_quantity} "
                 f"strategy_actions {strategy_actions} "
+                f"signal {signal} ({side_str})"
+                f"{' tags ' + str(tags) if tags else ''}"
             )
 
             order.update_order_fields(
                 side, float(order_quantity), symbol, current_milli_time(), price, strategy_id
             )
+
+            # Store tags in order metadata
+            action = None
+            if tags:
+                for t in tags:
+                    if t in ("ENTRY", "CLOSE"):
+                        action = t
+                        break
+            self.order_meta[order.order_id] = {
+                "signal_id": None,
+                "action": action,
+                "trigger_price": None,
+                "tags": tags,
+            }
 
             return self.submit_order_internal(order)
         except Exception as e:
@@ -160,7 +187,9 @@ class FCFSOrderManager(OrderManager, ABC):
                 )
             except Exception:
                 effective_qty = quantity
-            order.update_order_fields(side, float(effective_qty), symbol, current_milli_time(), price, strategy_id)
+            order.update_order_fields(
+                side, float(effective_qty), symbol, current_milli_time(), price, strategy_id
+            )
             order.order_type = OrderType.Market
 
             # Attach meta
@@ -170,7 +199,11 @@ class FCFSOrderManager(OrderManager, ABC):
                     if t in ("ENTRY", "CLOSE"):
                         action = t
                         break
-            self.order_meta[order.order_id] = {"signal_id": signal_id, "action": action, "trigger_price": None}
+            self.order_meta[order.order_id] = {
+                "signal_id": signal_id,
+                "action": action,
+                "trigger_price": None,
+            }
 
             return self.submit_order_internal(order)
         except Exception as e:
@@ -196,7 +229,9 @@ class FCFSOrderManager(OrderManager, ABC):
                 # Normalize using StopMarket rules (treated like Market for lot sizing)
                 try:
                     qty_to_use = float(
-                        self.reference_data_manager.get_effective_quantity(OrderType.Market, symbol, quantity)
+                        self.reference_data_manager.get_effective_quantity(
+                            OrderType.Market, symbol, quantity
+                        )
                     )
                 except Exception:
                     qty_to_use = float(quantity)
@@ -204,23 +239,37 @@ class FCFSOrderManager(OrderManager, ABC):
                 entry = self._entry_by_signal.get(key)
                 if entry is not None:
                     try:
-                        qty_to_use = float(self.reference_data_manager.get_effective_quantity(OrderType.Market, symbol, entry["qty"]))
+                        qty_to_use = float(
+                            self.reference_data_manager.get_effective_quantity(
+                                OrderType.Market, symbol, entry["qty"]
+                            )
+                        )
                     except Exception:
-                        qty_to_use = float(entry["qty"]) 
+                        qty_to_use = float(entry["qty"])
 
             if qty_to_use is None:
                 # Defer until entry is filled; store pending stop request
-                self._pending_stop_by_signal[key] = {"side": side, "trigger_price": trigger_price, "tags": tags}
+                self._pending_stop_by_signal[key] = {
+                    "side": side,
+                    "trigger_price": trigger_price,
+                    "tags": tags,
+                }
                 logging.info(f"Pending StopMarket recorded for key={key} trigger={trigger_price}")
                 return True
 
             # Submit immediately
             order = self.order_pool.acquire()
-            order.update_order_fields(side, qty_to_use, symbol, current_milli_time(), trigger_price, strategy_id)
+            order.update_order_fields(
+                side, qty_to_use, symbol, current_milli_time(), trigger_price, strategy_id
+            )
             order.order_type = OrderType.StopMarket
 
             # Attach meta
-            self.order_meta[order.order_id] = {"signal_id": signal_id, "action": "STOP_LOSS", "trigger_price": trigger_price}
+            self.order_meta[order.order_id] = {
+                "signal_id": signal_id,
+                "action": "STOP_LOSS",
+                "trigger_price": trigger_price,
+            }
 
             return self.submit_order_internal(order)
         except Exception as e:
@@ -245,14 +294,20 @@ class FCFSOrderManager(OrderManager, ABC):
                 )
             except Exception:
                 effective_qty = quantity
-            order.update_order_fields(side, float(effective_qty), symbol, current_milli_time(), price, strategy_id)
+            order.update_order_fields(
+                side, float(effective_qty), symbol, current_milli_time(), price, strategy_id
+            )
             order.order_type = OrderType.Market
             action = None
             if tags:
                 for t in tags:
                     if t == "ENTRY":
                         action = t
-            self.order_meta[order.order_id] = {"signal_id": signal_id, "action": action, "trigger_price": None}
+            self.order_meta[order.order_id] = {
+                "signal_id": signal_id,
+                "action": action,
+                "trigger_price": None,
+            }
             return self.submit_order_internal(order)
         except Exception as e:
             logging.error("Error submit_market_entry: %s", exc_info=e)
@@ -285,14 +340,20 @@ class FCFSOrderManager(OrderManager, ABC):
         except Exception:
             effective_qty = qty
         order = self.order_pool.acquire()
-        order.update_order_fields(close_side, float(effective_qty), symbol, current_milli_time(), price, strategy_id)
+        order.update_order_fields(
+            close_side, float(effective_qty), symbol, current_milli_time(), price, strategy_id
+        )
         order.order_type = OrderType.Market
         action = None
         if tags:
             for t in tags:
                 if t == "CLOSE":
                     action = t
-        self.order_meta[order.order_id] = {"signal_id": None, "action": action, "trigger_price": None}
+        self.order_meta[order.order_id] = {
+            "signal_id": None,
+            "action": action,
+            "trigger_price": None,
+        }
         return self.submit_order_internal(order)
 
     def submit_order_internal(self, order: Order) -> bool:
@@ -338,7 +399,11 @@ class FCFSOrderManager(OrderManager, ABC):
                 if meta and meta.get("signal_id") and (meta.get("action") == "ENTRY"):
                     key = (order.strategy_id, order.symbol, meta["signal_id"])
                     # Record entry info (final filled qty)
-                    self._entry_by_signal[key] = {"qty": order.filled_qty, "side": order.side, "price": order.avg_filled_price}
+                    self._entry_by_signal[key] = {
+                        "qty": order.filled_qty,
+                        "side": order.side,
+                        "price": order.avg_filled_price,
+                    }
                     pending = self._pending_stop_by_signal.pop(key, None)
                     if pending:
                         # Derive stop side if not provided correctly: close the position

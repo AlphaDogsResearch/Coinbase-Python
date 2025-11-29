@@ -2,6 +2,12 @@ import logging
 import os
 import sys
 import signal
+from pathlib import Path
+
+# Add project root to Python path
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv
 
@@ -22,18 +28,11 @@ from engine.reference_data.reference_price_manager import ReferencePriceManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
 from engine.risk.risk_manager import RiskManager
-from engine.strategies.nautilus_strategy_factory import (
-    create_roc_mean_reversion_strategy,
-    create_cci_momentum_strategy,
-    create_apo_mean_reversion_strategy,
-    create_ppo_momentum_strategy,
-    create_adx_mean_reversion_strategy,
-    create_simple_order_test_strategy,
-)
 from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.telegram_notifier import TelegramNotifier
 from engine.trades.trades_manager import TradesManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
+# from engine.market_data.mock_market_data_generator import MockMarketDataGenerator
 from graph.ohlc_plot import RealTimePlotWithCandlestick
 
 
@@ -46,7 +45,6 @@ def main():
     to_stdout_and_daily_file(log_dir="logs", log_prefix="trading")
     logging.info("Running Engine...")
 
-
     # Get configuration from environment variables
     environment = os.getenv("ENVIRONMENT", "development")
     logging.info("Environment: %s", environment)
@@ -56,10 +54,10 @@ def main():
     components = basic_config_loader.create_objects(config)
     logging.info(f"Components Created. {components}")
 
-    default_settings_parameters = components['default_settings']
-    notional_amount= default_settings_parameters['notional_amount']
+    default_settings_parameters = components["default_settings"]
+    notional_amount = default_settings_parameters["notional_amount"]
 
-    interval_seconds= default_settings_parameters['interval_seconds']
+    interval_seconds = default_settings_parameters["interval_seconds"]
 
     logging.info(
         "Candle interval: %d seconds (%s)",
@@ -82,12 +80,11 @@ def main():
         )
         sys.exit(1)
 
-
-    selected_symbol = default_settings_parameters['selected_symbol']
+    selected_symbol = default_settings_parameters["selected_symbol"]
 
     # Initialize Position and RiskManager
-    position = components['position']
-    risk_manager = components['risk_manager']
+    position = components["position"]
+    risk_manager = components["risk_manager"]
     # Ensure symbol is registered for per-symbol risk tracking
     try:
         risk_manager.add_symbol(selected_symbol, position=position)
@@ -97,16 +94,16 @@ def main():
             exc_info=True,
         )
 
-    margin_manager = components['margin_manager']
-    trading_cost_manager = components['trading_cost_manager']
-    sharpe_calculator = components['sharpe_calculator']
+    margin_manager = components["margin_manager"]
+    trading_cost_manager = components["trading_cost_manager"]
+    sharpe_calculator = components["sharpe_calculator"]
 
-    trade_manager = components['trade_manager']
+    trade_manager = components["trade_manager"]
 
     # initialise reference price manager
-    reference_price_manager = components['reference_price_manager']
+    reference_price_manager = components["reference_price_manager"]
 
-    position_manager = components['position_manager']
+    position_manager = components["position_manager"]
 
     reference_price_manager.attach_mark_price_listener(position_manager.on_mark_price_event)
     # Wire per-symbol position and open-orders listeners to RiskManager
@@ -138,7 +135,7 @@ def main():
     # We'll initialize the notifier fully after account is created
 
     # init account
-    account = components['account']
+    account = components["account"]
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
     # Forward wallet balance updates into RiskManager (updates AUM internally)
     account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
@@ -153,7 +150,7 @@ def main():
     position_manager.add_realized_pnl_listener(lambda pnl: risk_manager.update_daily_loss(pnl))
 
     # initialise remote client
-    remote_market_data_client = components['remote_market_data_client']
+    remote_market_data_client = components["remote_market_data_client"]
 
     # attach position manager listener to remote client
     remote_market_data_client.add_mark_price_listener(
@@ -180,14 +177,16 @@ def main():
             f"Risk reporting enabled -> {config_risk.RISK_REPORT_FILE_DEFAULT} every {config_risk.RISK_REPORT_INTERVAL_SECONDS_DEFAULT}s"
         )
 
-    reference_data_manager = components['reference_data_manager']
+    reference_data_manager = components["reference_data_manager"]
 
-    remote_order_client = components['remote_order_client']
+    remote_order_client = components["remote_order_client"]
 
     # create executor
-    executor = components['executor']
+    executor = components["executor"]
     # create order manager
-    order_manager = components['order_manager']
+    order_manager = components["order_manager"]
+    # Set position_manager on order_manager for submit_market_close to work
+    order_manager.position_manager = position_manager
     order_manager.start()
 
     remote_order_client.add_order_event_listener(order_manager.on_order_event)
@@ -198,52 +197,116 @@ def main():
         logging.debug("Failed to set order lookup on PositionManager", exc_info=True)
 
     # Initialize telegram notifier and wire as listener (non-blocking)
+    # DISABLED: Telegram causing connection issues
     telegram_notifier = None
-    try:
-        telegram_notifier = TelegramNotifier(
-            api_key=telegram_api_key,
-            user_id=telegram_user_id,
-            exchange_env=telegram_exchange_env,
-            account=account,
-            position_manager=position_manager,
-        )
+    # try:
+    #     telegram_notifier = TelegramNotifier(
+    #         api_key=telegram_api_key,
+    #         user_id=telegram_user_id,
+    #         exchange_env=telegram_exchange_env,
+    #         account=account,
+    #         position_manager=position_manager,
+    #     )
+    #
+    #     # Register telegram notifier as listener for all events
+    #     remote_order_client.add_order_event_listener(telegram_notifier.on_order_event)
+    #     account.add_margin_warning_listener(telegram_notifier.on_margin_warning)
+    #
+    #     # Register PnL listeners for profit/loss notifications
+    #     position_manager.add_unrealized_pnl_listener(telegram_notifier.on_unrealized_pnl_update)
+    #     position_manager.add_realized_pnl_listener(telegram_notifier.on_realized_pnl_update)
+    #
+    #     # Start telegram bot command listener (starts message sender + bot threads)
+    #     telegram_notifier.start_bot_listener()
+    #
+    #     if telegram_notifier.is_enabled():
+    #         logging.info("✅ Telegram notifier initialized and listeners registered")
+    #     else:
+    #         logging.warning(
+    #             "⚠️ Telegram notifier created but disabled - trading will continue normally"
+    #         )
+    # except Exception as e:
+    #     logging.error(f"❌ Failed to initialize Telegram notifier: {e}", exc_info=True)
+    #     logging.warning("⚠️ Trading will continue without Telegram notifications")
+    #     telegram_notifier = None
+    logging.info("📱 Telegram notifier disabled (skipped initialization)")
 
-        # Register telegram notifier as listener for all events
-        remote_order_client.add_order_event_listener(telegram_notifier.on_order_event)
-        account.add_margin_warning_listener(telegram_notifier.on_margin_warning)
+    # ===== Strategy Manager Setup =====
 
-        # Register PnL listeners for profit/loss notifications
-        position_manager.add_unrealized_pnl_listener(telegram_notifier.on_unrealized_pnl_update)
-        position_manager.add_realized_pnl_listener(telegram_notifier.on_realized_pnl_update)
+    # Initialize strategy manager
+    strategy_manager = StrategyManager(
+        order_manager=order_manager,
+        position_manager=position_manager,
+        remote_market_data_client=remote_market_data_client,
+    )
 
-        # Start telegram bot command listener (starts message sender + bot threads)
-        telegram_notifier.start_bot_listener()
+    # Add strategies from config
+    strategies = components.get("strategy_map", {})
+    if strategies:
+        logging.info("========================== Adding strategies ==========================")
 
-        if telegram_notifier.is_enabled():
-            logging.info("✅ Telegram notifier initialized and listeners registered")
-        else:
-            logging.warning(
-                "⚠️ Telegram notifier created but disabled - trading will continue normally"
+        for key, strategy in strategies.items():
+            # Set strategy name if not already set
+            if not hasattr(strategy, "name") or not strategy.name:
+                strategy.name = key
+            strategy_id = strategy.name
+
+            # Get strategy symbol/instrument_id
+            symbol = (
+                getattr(strategy, "symbol", None)
+                or getattr(strategy, "instrument_id", None)
+                or selected_symbol
             )
-    except Exception as e:
-        logging.error(f"❌ Failed to initialize Telegram notifier: {e}", exc_info=True)
-        logging.warning("⚠️ Trading will continue without Telegram notifications")
-        telegram_notifier = None
 
-    # setup strategy manager
-    strategy_manager = components['strategy_manager']
+            # Add strategy to manager (handles all wiring)
+            if strategy_manager.add_strategy(strategy, strategy_id, symbol):
+                logging.info(f"[Strategy] Added {strategy_id} for symbol {symbol}")
+            else:
+                logging.error(f"[Strategy] Failed to add {strategy_id}")
 
-    if telegram_notifier:
-        strategy_manager.add_on_strategy_order_submitted_listener(
-            telegram_notifier.on_strategy_order_submitted
+        # Start all strategies
+        strategy_manager.start_all()
+
+        logging.info("========================== Done adding strategies ==========================")
+    else:
+        logging.info("No strategies configured in config file")
+
+    # ===== Mock Market Data Generator (for testing without gateway) =====
+    mock_market_data_generator = None
+    use_mock_data = os.getenv("USE_MOCK_MARKET_DATA", "false").lower() == "true"
+    if use_mock_data:
+        logging.info("🧪 [MockMarketData] Enabled - Using simulated market data")
+        # Get base price from config or use default
+        base_price = float(os.getenv("MOCK_BASE_PRICE", "3000.0"))
+        update_interval_ms = int(os.getenv("MOCK_UPDATE_INTERVAL_MS", "100"))
+        price_volatility = float(os.getenv("MOCK_PRICE_VOLATILITY", "0.001"))
+
+        # mock_market_data_generator = MockMarketDataGenerator(
+        #     remote_market_data_client=remote_market_data_client,
+        #     symbol=selected_symbol,
+        #     base_price=base_price,
+        #     update_interval_ms=update_interval_ms,
+        #     price_volatility=price_volatility,
+        # )
+        # Small delay to ensure all listeners are registered
+        import time
+
+        time.sleep(0.5)
+
+        # Log registered listeners before starting
+        listeners = remote_market_data_client.order_book_listeners.get(selected_symbol, [])
+        logging.info(
+            f"🧪 [MockMarketData] Found {len(listeners)} listener(s) registered for {selected_symbol} "
+            f"before starting generator"
         )
 
-    # Connect strategy manager to order manager for signal tags
-    strategies = components['strategy_map']
-    logging.info("========================== Adding strategies ==========================")
-    for key,strategy in strategies.items():
-        strategy_manager.add_strategy(strategy)
-    logging.info("========================== Done adding strategies ==========================")
+        mock_market_data_generator.start()
+        logging.info(
+            f"🧪 [MockMarketData] Started generating data for {selected_symbol} "
+            f"at base_price={base_price}, interval={update_interval_ms}ms"
+        )
+    else:
+        logging.info("📡 [MarketData] Using real market data from gateway")
 
     # plotter = RealTimePlotWithCandlestick(
     #     ticker_name=selected_symbol,
@@ -280,6 +343,15 @@ def main():
         shutdown_in_progress = True
         logging.info("🛑 Shutdown signal received (Ctrl+C), stopping...")
         start = False
+
+        # Stop all strategies gracefully
+        if strategies:
+            strategy_manager.stop_all()
+
+        # Stop mock market data generator
+        if mock_market_data_generator:
+            mock_market_data_generator.stop()
+
         if telegram_notifier:
             telegram_notifier.stop_bot_listener()
         # Force exit after a short delay if graceful shutdown fails
@@ -308,6 +380,15 @@ def main():
             continue
     except KeyboardInterrupt:
         logging.info("🛑 Keyboard interrupt received, stopping...")
+
+        # Stop all strategies gracefully
+        if strategies:
+            strategy_manager.stop_all()
+
+        # Stop mock market data generator
+        if mock_market_data_generator:
+            mock_market_data_generator.stop()
+
         if telegram_notifier:
             telegram_notifier.stop_bot_listener()
         logging.info("✅ Application stopped gracefully")
