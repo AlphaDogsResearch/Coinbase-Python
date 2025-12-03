@@ -195,7 +195,7 @@ def main():
     order_manager.position_manager = position_manager
     order_manager.start()
 
-    remote_order_client.add_order_event_listener(order_manager.on_order_event)
+    remote_order_client.add_order_event_listener("Order-Manager",order_manager.on_order_event)
     # Allow PositionManager to resolve strategy_id from order_id/client_id
     try:
         position_manager.set_order_lookup(lambda cid: order_manager.orders.get(cid))

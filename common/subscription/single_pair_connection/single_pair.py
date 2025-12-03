@@ -222,9 +222,9 @@ class PairConnection:
                         except Exception as e:
                             self.stats.receive_errors += 1
                             if hasattr(e, 'message'):
-                                logging.error("Receiver loop %s",e.message)
+                                logging.error("Receiver loop message %s",e.message,exc_info=True)
                             else:
-                                logging.error("Receiver loop %s",e)
+                                logging.error("Receiver loop %s",e,exc_info=True)
 
                 except zmq.Again:
                     # No messages available, sleep to avoid CPU burn

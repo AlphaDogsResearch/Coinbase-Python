@@ -34,6 +34,7 @@ class Position:
         self.maint_margin_decimal_place = 4
         self.net_realized_pnl = 0.0
         self.realized_pnl_listener = realized_pnl_listener or (lambda symbol, pnl: None)
+        logging.info("TYPE %s",type(trading_cost))
         self.taker_fee = float(trading_cost.taker_fee) if trading_cost else 0.0
         self.maker_fee = float(trading_cost.maker_fee) if trading_cost else 0.0
         self.total_trading_cost = 0.0

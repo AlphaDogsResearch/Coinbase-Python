@@ -273,7 +273,7 @@ class BinanceGateway(GatewayInterface):
         - annualized_sharpe (float): Annualized Sharpe ratio (hourly basis)
         """
         try:
-            trades = self.api_client.futures_account_trades(symbol=self._symbol)
+            trades = self.api_client.futures_account_trades(symbol=self._symbols)
         except Exception as e:
             print("Error fetching trades:", e)
             return None, None
@@ -287,7 +287,7 @@ class BinanceGateway(GatewayInterface):
         df = pd.DataFrame(pnl_data)
 
         if df.empty:
-            print(f"No trades found for symbol: {self._symbol}")
+            print(f"No trades found for symbol: {self._symbols}")
             return 0.0, 0.0
 
         # Group by hourly bins
@@ -385,13 +385,13 @@ class BinanceGateway(GatewayInterface):
 
             return None
 
-    def get_trades_by_order_id(self, order_id):
+    def get_trades_by_order_id(self, order_id,symbol:str):
         endpoint = "/fapi/v1/userTrades"
         url = self.BASE_URL + endpoint
 
         timestamp = int(time.time() * 1000)
         params = {
-            "symbol": self._symbol,
+            "symbol": symbol,
             "orderId": order_id,
             "timestamp": timestamp
         }

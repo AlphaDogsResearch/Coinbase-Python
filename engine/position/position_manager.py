@@ -62,8 +62,11 @@ class PositionManager:
             # init
             trading_cost = self.trading_cost_manager.get_trading_cost(symbol)
 
+
+
             self.positions[symbol] = Position(
                 symbol,
+                "none",
                 position_amt,
                 entry_price,
                 unrealized_pnl,
@@ -95,51 +98,54 @@ class PositionManager:
             self.update_maint_margin(pos)
 
     def on_order_event(self, order_event: OrderEvent):
-        symbol = order_event.contract_name
-        # Maintain open orders counts using order status
-        order_id = getattr(order_event, "order_id", None)
-        if order_id:
-            s = self._open_orders_by_symbol.setdefault(symbol, set())
-            if order_event.status in (
-                OrderStatus.PENDING_NEW,
-                OrderStatus.NEW,
-                OrderStatus.OPEN,
-                OrderStatus.PARTIALLY_FILLED,
-            ):
-                s.add(order_id)
-            elif order_event.status in (
-                OrderStatus.FILLED,
-                OrderStatus.CANCELED,
-                OrderStatus.FAILED,
-            ):
-                s.discard(order_id)
-            # Emit open orders count
-            count = len(self._open_orders_by_symbol.get(symbol, set()))
-            # Update Position object if present
-            pos = self.positions.get(symbol)
-            if pos is not None:
+        try:
+            symbol = order_event.contract_name
+            # Maintain open orders counts using order status
+            order_id = getattr(order_event, "order_id", None)
+            if order_id:
+                s = self._open_orders_by_symbol.setdefault(symbol, set())
+                if order_event.status in (
+                    OrderStatus.PENDING_NEW,
+                    OrderStatus.NEW,
+                    OrderStatus.OPEN,
+                    OrderStatus.PARTIALLY_FILLED,
+                ):
+                    s.add(order_id)
+                elif order_event.status in (
+                    OrderStatus.FILLED,
+                    OrderStatus.CANCELED,
+                    OrderStatus.FAILED,
+                ):
+                    s.discard(order_id)
+                # Emit open orders count
+                count = len(self._open_orders_by_symbol.get(symbol, set()))
+                # Update Position object if present
+                pos = self.positions.get(symbol)
+                if pos is not None:
+                    try:
+                        pos.set_open_orders(count)
+                    except Exception:
+                        logging.debug("Failed to set open orders on Position", exc_info=True)
+                for listener in self.open_orders_listener:
+                    try:
+                        listener(symbol, count)
+                    except Exception as e:
+                        logging.error(self.name + " [OPEN_ORDERS] Listener raised an exception: %s", e)
+
+            if order_event.status == OrderStatus.FILLED:
+                # Resolve strategy_id via lookup if available
+                strategy_id: Optional[str] = None
                 try:
-                    pos.set_open_orders(count)
+                    if self._order_lookup is not None and getattr(order_event, "client_id", None):
+                        order_obj = self._order_lookup(order_event.client_id)
+                        if order_obj is not None:
+                            strategy_id = getattr(order_obj, "strategy_id", None)
                 except Exception:
-                    logging.debug("Failed to set open orders on Position", exc_info=True)
-            for listener in self.open_orders_listener:
-                try:
-                    listener(symbol, count)
-                except Exception as e:
-                    logging.error(self.name + " [OPEN_ORDERS] Listener raised an exception: %s", e)
+                    logging.debug("Failed to resolve strategy_id from order lookup", exc_info=True)
 
-        if order_event.status == OrderStatus.FILLED:
-            # Resolve strategy_id via lookup if available
-            strategy_id: Optional[str] = None
-            try:
-                if self._order_lookup is not None and getattr(order_event, "client_id", None):
-                    order_obj = self._order_lookup(order_event.client_id)
-                    if order_obj is not None:
-                        strategy_id = getattr(order_obj, "strategy_id", None)
-            except Exception:
-                logging.debug("Failed to resolve strategy_id from order lookup", exc_info=True)
-
-            self.update_or_add_position(order_event, strategy_id)
+                self.update_or_add_position(order_event, strategy_id)
+        except Exception:
+            logging.error("Failed to resolve symbol %s", order_event.contract_name, exc_info=True)
 
     def update_or_add_position(self, order_event: OrderEvent, strategy_id: Optional[str] = None):
         symbol = order_event.contract_name
@@ -226,8 +232,8 @@ class PositionManager:
 
         # Compute aggregate entry price: if net qty non-zero, use mark price from reference or last known
         if abs(total_qty) > 0:
-            mark = self.mark_price_dict.get(symbol)
-            entry_price = mark.price if mark else 0.0
+            mark_price = self.mark_price_dict.get(symbol)
+            entry_price = mark_price if mark_price else 0.0
 
         existing = self.positions.get(symbol)
         if existing is None:

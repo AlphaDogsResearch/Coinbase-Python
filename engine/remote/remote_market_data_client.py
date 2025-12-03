@@ -32,7 +32,7 @@ class RemoteMarketDataClient(MarketDataClient):
 
         self.mark_price_queue_processor = SelfMonitoringQueueProcessor(
             name="MarkPriceProcessor",
-            max_queue_size=8
+            max_queue_size=128
         )
 
         # Register event handlers
@@ -42,6 +42,9 @@ class RemoteMarketDataClient(MarketDataClient):
         # Start the processor
         self.market_data_queue_processor.start()
         self.mark_price_queue_processor.start()
+        self.mark_price_executor = ThreadPoolExecutor(max_workers=1)
+        self.tick_executor = ThreadPoolExecutor(max_workers=1)
+        self.market_data_executor = ThreadPoolExecutor(max_workers=1)
 
         self.remote_market_data_server = PairConnection(self.port, False, self.name)
         self.remote_market_data_server.start_receiving(self.on_event)
@@ -93,12 +96,12 @@ class RemoteMarketDataClient(MarketDataClient):
 
     def _handle_order_book(self, order_book: OrderBook):
         """Handle OrderBook events sequentially"""
-        self.notify_order_book_listeners(order_book)
-        self.notify_tick_listeners(order_book)
+        self.market_data_executor.submit(self.notify_order_book_listeners,order_book)
+        self.tick_executor.submit(self.notify_tick_listeners,order_book)
 
     def _handle_mark_price(self, mark_price: MarkPrice):
         """Handle MarkPrice events sequentially"""
-        self.update_mark_price(mark_price)
+        self.mark_price_executor.submit(self.update_mark_price,mark_price)
 
     # dont block the thread
     def on_event(self, obj: object):

@@ -2,7 +2,7 @@ import logging
 import queue
 import threading
 import time
-from typing import Callable, List
+from typing import Callable, List, Dict
 
 from common.interface_order import Order, Trade, OrderEvent
 from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
@@ -25,7 +25,7 @@ class RemoteOrderClient:
         # make port configurable
         self.port = 8081
         self.name = "Remote Order Order Connection"
-        self.order_event_listeners: List[Callable[[OrderEvent], None]] = []  # list of callbacks
+        self.order_event_listeners: Dict[str, Callable[[OrderEvent], None]] = {} # dict of callbacks
 
         self.remote_order_server = PairConnection(self.port, False, self.name)
         self.remote_order_server.start_receiving(self.on_event)
@@ -38,8 +38,8 @@ class RemoteOrderClient:
         # trade manager
         self.trade_manager = trade_manager
 
-        self.add_order_event_listener(self.position_manager.on_order_event)
-        self.add_order_event_listener(self.trade_manager.on_order_event)
+        self.add_order_event_listener("Position-Event",self.position_manager.on_order_event)
+        self.add_order_event_listener("Trade-Manager",self.trade_manager.on_order_event)
         self.reference_data_manager = reference_data_manager
 
 
@@ -121,9 +121,10 @@ class RemoteOrderClient:
             except queue.Empty:
                 continue  # no orders, loop again
 
-    def add_order_event_listener(self, callback: Callable[[OrderEvent], None]):
+    def add_order_event_listener(self,listener_name:str, callback: Callable[[OrderEvent], None]):
+        logging.info("Attaching order event listener [%s]", listener_name)
         """Register a callback to receive OrderBook updates"""
-        self.order_event_listeners.append(callback)
+        self.order_event_listeners[listener_name] = callback
 
     def on_event(self, obj: object):
         if isinstance(obj, OrderEvent):
@@ -176,11 +177,11 @@ class RemoteOrderClient:
     def received_order_event(self, order_event : OrderEvent):
         logging.info("[%s] Received %s Order Event: \n %s", self.name,order_event.status, order_event)
 
-        for oe_listener in self.order_event_listeners:
+        for listener_name,oe_listener in self.order_event_listeners.items():
             try:
                 oe_listener(order_event)
             except Exception as e:
-                logging.error(self.name + " Listener raised an exception: %s", e)
+                logging.error( "%s %s Listener raised an exception: %s",self.name,listener_name, e)
 
     def stop(self):
         """Stop the sender thread cleanly."""
