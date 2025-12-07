@@ -13,8 +13,7 @@ class RiskManager:
     Risk engine with:
     - Pre-order sanity checks
     - Portfolio-level drawdown gate (lifetime until reset)
-    - Portfolio-level daily/max loss gate
-    Prices and AUM are fed via gateway listeners (price provider + wallet balance updates).
+    AUM are fed via gateway listeners (wallet balance updates).
     """
 
     def __init__(
@@ -23,11 +22,8 @@ class RiskManager:
             max_position_value: Optional[float] = None,
             max_leverage: Optional[float] = None,
             max_open_orders: Optional[int] = None,
-            max_loss_per_day: Optional[float] = 0.10,  # portfolio daily loss cap (fraction of AUM)
-            allowed_symbols: Optional[list] = None,
             min_order_size: Optional[float] = None,
             position: Optional[Position] = None,
-            liquidation_loss_threshold: Optional[float] = None,
             max_drawdown: Optional[float] = 0.10,
     ):
         # Global limits
@@ -43,20 +39,9 @@ class RiskManager:
         self.max_open_orders = (
             config_risk.MAX_OPEN_ORDERS_DEFAULT if max_open_orders is None else max_open_orders
         )
-        self.max_loss_per_day = (
-            config_risk.MAX_LOSS_PER_DAY_DEFAULT if max_loss_per_day is None else max_loss_per_day
-        )
         self.min_order_size = (
             config_risk.MIN_ORDER_SIZE_DEFAULT if min_order_size is None else min_order_size
         )
-
-        # Dynamic symbol management
-        symbols_list = allowed_symbols if allowed_symbols is not None else config_risk.ALLOWED_SYMBOLS_DEFAULT
-        self.allowed_symbols = set(symbols_list) if symbols_list else None
-        self.positions = {}
-        # Instrument-level tracking
-        self.symbol_daily_loss = {}
-        self.symbol_portfolio_value = {}
 
         # Backward-compat single-position path
         self.position = position
@@ -71,51 +56,29 @@ class RiskManager:
         self._open_orders_count = {}
         self._latest_prices = {}
 
-        # Global portfolio/AUM and daily loss
+        # Global portfolio/AUM
         self.aum = 0.0  # Should be set via wallet balance listener
         self.initial_aum = 0.0  # first AUM observed from gateway
-        self.portfolio_daily_loss = 0.0
-        self.portfolio_max_loss_ratio = self.max_loss_per_day
+
         # Trading block state and publisher hook
         self.trading_blocked = False
         self.block_reason: Optional[str] = None
         self._block_publisher: Optional[Callable[[dict], None]] = None
 
-        self.liquidation_loss_threshold = (
-            config_risk.LIQUIDATION_LOSS_THRESHOLD_DEFAULT if liquidation_loss_threshold is None else liquidation_loss_threshold
-        )
         # Lifetime drawdown tracking
         self.max_drawdown = max_drawdown if max_drawdown is not None else 0.10
         self._peak_aum = None  # type: Optional[float]
         self._current_drawdown_ratio = 0.0
 
-        # Price provider (reporting removed)
-        self._price_provider = None  # type: Optional[Callable[[str], Optional[float]]]
-
-        # If an initial position is provided, register its symbol
-        if self.position and getattr(self.position, 'symbol', None):
-            self.add_symbol(self.position.symbol, self.position)
-
-    # ------------------------
-    # Lifecycle and inputs
-    # ------------------------
     def set_aum(self, aum: float):
         logging.info(f"Updating AUM to {aum}")
         # Record the first observed AUM as initial_aum
         if not self.initial_aum:
             self.initial_aum = aum
         self.aum = aum
-        # Update peak and drawdown
-        if self._peak_aum is None or aum > self._peak_aum:
-            self._peak_aum = aum
-            self._current_drawdown_ratio = 0.0
-        elif self._peak_aum > aum and self._peak_aum > 0:
-            dd = (self._peak_aum - aum) / self._peak_aum
-            self._current_drawdown_ratio = max(self._current_drawdown_ratio, dd)
-        logging.info(f"Current peak_aum:{self._peak_aum}, current_drawdown_ratio {self._current_drawdown_ratio}")
+        self.update_drawdown(aum)
 
     # If previously blocked due to drawdown, keep blocked until reset
-
     def _get_position_and_open_orders(self, symbol: str) -> Tuple[float, int]:
         """Resolve position amount and open orders for a symbol using Position if present, otherwise cached listeners."""
         pos = self.positions.get(symbol)
@@ -157,11 +120,6 @@ class RiskManager:
             self.account_unrealised_pnl = float(unrealised_pnl)
         except Exception:
             self.account_unrealised_pnl = unrealised_pnl
-        # Update portfolio daily loss (assumes delta input)
-        try:
-            self.portfolio_daily_loss += float(unrealised_pnl)
-        except Exception:
-            pass
 
     def on_maint_margin_update(self, maint_margin: float):
         try:
@@ -188,13 +146,6 @@ class RiskManager:
             self._latest_prices[symbol] = price
 
     # ------------------------
-    # Price provider
-    # ------------------------
-    def set_price_provider(self, provider: Callable[[str], Optional[float]]):
-        self._price_provider = provider
-        logging.info("RiskManager: price provider set")
-
-    # ------------------------
     # Block publication and queries
     # ------------------------
     def set_block_publisher(self, publisher: Callable[[dict], None]):
@@ -211,68 +162,12 @@ class RiskManager:
                 "reason": self.block_reason,
                 "aum": self.aum,
                 "peak_aum": self._peak_aum,
-                "drawdown_ratio": self._current_drawdown_ratio,
-                "daily_loss": self.portfolio_daily_loss,
+                "drawdown_ratio": self._current_drawdown_ratio
             }
             try:
                 self._block_publisher(payload)
             except Exception:
                 logging.debug("Failed to publish trading block event", exc_info=True)
-
-    def _get_mark_price(self, symbol: str) -> Optional[float]:
-        if self._price_provider:
-            try:
-                price = self._price_provider(symbol)
-                return float(price) if price is not None else None
-            except Exception:
-                logging.debug("RiskManager price provider failed", exc_info=True)
-        if symbol in self._latest_prices:
-            return self._latest_prices.get(symbol)
-        return None
-
-    # ------------------------
-    # Daily loss
-    # ------------------------
-    def update_daily_loss(self, pnl: float, symbol: Optional[str] = None):
-        try:
-            self.portfolio_daily_loss += float(pnl)
-        except Exception:
-            pass
-        if symbol:
-            self.symbol_daily_loss[symbol] = self.symbol_daily_loss.get(symbol, 0.0) + pnl
-
-    def reset_daily_loss(self):
-        self.portfolio_daily_loss = 0.0
-        for k in list(self.symbol_daily_loss.keys()):
-            self.symbol_daily_loss[k] = 0.0
-
-    # ------------------------
-    # Dynamic symbol management
-    # ------------------------
-    def add_symbol(self, symbol: str, position: Optional[Position] = None, min_order_size: Optional[float] = None):
-        if self.allowed_symbols is not None:
-            self.allowed_symbols.add(symbol)
-        if position:
-            self.positions[symbol] = position
-        self.symbol_daily_loss.setdefault(symbol, 0.0)
-        if min_order_size is not None:
-            if not hasattr(self, '_symbol_min_order_size'):
-                self._symbol_min_order_size = {}
-            self._symbol_min_order_size[symbol] = float(min_order_size)
-        logging.info(f"RiskManager: added symbol {symbol}")
-
-    def remove_symbol(self, symbol: str):
-        self.positions.pop(symbol, None)
-        self.symbol_daily_loss.pop(symbol, None)
-        self.symbol_portfolio_value.pop(symbol, None)
-        if getattr(self, '_symbol_min_order_size', None) is not None:
-            self._symbol_min_order_size.pop(symbol, None)
-        if self.allowed_symbols is not None and symbol in self.allowed_symbols:
-            self.allowed_symbols.remove(symbol)
-        logging.info(f"RiskManager: removed symbol {symbol}")
-
-    def set_symbol_position(self, symbol: str, position: Position):
-        self.positions[symbol] = position
 
     # ------------------------
     # Pre-order basic checks
@@ -297,10 +192,11 @@ class RiskManager:
             logging.warning(f"Preorder rejected: quantity {qty} below minimum {min_size}")
             return False
         # Price must be available (either on order or via provider/cache)
-        exec_price = order.price if getattr(order, 'price', None) not in (None, 0) else self._get_mark_price(symbol)
-        if exec_price is None:
+        if exec_price is None or exec_price < 0.0:
             logging.warning("Preorder rejected: price not available (order.price missing and mark price unavailable)")
             return False
+        else:
+            exec_price = order.price
         return True
 
     # ------------------------
@@ -352,10 +248,11 @@ class RiskManager:
             return False
 
         # Resolve price
-        exec_price = order.price if getattr(order, 'price', None) not in (None, 0) else self._get_mark_price(symbol)
-        if exec_price is None:
+        if exec_price is None or exec_price < 0.0:
             logging.warning("Order rejected: missing price for notional/leverage checks")
             return False
+        else:
+            exec_price = order.price
 
         # Max order notional
         notional = abs(qty) * float(exec_price)
@@ -380,18 +277,6 @@ class RiskManager:
             if leverage > self.max_leverage:
                 logging.warning(f"Order rejected: leverage {leverage:.2f}x exceeds max {self.max_leverage}x.")
                 return False
-
-        # Portfolio daily loss gate
-        if self.portfolio_daily_loss < 0 and abs(self.portfolio_daily_loss) > self.max_loss_per_day * self.aum:
-            self.trading_blocked = True
-            self.block_reason = (
-                f"portfolio daily loss {self.portfolio_daily_loss} exceeds cap {self.max_loss_per_day * self.aum}"
-            )
-            logging.warning(
-                f"Order rejected: {self.block_reason}."
-            )
-            self._publish_block_event()
-            return False
 
         return True
 
@@ -418,6 +303,16 @@ class RiskManager:
             'blocked': self.trading_blocked,
             'reason': self.block_reason,
         }
+    
+    def update_drawdown(self, aum: float):    
+        # Update peak and drawdown
+        if self._peak_aum is None or aum > self._peak_aum:
+            self._peak_aum = aum
+            self._current_drawdown_ratio = 0.0
+        elif self._peak_aum > aum and self._peak_aum > 0:
+            dd = (self._peak_aum - aum) / self._peak_aum
+            self._current_drawdown_ratio = max(self._current_drawdown_ratio, dd)
+        logging.info(f"Current peak_aum:{self._peak_aum}, current_drawdown_ratio {self._current_drawdown_ratio}")
 
     # ------------------------
     # VaR matrices (historical and portfolio)

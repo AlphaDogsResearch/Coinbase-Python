@@ -20,24 +20,6 @@ class RiskEngineInterface:
         self._rm = risk_manager or RiskManager()
 
     # -----------------
-    # Configuration
-    # -----------------
-    def set_price_provider(self, provider: Callable[[str], Optional[float]]) -> None:
-        self._rm.set_price_provider(provider)
-
-    def add_symbol(self, symbol: str, position: Optional[Position] = None, min_order_size: Optional[float] = None) -> None:
-        self._rm.add_symbol(symbol, position, min_order_size)
-
-    def remove_symbol(self, symbol: str) -> None:
-        self._rm.remove_symbol(symbol)
-
-    def set_symbol_position(self, symbol: str, position: Position) -> None:
-        self._rm.set_symbol_position(symbol, position)
-
-    def set_symbol_var(self, symbol: str, var_value: float, portfolio_value: float) -> None:
-        self._rm.set_symbol_var(symbol, var_value, portfolio_value)
-
-    # -----------------
     # Inbound updates (listeners)
     # -----------------
     def update_wallet_balance(self, wallet_balance: float) -> None:
@@ -66,15 +48,6 @@ class RiskEngineInterface:
     # -----------------
     def validate_order(self, order: Order) -> bool:
         return self._rm.validate_order(order)
-
-    def generate_risk_report_text(self, symbols: Optional[List[str]] = None) -> str:
-        return self._rm.generate_risk_report_text(symbols)
-
-    def start_periodic_risk_reports(self, report_file: str, interval_seconds: int = 600, symbols: Optional[List[str]] = None) -> None:
-        self._rm.start_periodic_risk_reports(report_file, interval_seconds, symbols)
-
-    def stop_periodic_risk_reports(self) -> None:
-        self._rm.stop_periodic_risk_reports()
 
     def reset_drawdown(self) -> None:
         self._rm.reset_drawdown()
