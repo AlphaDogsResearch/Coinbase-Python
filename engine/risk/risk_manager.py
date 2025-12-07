@@ -1,6 +1,7 @@
 import logging
 import threading
 from typing import Optional, Callable, List, Tuple
+import numpy as np
 
 from common import config_risk
 from common.interface_order import Order, Side
@@ -13,7 +14,6 @@ class RiskManager:
     - Pre-order sanity checks
     - Portfolio-level drawdown gate (lifetime until reset)
     - Portfolio-level daily/max loss gate
-    - Instrument-level VaR gate
     Prices and AUM are fed via gateway listeners (price provider + wallet balance updates).
     """
 
@@ -24,7 +24,6 @@ class RiskManager:
             max_leverage: Optional[float] = None,
             max_open_orders: Optional[int] = None,
             max_loss_per_day: Optional[float] = 0.10,  # portfolio daily loss cap (fraction of AUM)
-            max_var_ratio: Optional[float] = None,  # instrument-level VaR cap ratio of instrument PV
             allowed_symbols: Optional[list] = None,
             min_order_size: Optional[float] = None,
             position: Optional[Position] = None,
@@ -47,9 +46,6 @@ class RiskManager:
         self.max_loss_per_day = (
             config_risk.MAX_LOSS_PER_DAY_DEFAULT if max_loss_per_day is None else max_loss_per_day
         )
-        self.max_var_ratio = (
-            config_risk.MAX_VAR_RATIO_DEFAULT if max_var_ratio is None else max_var_ratio
-        )
         self.min_order_size = (
             config_risk.MIN_ORDER_SIZE_DEFAULT if min_order_size is None else min_order_size
         )
@@ -60,7 +56,6 @@ class RiskManager:
         self.positions = {}
         # Instrument-level tracking
         self.symbol_daily_loss = {}
-        self.symbol_var_value = {}
         self.symbol_portfolio_value = {}
 
         # Backward-compat single-position path
@@ -107,7 +102,7 @@ class RiskManager:
     def set_aum(self, aum: float):
         logging.info(f"Updating AUM to {aum}")
         # Record the first observed AUM as initial_aum
-        if self.initial_aum is None:
+        if not self.initial_aum:
             self.initial_aum = aum
         self.aum = aum
         # Update peak and drawdown
@@ -236,7 +231,7 @@ class RiskManager:
         return None
 
     # ------------------------
-    # Daily loss and VaR
+    # Daily loss
     # ------------------------
     def update_daily_loss(self, pnl: float, symbol: Optional[str] = None):
         try:
@@ -250,10 +245,6 @@ class RiskManager:
         self.portfolio_daily_loss = 0.0
         for k in list(self.symbol_daily_loss.keys()):
             self.symbol_daily_loss[k] = 0.0
-
-    def set_symbol_var(self, symbol: str, var_value: float, portfolio_value: float):
-        self.symbol_var_value[symbol] = var_value
-        self.symbol_portfolio_value[symbol] = portfolio_value
 
     # ------------------------
     # Dynamic symbol management
@@ -273,7 +264,6 @@ class RiskManager:
     def remove_symbol(self, symbol: str):
         self.positions.pop(symbol, None)
         self.symbol_daily_loss.pop(symbol, None)
-        self.symbol_var_value.pop(symbol, None)
         self.symbol_portfolio_value.pop(symbol, None)
         if getattr(self, '_symbol_min_order_size', None) is not None:
             self._symbol_min_order_size.pop(symbol, None)
@@ -428,3 +418,29 @@ class RiskManager:
             'blocked': self.trading_blocked,
             'reason': self.block_reason,
         }
+
+    # ------------------------
+    # VaR matrices (historical and portfolio)
+    # ------------------------
+    def _historical_var_matrix(self):
+        historical_var = [
+            [-0.029, -0.048, 0.030, 0.045, -0.038, -0.058, 0.037, 0.053, -0.057, -0.058, 0.054, 0.053, -0.324, 0.305],
+            [-0.052, -0.082, 0.053, 0.076, -0.065, -0.098, 0.064, 0.088, -0.096, -0.098, 0.089, 0.088, -0.473, 0.266],
+            [-0.071, -0.114, 0.076, 0.106, -0.090, -0.137, 0.090, 0.122, -0.135, -0.137, 0.123, 0.122, -0.690, 0.362],
+            [-0.094, -0.147, 0.100, 0.138, -0.118, -0.174, 0.120, 0.157, -0.175, -0.174, 0.157, 0.157, -0.741, 0.423],
+            [-0.134, -0.210, 0.145, 0.196, -0.169, -0.250, 0.171, 0.222, -0.250, -0.250, 0.222, 0.222, -0.784, 0.455],
+        ]
+        return np.array(historical_var)
+
+    def _portfolio_var_percent_matrix(self):
+        historical_var = self._historical_var_matrix()
+        max_var_matrix = np.full((historical_var.shape[0], historical_var.shape[1]), -0.1)
+        return max_var_matrix
+
+    def get_portfolio_var_matrices(self):
+        max_var_matrix = self._max_var_matrix()
+        historical_var = self._historical_var_matrix()
+        iaum = self.initial_aum if self.initial_aum and self.initial_aum > 0 else 0
+        max_var_amount = np.multiply(max_var_matrix, iaum)
+        max_portfolio_trade_value = np.divide(max_var_amount, historical_var)
+        return max_portfolio_trade_value
