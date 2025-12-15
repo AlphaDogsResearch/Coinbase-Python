@@ -27,7 +27,7 @@ from engine.reference_data.reference_data_manager import ReferenceDataManager
 from engine.reference_data.reference_price_manager import ReferencePriceManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
 from engine.remote.remote_order_service_client import RemoteOrderClient
-# from engine.risk.risk_manager import RiskManager
+from engine.risk.risk_manager import RiskManager
 from engine.strategies.strategy_manager import StrategyManager
 from engine.tracking.telegram_notifier import TelegramNotifier
 from engine.trades.trades_manager import TradesManager
@@ -87,15 +87,7 @@ def main():
 
     # Initialize Position and RiskManager
     position = components["position"]
-    # risk_manager = components["risk_manager"]
-    # # Ensure symbol is registered for per-symbol risk tracking
-    # try:
-    #     risk_manager.add_symbol(selected_symbol, position=position)
-    # except Exception:
-    #     logging.debug(
-    #         "RiskManager.add_symbol at startup failed (symbol may already be registered)",
-    #         exc_info=True,
-    #     )
+    risk_manager = components["risk_manager"]
 
     margin_manager = components["margin_manager"]
     trading_cost_manager = components["trading_cost_manager"]
@@ -109,13 +101,6 @@ def main():
     position_manager = components["position_manager"]
 
     reference_price_manager.attach_mark_price_listener(position_manager.on_mark_price_event)
-    # # Wire per-symbol position and open-orders listeners to RiskManager
-    # position_manager.add_position_amount_listener(
-    #     lambda sym, qty: risk_manager.on_position_amount_update(sym, qty)
-    # )
-    # position_manager.add_open_orders_listener(
-    #     lambda sym, cnt: risk_manager.on_open_orders_update(sym, cnt)
-    # )
 
     # --- BinanceGateway for selected instrument ---
     # from gateways.binance.binance_gateway import BinanceGateway
@@ -140,19 +125,11 @@ def main():
     # init account
     account = components["account"]
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
-    # Forward wallet balance updates into RiskManager (updates AUM internally)
-
-    # account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
-
+    risk_manager.on_wallet_balance_update(account.on_wallet_balance_update)
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)
-    # Also forward risk-relevant state to RiskManager
-    # position_manager.add_maint_margin_listener(risk_manager.on_maint_margin_update)
-    # position_manager.add_unrealized_pnl_listener(risk_manager.on_unrealised_pnl_update)
     position_manager.add_realized_pnl_listener(account.update_wallet_with_realized_pnl)
-    # Also treat realized PnL as part of daily loss tracking (aggregate)
-    # position_manager.add_realized_pnl_listener(lambda pnl: risk_manager.update_daily_loss(pnl))
 
     # initialise remote client
     remote_market_data_client = components["remote_market_data_client"]
@@ -161,26 +138,6 @@ def main():
     remote_market_data_client.add_mark_price_listener(
         reference_price_manager.on_reference_data_event
     )
-
-    # Stream mark prices directly into RiskManager via listener
-    # def _risk_on_mark_price(mp):
-    #     try:
-    #         risk_manager.on_mark_price_update(mp.symbol, mp.price)
-    #     except Exception:
-    #         logging.debug("Failed to forward mark price to RiskManager", exc_info=True)
-
-    # remote_market_data_client.add_mark_price_listener(_risk_on_mark_price)
-
-    # Start periodic risk reports using config_loader file defaults (env can override in config_loader)
-    # if config_risk.RISK_REPORT_ENABLED_DEFAULT:
-    #     risk_manager.start_periodic_risk_reports(
-    #         report_file=config_risk.RISK_REPORT_FILE_DEFAULT,
-    #         interval_seconds=config_risk.RISK_REPORT_INTERVAL_SECONDS_DEFAULT,
-    #         symbols=config_risk.RISK_REPORT_SYMBOLS_DEFAULT,
-    #     )
-    #     logging.info(
-    #         f"Risk reporting enabled -> {config_risk.RISK_REPORT_FILE_DEFAULT} every {config_risk.RISK_REPORT_INTERVAL_SECONDS_DEFAULT}s"
-    #     )
 
     reference_data_manager = components["reference_data_manager"]
 
