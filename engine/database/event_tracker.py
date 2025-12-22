@@ -33,6 +33,13 @@ class EventTracker:
             database_path: Path to SQLite database file
         """
         self.database_path = database_path
+        
+        # Create data directory if it doesn't exist
+        import os
+        db_dir = os.path.dirname(database_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+        
         database_url = f"sqlite:///{database_path}"
         self.SessionMaker, self.engine = get_session_maker(database_url)
         self.logger = logging.getLogger(__name__)

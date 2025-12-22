@@ -21,7 +21,8 @@ from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 class RemoteOrderClient:
     def __init__(self, margin_manager: MarginInfoManager, position_manager: PositionManager, account: Account,
-                 trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager):
+                 trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager,
+                 enable_event_tracking: bool = True, event_db_path: str = "data/trading_events.db"):
         # make port configurable
         self.port = 8081
         self.name = "Remote Order Order Connection"
@@ -41,6 +42,13 @@ class RemoteOrderClient:
         self.add_order_event_listener("Position-Event",self.position_manager.on_order_event)
         self.add_order_event_listener("Trade-Manager",self.trade_manager.on_order_event)
         self.reference_data_manager = reference_data_manager
+        
+        # Event tracking integration
+        from engine.database.event_tracker_integration import EventTrackerIntegration
+        self.event_tracker = EventTrackerIntegration(
+            database_path=event_db_path,
+            enabled=enable_event_tracking
+        )
 
 
     def start(self):
@@ -176,6 +184,13 @@ class RemoteOrderClient:
 
     def received_order_event(self, order_event : OrderEvent):
         logging.info("[%s] Received %s Order Event: \n %s", self.name,order_event.status, order_event)
+        
+        # Track raw order event from exchange
+        if hasattr(self, 'event_tracker') and self.event_tracker and self.event_tracker.enabled:
+            try:
+                self.event_tracker.track_order_event(order_event)
+            except Exception as e:
+                logging.warning(f"Failed to track order event from exchange: {e}")
 
         for listener_name,oe_listener in self.order_event_listeners.items():
             try:

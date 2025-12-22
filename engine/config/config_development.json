@@ -90,7 +90,9 @@
             "account": "@account",
             "trading_cost_manager": "@trading_cost_manager",
             "trade_manager": "@trade_manager",
-            "reference_data_manager": "@reference_data_manager"
+            "reference_data_manager": "@reference_data_manager",
+            "enable_event_tracking": true,
+            "event_db_path": "data/trading_events.db"
         }
     },
     "executor": {
@@ -107,7 +109,9 @@
         "params": {
             "executor": "@executor",
             "risk_manager": "@risk_manager",
-            "reference_data_manager": "@reference_data_manager"
+            "reference_data_manager": "@reference_data_manager",
+            "enable_event_tracking": true,
+            "event_db_path": "data/trading_events.db"
         }
     },
     "adx_strategy_config": {
