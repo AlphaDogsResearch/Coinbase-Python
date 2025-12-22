@@ -115,12 +115,16 @@ class Strategy:
         self._order_manager = None  # Reference to order manager
         self._strategy_id = None  # Strategy ID set by main
         self._symbol = None  # Symbol set by main
+        self._event_tracker = None  # Optional event tracker
 
     def set_order_manager(self, order_manager, strategy_id: str, symbol: str):
         """Set the order manager and strategy metadata."""
         self._order_manager = order_manager
         self._strategy_id = strategy_id
         self._symbol = symbol
+        # Get event tracker from order manager if available
+        if hasattr(order_manager, 'event_tracker'):
+            self._event_tracker = order_manager.event_tracker
 
     def on_start(self):
         """Called when strategy starts. Override in subclasses."""
@@ -154,6 +158,21 @@ class Strategy:
         if not self._order_manager:
             self.log.warning("Order manager not set, order not submitted")
             return False
+        
+        # Track signal at strategy level if event tracker available
+        if self._event_tracker and self._event_tracker.enabled:
+            try:
+                self._event_tracker.track_signal(
+                    strategy_id=self._strategy_id,
+                    symbol=self._symbol,
+                    signal=signal,
+                    price=price,
+                    action=str(strategy_actions),
+                    order_mode=str(strategy_order_mode.get_order_mode()) if hasattr(strategy_order_mode, 'get_order_mode') else None,
+                    tags=tags
+                )
+            except Exception as e:
+                self.log.warning(f"Failed to track signal: {e}")
 
         return self._order_manager.on_signal(
             strategy_id=self._strategy_id,

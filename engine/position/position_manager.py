@@ -6,6 +6,7 @@ from typing import Callable, List, Dict, Set, Optional, Tuple
 from common.interface_order import OrderEvent, OrderStatus, OrderType
 from common.interface_reference_point import MarkPrice
 from common.interface_req_res import PositionResponse
+from engine.database.event_tracker_integration import EventTrackerIntegration
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position import Position
 from engine.reference_data.reference_price_manager import ReferencePriceManager
@@ -19,6 +20,8 @@ class PositionManager:
         margin_manager: MarginInfoManager,
         trading_cost_manager: TradingCostManager,
         reference_price_manager: ReferencePriceManager,
+        enable_event_tracking: bool = True,
+        event_db_path: str = "data/trading_events.db",
     ):
         self.name = "Position Manager"
         # Aggregate positions by symbol (backward compatible)
@@ -41,6 +44,12 @@ class PositionManager:
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="POS")
         # Optional order lookup to resolve strategy_id from order_id/client_id
         self._order_lookup: Optional[Callable[[str], Optional[object]]] = None
+        
+        # Event tracking integration
+        self.event_tracker = EventTrackerIntegration(
+            database_path=event_db_path,
+            enabled=enable_event_tracking
+        )
 
     def set_order_lookup(self, lookup_fn: Callable[[str], Optional[object]]):
         """
@@ -198,6 +207,17 @@ class PositionManager:
                 listener(symbol, position.position_amount)
         except Exception as e:
             logging.error(self.name + " [POSITION_AMOUNT] Listener raised an exception: %s", e)
+        
+        # Track position snapshot
+        self.event_tracker.track_position_update(
+            symbol=symbol,
+            position_amount=float(position.position_amount),
+            entry_price=float(position.entry_price) if hasattr(position, 'entry_price') else None,
+            strategy_id=strategy_id,
+            unrealized_pnl=float(position.unrealised_pnl) if hasattr(position, 'unrealised_pnl') else 0.0,
+            realized_pnl=float(position.net_realized_pnl) if hasattr(position, 'net_realized_pnl') else 0.0,
+            total_trading_cost=float(position.total_trading_cost) if hasattr(position, 'total_trading_cost') else 0.0
+        )
 
     # ---- Public APIs ----
     def get_position(self, symbol: str, strategy_id: Optional[str] = None) -> Optional[Position]:

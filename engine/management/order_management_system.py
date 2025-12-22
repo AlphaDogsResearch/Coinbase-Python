@@ -12,6 +12,7 @@ from common.identifier import OrderIdGenerator
 from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderSizeMode, OrderType
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
+from engine.database.event_tracker_integration import EventTrackerIntegration
 from engine.execution.executor import Executor
 from engine.pool.object_pool import ObjectPool
 from engine.reference_data.reference_data_manager import ReferenceDataManager
@@ -26,6 +27,8 @@ class FCFSOrderManager(OrderManager, ABC):
         executor: Executor,
         risk_manager: RiskManager,
         reference_data_manager: ReferenceDataManager,
+        enable_event_tracking: bool = True,
+        event_db_path: str = "data/trading_events.db",
     ):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
@@ -58,6 +61,12 @@ class FCFSOrderManager(OrderManager, ABC):
         self._entry_by_signal: Dict[tuple, dict] = {}
         # (strategy_id, symbol, signal_id) -> pending stop info { 'side': Side, 'trigger_price': float, 'tags': List[str]|None }
         self._pending_stop_by_signal: Dict[tuple, dict] = {}
+        
+        # Event tracking integration
+        self.event_tracker = EventTrackerIntegration(
+            database_path=event_db_path,
+            enabled=enable_event_tracking
+        )
 
     def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
         logging.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
@@ -146,6 +155,17 @@ class FCFSOrderManager(OrderManager, ABC):
 
             order.update_order_fields(
                 side, float(order_quantity), symbol, current_milli_time(), price, strategy_id
+            )
+            
+            # Track signal
+            self.event_tracker.track_signal(
+                strategy_id=strategy_id,
+                symbol=symbol,
+                signal=signal,
+                price=price,
+                action=str(strategy_actions),
+                order_mode=str(strategy_order_mode.get_order_mode()),
+                tags=tags
             )
 
             # Store tags in order metadata
@@ -370,6 +390,20 @@ class FCFSOrderManager(OrderManager, ABC):
             self.orders[order.order_id] = order
 
         strategy_id = order.strategy_id
+        
+        # Track order creation
+        meta = self.order_meta.get(order.order_id, {})
+        self.event_tracker.track_order_created(
+            order_id=order.order_id,
+            symbol=order.symbol,
+            side=order.side.name if hasattr(order.side, 'name') else str(order.side),
+            order_type=order.order_type.name if hasattr(order.order_type, 'name') else str(order.order_type),
+            quantity=float(order.quantity),
+            price=float(order.price) if order.price else None,
+            client_id=order.order_id,  # Using order_id as client_id
+            strategy_id=strategy_id,
+            tags=meta.get('tags')
+        )
 
         # Update statistics
         with self.stats_lock:
@@ -388,6 +422,9 @@ class FCFSOrderManager(OrderManager, ABC):
 
         order = self.orders[order_event.client_id]
         if order is not None:
+            # Track order event
+            self.event_tracker.track_order_event(order_event, strategy_id=order.strategy_id)
+            
             if status == OrderStatus.FILLED:
                 last_filled_quantity = float(order_event.last_filled_quantity)
                 last_filled_price = float(order_event.last_filled_price)
@@ -460,6 +497,9 @@ class FCFSOrderManager(OrderManager, ABC):
         self.running = False
         if self.process_thread.is_alive():
             self.process_thread.join(timeout=5)
+        # Close event tracker
+        if hasattr(self, 'event_tracker'):
+            self.event_tracker.close()
         logging.info("FCFS Order Manager stopped")
 
     def _process_orders(self):
