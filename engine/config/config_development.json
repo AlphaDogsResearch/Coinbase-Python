@@ -60,7 +60,9 @@
         "params": {
             "margin_manager": "@margin_manager",
             "trading_cost_manager": "@trading_cost_manager",
-            "reference_price_manager": "@reference_price_manager"
+            "reference_price_manager": "@reference_price_manager",
+            "enable_event_tracking": true,
+            "event_db_path": "data/trading_events.db"
         }
     },
     "account": {
