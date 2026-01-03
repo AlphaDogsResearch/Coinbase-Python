@@ -28,7 +28,7 @@ class EntryStopStrategyMgrIntegrationTest(unittest.TestCase):
         self.smgr = StrategyManager(DummyMarketData(), self.oms)
 
     def _fill(self, order, filled_qty, filled_price):
-        evt = OrderEvent(contract_name=self.symbol, order_id=order.order_id, execution_type=None, status=OrderStatus.FILLED, canceled_reason=None, client_id=order.order_id, order_type=order.order_type)
+        evt = OrderEvent(contract_name=self.symbol, order_id=order.order_id, execution_type=None, status=OrderStatus.FILLED, canceled_reason=None, client_order_id=order.order_id, order_type=order.order_type)
         evt.side = order.side.name
         evt.last_filled_price = filled_price
         evt.last_filled_quantity = filled_qty

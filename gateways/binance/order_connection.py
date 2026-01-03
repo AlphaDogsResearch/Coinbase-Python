@@ -1,11 +1,13 @@
 import logging
+from typing import Type
 
 from common.interface_order import Order, NewOrderSingle, Trade, ExecutionType, OrderEvent, OrderStatus, OrderType, Side
 from common.interface_reference_data import ReferenceData
 from common.interface_req_res import WalletRequest, AccountRequest, PositionRequest, MarginInfoRequest, \
     CommissionRateRequest, TradesRequest, ReferenceDataRequest
-from common.subscription.single_pair_connection.single_pair import PairConnection
-from gateways.binance.binance_gateway import BinanceGateway
+from common.seriallization import Serializable
+from common.subscription.messaging.gateway_server_handler import EventHandlerImpl
+from common.subscription.messaging.router import RouterServer
 from gateways.gateway_interface import GatewayInterface
 
 
@@ -21,30 +23,44 @@ def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
 
 class OrderConnection:
     def __init__(self,name:str, port: int, gateway: GatewayInterface):
-        self.order_listener_server = PairConnection(port, True, name+" Order Listener")
-        self.order_listener_server.start_receiving(self.on_event)
+
+        MESSAGE_TYPES: tuple[Type[Serializable], ...] = (
+            WalletRequest,
+            AccountRequest,
+            PositionRequest,
+            MarginInfoRequest,
+            CommissionRateRequest,
+            TradesRequest,
+            ReferenceDataRequest,
+            Order,
+        )
+
+        self.name = name+" Order Listener"
+        server_handler = EventHandlerImpl(self.name,self.on_event, *MESSAGE_TYPES)
+        self.order_event_server = RouterServer(self.name,server_handler,"localhost",port)
         self.gateway = gateway
         self.margin_infos = {}
 
-    def on_event(self, obj: object):
+    def on_event(self,ident:str,obj:object):
         if isinstance(obj, Order):
-            self.submit_order(obj)
+            self.submit_order(ident,obj)
         elif isinstance(obj, WalletRequest):
-            self.get_and_send_wallet(obj)
+            self.get_and_send_wallet(ident,obj)
         elif isinstance(obj, AccountRequest):
-            self.get_account_info(obj)
+            self.get_account_info(ident,obj)
         elif isinstance(obj, PositionRequest):
-            self.get_position_info(obj)
+            self.get_position_info(ident,obj)
         elif isinstance(obj, MarginInfoRequest):
-            self.get_margin_info(obj)
+            self.get_margin_info(ident,obj)
         elif isinstance(obj, CommissionRateRequest):
-            self.get_commission_rates(obj)
+            self.get_commission_rates(ident,obj)
         elif isinstance(obj, TradesRequest):
-            self.get_trades(obj)
+            self.get_trades(ident,obj)
         elif isinstance(obj, ReferenceDataRequest):
-            self.get_reference_data(obj)
+            self.get_reference_data(ident,obj)
 
-    def submit_order(self, order: Order):
+
+    def submit_order(self,ident:str, order: Order):
         logging.info("Submitted Order %s " % order)
         new_order_single = convert_order_to_new_order_single(order)
         logging.info("New Order Single %s" % new_order_single)
@@ -52,13 +68,17 @@ class OrderConnection:
         order_event = self.on_execution_report(initial_er)
         logging.info("Order Event %s" % order_event)
         if order_event is not None:
-            self.order_listener_server.publish_order_event(order_event)
+            self.order_event_server.send(ident, order_event)
             if order_event.status == OrderStatus.NEW:
                 filled_er = self.gateway.get_filled_price(initial_er)
                 filled_order_event = self.on_execution_report(filled_er)
-                self.order_listener_server.publish_order_event(filled_order_event)
+                if filled_order_event is not None:
+                    self.order_event_server.send(ident, filled_order_event)
+                else:
+                    #TODO return reject
+                    pass
 
-    def on_execution_report(self, execution_report: dict)->OrderEvent:
+    def on_execution_report(self, execution_report: dict)-> OrderEvent | None:
         logging.info("Execution Report %s" % execution_report)
         code = execution_report.get('code')
         msg = execution_report.get('msg')
@@ -71,10 +91,12 @@ class OrderConnection:
         symbol = execution_report.get('symbol')
         order_event = None
         if status == 'NEW':
+            logging.info(f"[NEW] Order Event {order_event}")
             order_event = OrderEvent(symbol, external_order_id, ExecutionType.NEW, OrderStatus.NEW, None,
                                      client_order_id)
 
         elif status == 'FILLED':
+            logging.info("[FILLED] Order Event {order_event}" )
             last_filled_price = execution_report.get('avgPrice')
             last_filled_quantity = execution_report.get('executedQty')
             last_filled_time = execution_report.get('updateTime')
@@ -98,16 +120,16 @@ class OrderConnection:
 
         return order_event
 
-    def on_trade_event(self, trade: Trade):
+    def on_trade_event(self,ident:str, trade: Trade):
         logging.info("Received Trade event %s" % trade)
-        self.order_listener_server.send_trade(trade)
+        self.order_event_server.send(ident,trade)
 
-    def get_and_send_wallet(self, wallet_request: WalletRequest):
+    def get_and_send_wallet(self,ident:str, wallet_request: WalletRequest):
         balance = self.gateway._get_wallet_balances()
         wallet_balance = wallet_request.handle(balance)
-        self.order_listener_server.send_wallet_response(wallet_balance)
+        self.order_event_server.send(ident,wallet_balance)
 
-    def get_account_info(self, account_request: AccountRequest):
+    def get_account_info(self,ident:str, account_request: AccountRequest):
         logging.info("Received Account Info Request %s" % account_request)
         account_info = self.gateway._get_account_info()
         wallet_balance = account_info['totalWalletBalance']
@@ -115,9 +137,9 @@ class OrderConnection:
         unreal_pnl = account_info['totalUnrealizedProfit']
         maint_margin = account_info['totalMaintMargin']
         account = account_request.handle(wallet_balance, margin_balance, unreal_pnl, maint_margin)
-        self.order_listener_server.send_account_response(account)
+        self.order_event_server.send(ident, account)
 
-    def get_reference_data(self, reference_data_request: ReferenceDataRequest):
+    def get_reference_data(self,ident:str, reference_data_request: ReferenceDataRequest):
         global min_price, max_price, price_tick_size, min_lot_size, max_lot_size, lot_step_size, min_market_lot_size, max_market_lot_size, market_lot_step_size, min_notional
         logging.info("Received Reference Data Request %s" % reference_data_request)
         gateway_reference_data = self.gateway.get_reference_data()
@@ -170,14 +192,14 @@ class OrderConnection:
                                                min_notional)
                 reference_data_dict[symbol] = reference_data
 
+
             reference_data_response = reference_data_request.handle(reference_data_dict)
-            self.order_listener_server.send_reference_data_response(reference_data_response)
+            self.order_event_server.send(ident, reference_data_response)
 
 
 
 
-
-    def get_margin_info(self,margin_info_request:MarginInfoRequest):
+    def get_margin_info(self,ident:str,margin_info_request:MarginInfoRequest):
         request_symbol = margin_info_request.symbol
 
         if request_symbol not in self.margin_infos:
@@ -191,15 +213,15 @@ class OrderConnection:
         margin_i = self.margin_infos.get(request_symbol, None)
 
         mi_res= margin_info_request.handle(request_symbol,margin_i)
-        self.order_listener_server.send_margin_info_response(mi_res)
+        self.order_event_server.send(ident, mi_res)
 
 
-    def get_position_info(self, position_request: PositionRequest):
+    def get_position_info(self,ident:str, position_request: PositionRequest):
         account_position = self.gateway._get_positions()
         positions = position_request.handle(account_position)
-        self.order_listener_server.send_position_response(positions)
+        self.order_event_server.send(ident, positions)
 
-    def get_commission_rates(self,commission_rate_request:CommissionRateRequest):
+    def get_commission_rates(self,ident:str,commission_rate_request:CommissionRateRequest):
         symbol = commission_rate_request.symbol
         commission_rate_data = self.gateway.get_commission_rate(symbol)
         if commission_rate_data is not None:
@@ -207,9 +229,9 @@ class OrderConnection:
             maker_trading_cost = commission_rate_data['makerCommissionRate']
             taker_trading_cost = commission_rate_data['takerCommissionRate']
             commission_rate = commission_rate_request.handle(returned_symbol,maker_trading_cost,taker_trading_cost)
-            self.order_listener_server.send_commission_rate_response(commission_rate)
+            self.order_event_server.send(ident, commission_rate)
 
-    def get_trades(self,trades_request:TradesRequest):
+    def get_trades(self,ident:str,trades_request:TradesRequest):
         logging.info("Received Trades Request %s" % trades_request)
         symbol = trades_request.symbol
         trades = self.gateway._get_all_trades(symbol)
@@ -231,4 +253,4 @@ class OrderConnection:
                 all_trades.append(trade_obj)
 
         trade_response= trades_request.handle(symbol,all_trades)
-        self.order_listener_server.send_trades_response(trade_response)
+        self.order_event_server.send(ident, trade_response)

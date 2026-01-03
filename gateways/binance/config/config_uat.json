@@ -5,7 +5,6 @@
     "params": {
       "gateway_name": "BINANCE",
       "trading_symbols": [
-        "BTCUSDT",
         "ETHUSDT"
       ],
       "market_data_connection_port": 8080,

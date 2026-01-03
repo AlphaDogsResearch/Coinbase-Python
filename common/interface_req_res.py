@@ -1,11 +1,13 @@
 # Wallet response
+from abc import ABC, abstractmethod
 from typing import Dict
 
 from common.interface_reference_data import ReferenceData
+from common.seriallization import Serializable
 from common.time_utils import current_milli_time
 
 
-class WalletResponse:
+class WalletResponse(Serializable):
     def __init__(self, balances: dict):
         self.balances = balances  # e.g., {"USD": 1523.45, "BTC": 0.042, "ETH": 1.8}
 
@@ -17,15 +19,16 @@ class WalletResponse:
 
 
 # Wallet request class
-class WalletRequest:
+class WalletRequest(Serializable):
     def __init__(self):
+        super().__init__()
         self.time = current_milli_time()
 
     def handle(self, balances: dict) -> WalletResponse:
         return WalletResponse(balances)
 
 
-class PositionResponse:
+class PositionResponse(Serializable):
     def __init__(self, positions: dict):
         self.positions = positions
 
@@ -33,7 +36,7 @@ class PositionResponse:
         return "Positions=" + str(self.positions)
 
 
-class PositionRequest:
+class PositionRequest(Serializable):
     def __init__(self):
         self.time = current_milli_time()
 
@@ -41,7 +44,7 @@ class PositionRequest:
         return PositionResponse(positions)
 
 
-class MarginInfoResponse:
+class MarginInfoResponse(Serializable):
     def __init__(self, symbol: str, margin_brackets: list):
         self.margin_brackets = margin_brackets
         self.symbol = symbol
@@ -51,8 +54,9 @@ class MarginInfoResponse:
             ", Margin Brackets=" + str(self.margin_brackets)
 
 
-class MarginInfoRequest:
+class MarginInfoRequest(Serializable):
     def __init__(self, symbol: str):
+        super().__init__()
         self.time = current_milli_time()
         self.symbol = symbol
 
@@ -60,7 +64,7 @@ class MarginInfoRequest:
         return MarginInfoResponse(symbol, margin_brackets)
 
 
-class AccountResponse:
+class AccountResponse(Serializable):
     def __init__(self, wallet_balance: float, margin_balance: float, unrealised_pnl: float, maint_margin: float):
         self.wallet_balance = wallet_balance
         self.margin_balance = margin_balance
@@ -68,7 +72,7 @@ class AccountResponse:
         self.maint_margin = maint_margin
 
 
-class AccountRequest:
+class AccountRequest(Serializable):
     def __init__(self):
         self.time = current_milli_time()
 
@@ -77,7 +81,7 @@ class AccountRequest:
         return AccountResponse(wallet_balance, margin_balance, unrealised_pnl, maint_margin)
 
 
-class CommissionRateResponse:
+class CommissionRateResponse(Serializable):
     def __init__(self, symbol: str, maker_trading_cost: float,taker_trading_cost:float):
         self.symbol = symbol
         self.maker_trading_cost = maker_trading_cost
@@ -89,7 +93,7 @@ class CommissionRateResponse:
             ", Taker Trading Cost=" + str(self.taker_trading_cost)
 
 
-class CommissionRateRequest:
+class CommissionRateRequest(Serializable):
     def __init__(self, symbol: str):
         self.time = current_milli_time()
         self.symbol = symbol
@@ -98,7 +102,7 @@ class CommissionRateRequest:
         return CommissionRateResponse(symbol, maker_trading_cost,taker_trading_cost)
 
 
-class TradesResponse:
+class TradesResponse(Serializable):
     def __init__(self, symbol: str, trades: list):
         self.symbol = symbol
         self.trades = trades
@@ -108,7 +112,7 @@ class TradesResponse:
             ", Trades=" + str(self.trades)
 
 
-class TradesRequest:
+class TradesRequest(Serializable):
     def __init__(self, symbol: str):
         self.time = current_milli_time()
         self.symbol = symbol
@@ -116,7 +120,7 @@ class TradesRequest:
     def handle(self, symbol: str, trades: list) -> TradesResponse:
         return TradesResponse(symbol, trades)
 
-class ReferenceDataResponse:
+class ReferenceDataResponse(Serializable):
     def __init__(self, reference_data: Dict[str, ReferenceData]):
         self.reference_data = reference_data
 
@@ -126,7 +130,7 @@ class ReferenceDataResponse:
         ) + "\n}"
 
 
-class ReferenceDataRequest:
+class ReferenceDataRequest(Serializable):
     def __init__(self):
         self.time = current_milli_time()
 

@@ -1,4 +1,7 @@
-class ReferenceData(object):
+from common.seriallization import Serializable
+
+
+class ReferenceData(Serializable):
     def __init__(self,
                  symbol: str,
                  status: str,

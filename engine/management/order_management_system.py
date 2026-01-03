@@ -8,7 +8,7 @@ from queue import Queue
 from typing import Dict, Optional, List
 
 from common.decimal_utils import convert_to_decimal, add_numbers
-from common.identifier import OrderIdGenerator
+from common.identifier import IdGenerator
 from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderSizeMode, OrderType
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
@@ -35,7 +35,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.lock = threading.RLock()
         self.running = False
         # TODO maybe should create a new order id generator for each strat
-        self.id_generator = OrderIdGenerator("STRAT")
+        self.id_generator = IdGenerator("STGY")
         self.process_thread = threading.Thread(
             target=self._process_orders, daemon=True, name=self.name
         )
@@ -44,7 +44,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.single_asset_strategy_position = {}
 
         self.order_pool = ObjectPool(
-            create_func=lambda: Order.create_base_order(self.id_generator.next()), size=100
+            create_func=lambda: Order.create_base_order(""), size=100
         )
 
         # Statistics
@@ -91,6 +91,7 @@ class FCFSOrderManager(OrderManager, ABC):
 
         try:
             order = self.order_pool.acquire()
+            order.initialize(self.id_generator.next())
             logging.info(f"Order ID from object Pool {order.order_id}")
             side = None
             side_str = "UNKNOWN"
@@ -180,6 +181,7 @@ class FCFSOrderManager(OrderManager, ABC):
     ) -> bool:
         try:
             order = self.order_pool.acquire()
+            order.initialize(self.id_generator.next())
             # Normalize quantity to exchange step size using Market rules
             try:
                 effective_qty = self.reference_data_manager.get_effective_quantity(
@@ -259,6 +261,7 @@ class FCFSOrderManager(OrderManager, ABC):
 
             # Submit immediately
             order = self.order_pool.acquire()
+            order.initialize(self.id_generator.next())
             order.update_order_fields(
                 side, qty_to_use, symbol, current_milli_time(), trigger_price, strategy_id
             )
@@ -288,6 +291,7 @@ class FCFSOrderManager(OrderManager, ABC):
     ) -> bool:
         try:
             order = self.order_pool.acquire()
+            order.initialize(self.id_generator.next())
             try:
                 effective_qty = self.reference_data_manager.get_effective_quantity(
                     OrderType.Market, symbol, quantity
@@ -340,6 +344,7 @@ class FCFSOrderManager(OrderManager, ABC):
         except Exception:
             effective_qty = qty
         order = self.order_pool.acquire()
+        order.initialize(self.id_generator.next())
         order.update_order_fields(
             close_side, float(effective_qty), symbol, current_milli_time(), price, strategy_id
         )
@@ -359,6 +364,10 @@ class FCFSOrderManager(OrderManager, ABC):
     def submit_order_internal(self, order: Order) -> bool:
         """Submit order - true FCFS across all strategies"""
         # Immediate queue insertion - no per-strategy queues
+
+        if not order.is_id_init:
+            logging.error(f"Order id not initialized ,unable to submit {order}")
+            return False
 
         if self.risk_manager and not self.risk_manager.validate_order(order):
             logging.info(f"Order blocked by risk manager: {order}")
@@ -438,10 +447,11 @@ class FCFSOrderManager(OrderManager, ABC):
             elif status == OrderStatus.NEW:
                 order.on_new_event()
             else:
-                logging.error("Unknown order status: {}".format(order_event.status))
+                logging.error(f"Unknown order status: {order_event.status} {type(order_event.status)}")
 
         if order.is_in_order_done_state:
             order = self.orders.pop(order_event.client_id, None)
+            logging.info(f"Order is done: {order}")
             if order is not None:
                 self.order_pool.release(order)
 

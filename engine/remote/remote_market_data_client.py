@@ -1,12 +1,14 @@
 import datetime
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Dict
+from typing import Callable, List, Dict, Type
 
-from common.interface_book import OrderBook
+from common.interface_book import OrderBook, PriceLevel
 from common.interface_reference_point import MarkPrice
 from common.processor.sequential_queue_processor import SelfMonitoringQueueProcessor
-from common.subscription.single_pair_connection.single_pair import PairConnection
+from common.seriallization import Serializable
+from common.subscription.messaging.dealer import DealerClient
+from common.subscription.messaging.gateway_server_handler import EventHandlerImpl
 from common.time_utils import convert_epoch_time_to_datetime_millis
 from engine.market_data.market_data_client import MarketDataClient
 
@@ -39,15 +41,29 @@ class RemoteMarketDataClient(MarketDataClient):
         self.market_data_queue_processor.register_handler(OrderBook, self._handle_order_book)
         self.mark_price_queue_processor.register_handler(MarkPrice, self._handle_mark_price)
 
-        # Start the processor
-        self.market_data_queue_processor.start()
-        self.mark_price_queue_processor.start()
         self.mark_price_executor = ThreadPoolExecutor(max_workers=1)
         self.tick_executor = ThreadPoolExecutor(max_workers=1)
         self.market_data_executor = ThreadPoolExecutor(max_workers=1)
 
-        self.remote_market_data_server = PairConnection(self.port, False, self.name)
-        self.remote_market_data_server.start_receiving(self.on_event)
+        # Start the processor
+        self.market_data_queue_processor.start()
+        self.mark_price_queue_processor.start()
+
+
+        # self.remote_market_data_server = PairConnection(self.port, False, self.name)
+        # self.remote_market_data_server.start_receiving(self.on_event)
+
+        self.remote_market_data_client = DealerClient(self.name, "localhost", self.port)
+
+        MESSAGE_TYPES: tuple[Type[Serializable], ...] = (
+            OrderBook,
+            MarkPrice,
+            PriceLevel
+        )
+
+        business_message_handler = EventHandlerImpl(self.name,self.on_event, *MESSAGE_TYPES)
+        # Register handlers
+        self.remote_market_data_client.register_handler(b"*", business_message_handler)  # wildcard for all other messages
 
     def add_order_book_listener(self,symbol:str, callback: Callable[[OrderBook], None]):
         """Register a callback to receive OrderBook updates"""
@@ -104,7 +120,8 @@ class RemoteMarketDataClient(MarketDataClient):
         self.mark_price_executor.submit(self.update_mark_price,mark_price)
 
     # dont block the thread
-    def on_event(self, obj: object):
+    def on_event(self, ident:str, obj: object):
+        logging.debug(f"Received {obj}")
         if isinstance(obj, OrderBook):
             self.market_data_queue_processor.submit(obj)
         elif isinstance(obj, MarkPrice):

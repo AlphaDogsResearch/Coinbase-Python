@@ -523,8 +523,8 @@ class BinanceGateway(GatewayInterface):
         logging.info('REST - Getting Futures exchange info')
         futures_exchange_info = self.api_client.futures_exchange_info()
 
-        logging.info(f"Total Futures Exchange Info : {futures_exchange_info}")
-        save_dict_to_file(data=futures_exchange_info,filename="futures_exchange_info.json",method='json')
+        # logging.info(f"Total Futures Exchange Info : {futures_exchange_info}")
+        # save_dict_to_file(data=futures_exchange_info,filename="futures_exchange_info.json",method='json')
         return futures_exchange_info
 
     def _get_exchange_info(self):
@@ -651,7 +651,8 @@ class BinanceGateway(GatewayInterface):
             "side": "BUY" if side else "SELL",
             "type": "MARKET",
             "quantity": quantity,
-            'timestamp': timestamp
+            'timestamp': timestamp,
+            "newOrderRespType": "RESULT"
         }
 
         if order_type == OrderType.Limit:
@@ -663,7 +664,8 @@ class BinanceGateway(GatewayInterface):
                 "timeInForce": "FOK",  # Time in Force (required for LIMIT) IOC/FOK/GTC
                 "quantity": quantity,  # Order quantity
                 "price": price,  # Limit price (must be string or float)
-                "timestamp": timestamp  # Current timestamp in ms
+                "timestamp": timestamp, # Current timestamp in ms
+                "newOrderRespType":"RESULT"
             }
 
         # create query string

@@ -52,7 +52,7 @@ class PerStrategyPositionTests(unittest.TestCase):
             execution_type=None,
             status=OrderStatus.FILLED,
             canceled_reason=None,
-            client_id=order.order_id,
+            client_order_id=order.order_id,
             order_type=order.order_type,
         )
         evt.side = order.side.name

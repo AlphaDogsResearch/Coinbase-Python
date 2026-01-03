@@ -75,13 +75,13 @@ def main():
     if len(sys.argv) < 2:
         logging.error(f"Usage: python {os.path.basename(__file__)} SYMBOL")
         logging.error(f"Available symbols: {', '.join(TRADING_SYMBOLS)}")
-        sys.exit(1)
+        os._exit(1)
     input_symbol = sys.argv[1].upper()
     if input_symbol not in TRADING_SYMBOLS:
         logging.error(
             f"'{input_symbol}' not in allowed trading symbols: {', '.join(TRADING_SYMBOLS)}"
         )
-        sys.exit(1)
+        os._exit(1)
 
     selected_symbol = default_settings_parameters["selected_symbol"]
 

@@ -2,13 +2,16 @@ import logging
 import queue
 import threading
 import time
-from typing import Callable, List, Dict
+from typing import Callable, Dict, Type
 
-from common.interface_order import Order, Trade, OrderEvent
+from common.interface_order import Order, OrderEvent, Trade
+from common.interface_reference_data import ReferenceData
 from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
     PositionRequest, MarginInfoRequest, MarginInfoResponse, CommissionRateRequest, CommissionRateResponse, \
     TradesRequest, TradesResponse, ReferenceDataRequest, ReferenceDataResponse
-from common.subscription.single_pair_connection.single_pair import PairConnection
+from common.seriallization import Serializable
+from common.subscription.messaging.dealer import DealerClient
+from common.subscription.messaging.gateway_server_handler import EventHandlerImpl
 from engine.account.account import Account
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position_manager import PositionManager
@@ -24,11 +27,30 @@ class RemoteOrderClient:
                  trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager):
         # make port configurable
         self.port = 8081
-        self.name = "Remote Order Order Connection"
+        self.name = "Remote Order Connection"
         self.order_event_listeners: Dict[str, Callable[[OrderEvent], None]] = {} # dict of callbacks
 
-        self.remote_order_server = PairConnection(self.port, False, self.name)
-        self.remote_order_server.start_receiving(self.on_event)
+        # self.remote_order_server = PairConnection(self.port, False, self.name)
+        # self.remote_order_server.start_receiving(self.on_event)
+
+        self.remote_order_client = DealerClient(self.name, "localhost", self.port)
+
+        MESSAGE_TYPES: tuple[Type[Serializable], ...] = (
+            OrderEvent,
+            WalletResponse,
+            AccountResponse,
+            PositionResponse,
+            MarginInfoResponse,
+            CommissionRateResponse,
+            TradesResponse,
+            Trade,
+            ReferenceDataResponse,
+            ReferenceData
+        )
+
+        business_message_handler = EventHandlerImpl(self.name,self.on_event, *MESSAGE_TYPES)
+        # Register handlers
+        self.remote_order_client.register_handler(b"*", business_message_handler)  # wildcard for all other messages
 
         self.margin_manager = margin_manager
         self.position_manager = position_manager
@@ -91,32 +113,32 @@ class RemoteOrderClient:
         self._order_queue.put(order)
 
     def request_for_account(self):
-        self.remote_order_server.send_account_request(AccountRequest())
+        self.remote_order_client.send(AccountRequest())
 
     def request_for_position(self):
-        self.remote_order_server.send_position_request(PositionRequest())
+        self.remote_order_client.send(PositionRequest())
 
     def request_for_margin(self):
         for asset in TRADING_SYMBOLS:
-            self.remote_order_server.send_margin_info_request(MarginInfoRequest(asset))
+            self.remote_order_client.send(MarginInfoRequest(asset))
 
     def request_for_commission_rate(self):
         for asset in TRADING_SYMBOLS:
-            self.remote_order_server.send_commission_rate_request(CommissionRateRequest(asset))
+            self.remote_order_client.send(CommissionRateRequest(asset))
 
     def request_for_trades(self):
         for asset in TRADING_SYMBOLS:
-            self.remote_order_server.send_trades_request(TradesRequest(asset))
+            self.remote_order_client.send(TradesRequest(asset))
 
     def request_for_reference_data(self):
-        self.remote_order_server.send_reference_data_request(ReferenceDataRequest())
+        self.remote_order_client.send(ReferenceDataRequest())
 
     def _send_orders_loop(self):
         """Background thread to send orders from the queue."""
         while self._running:
             try:
                 order = self._order_queue.get(timeout=0.1)  # wait for an order or timeout
-                self.remote_order_server.send_order(order)
+                self.remote_order_client.send(order)
                 self._order_queue.task_done()
             except queue.Empty:
                 continue  # no orders, loop again
@@ -126,7 +148,7 @@ class RemoteOrderClient:
         """Register a callback to receive OrderBook updates"""
         self.order_event_listeners[listener_name] = callback
 
-    def on_event(self, obj: object):
+    def on_event(self,ident:str, obj: object):
         if isinstance(obj, OrderEvent):
             self.received_order_event(obj)
         elif isinstance(obj, WalletResponse):
@@ -181,7 +203,7 @@ class RemoteOrderClient:
             try:
                 oe_listener(order_event)
             except Exception as e:
-                logging.error( "%s %s Listener raised an exception: %s",self.name,listener_name, e)
+                logging.error( f"[{self.name}] [{listener_name}] Listener raised an exception", exc_info=True)
 
     def stop(self):
         """Stop the sender thread cleanly."""

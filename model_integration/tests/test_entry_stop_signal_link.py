@@ -29,7 +29,7 @@ class EntryStopSignalLinkTests(unittest.TestCase):
         self.reference_price_manager.mark_price_dict[self.symbol] = 2000.0
 
     def _fill(self, order: Order, filled_qty: float, filled_price: float):
-        evt = OrderEvent(contract_name=self.symbol, order_id=order.order_id, execution_type=None, status=OrderStatus.FILLED, canceled_reason=None, client_id=order.order_id, order_type=order.order_type)
+        evt = OrderEvent(contract_name=self.symbol, order_id=order.order_id, execution_type=None, status=OrderStatus.FILLED, canceled_reason=None, client_order_id=order.order_id, order_type=order.order_type)
         evt.side = order.side.name
         evt.last_filled_price = filled_price
         evt.last_filled_quantity = filled_qty

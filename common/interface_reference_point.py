@@ -1,5 +1,8 @@
 # mark price of symbol
-class MarkPrice:
+from common.seriallization import Serializable
+
+
+class MarkPrice(Serializable):
     def __init__(self, symbol: str, price: float):
         self.symbol = symbol
         self.price = float(price)

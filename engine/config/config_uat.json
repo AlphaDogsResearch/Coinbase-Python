@@ -6,7 +6,6 @@
             "margin_limit": 0.8,
             "selected_symbol": "ETHUSDT",
             "trading_symbols": [
-                "BTCUSDT",
                 "ETHUSDT"
             ],
             "executor_order_type": "@common.interface_order.OrderType.Market",
@@ -115,7 +114,7 @@
         "class": "ADXMeanReversionStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-1s",
+            "bar_type": "ETHUSDT-1h",
             "adx_period": 22,
             "adx_smoothing": 22,
             "notional_amount": 500.0,
@@ -133,7 +132,7 @@
         "class": "APOMeanReversionStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-1s",
+            "bar_type": "ETHUSDT-1h",
             "apo_fast_period": 10,
             "apo_slow_period": 122,
             "matype": 1,
@@ -150,7 +149,7 @@
         "class": "PPOMomentumStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-1s",
+            "bar_type": "ETHUSDT-1h",
             "ppo_fast_period": 38,
             "ppo_slow_period": 205,
             "matype": 3,
@@ -168,7 +167,7 @@
         "class": "CCIMomentumStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-1s",
+            "bar_type": "ETHUSDT-1h",
             "cci_period": 14,
             "cci_upper": 205.0,
             "cci_lower": -101.0,
@@ -183,7 +182,7 @@
         "class": "ROCMeanReversionStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-1s",
+            "bar_type": "ETHUSDT-1h",
             "roc_period": 22,
             "roc_upper": 3.4,
             "roc_lower": -3.6,
@@ -198,17 +197,17 @@
         "class": "SimpleOrderTestStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-1s",
+            "bar_type": "ETHUSDT-1h",
             "bars_per_trade": 20,
             "notional_amount": 500.0
         }
     },
     "strategy_map": {
-        "simple_order_test_strategy": {
-            "module": "engine.strategies.simple_order_test_strategy",
-            "class": "SimpleOrderTestStrategy",
+        "roc_mean_reversion_strategy": {
+            "module": "engine.strategies.roc_mean_reversion_strategy",
+            "class": "ROCMeanReversionStrategy",
             "params": {
-                "config": "@simple_order_test_strategy_config"
+                "config": "@roc_strategy_config"
             }
         }
     }

@@ -210,7 +210,7 @@ class SelfMonitoringQueueProcessor:
                     self._metrics['consecutive_empty_cycles'] += 1
                 continue
             except Exception as e:
-                logging.error(f"{self.name} Error processing event: {e}")
+                logging.error(f"{self.name} Error processing event: {e}",exc_info=e)
                 with self._lock:
                     self._metrics['consecutive_empty_cycles'] += 1
 
@@ -493,7 +493,7 @@ class SelfMonitoringQueueProcessor:
                                   f"took {handler_time * 1000:.1f}ms")
 
         except Exception as e:
-            logging.error(f"{self.name} Error processing {event_type}: {e}")
+            logging.error(f"{self.name} Error processing {event_type}: {e}",exc_info=e)
 
         finally:
             total_time = time.time() - processing_start

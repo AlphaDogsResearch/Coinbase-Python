@@ -2,7 +2,7 @@ import logging
 import threading
 import time
 
-from common.identifier import OrderIdGenerator
+from common.identifier import IdGenerator
 from common.interface_order import Order, Side, OrderType
 from engine.remote.remote_order_service_client import RemoteOrderClient
 

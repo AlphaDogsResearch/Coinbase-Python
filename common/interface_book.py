@@ -1,5 +1,5 @@
 # A price tier in the order book
-from common.seriallization import Serializable
+from common.seriallization import Serializable, SerializableRegistry
 
 
 class PriceLevel(Serializable):

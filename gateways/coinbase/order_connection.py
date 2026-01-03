@@ -70,10 +70,12 @@ class OrderConnection:
         symbol = execution_report.get('symbol')
         order_event = None
         if status == 'NEW':
+            logging.info("[NEW] Order Event %s" % order_event)
             order_event = OrderEvent(symbol, external_order_id, ExecutionType.NEW, OrderStatus.NEW, None,
                                      client_order_id)
 
         elif status == 'FILLED':
+            logging.info("[FILLED] Order Event %s" % order_event)
             last_filled_price = execution_report.get('avgPrice')
             last_filled_quantity = execution_report.get('executedQty')
             last_filled_time = execution_report.get('updateTime')

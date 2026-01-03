@@ -1,91 +1,221 @@
 import json
 import logging
-import threading
-import time
-import uuid
+from typing import Type
 
 import zmq
+import time
+import uuid
+import random
+import threading
 
-from common.interface_book import OrderBook
-from common.interface_order import Trade, Order
+from common.config_logging import to_stdout
+from common.interface_book import PriceLevel, OrderBook
+from common.interface_reference_data import ReferenceData
+from common.interface_reference_point import MarkPrice
+from common.interface_req_res import WalletResponse, AccountResponse, PositionResponse, \
+    MarginInfoResponse, CommissionRateResponse, TradesResponse, ReferenceDataResponse
 from common.seriallization import Serializable
-from common.subscription.registry import Register, Unregister
+from common.subscription.messaging.event_handler import EventHandler
+from common.subscription.messaging.gateway_server_handler import EventHandlerImpl
+
+REQUEST_TIMEOUT_MS = 2000
+HEARTBEAT_INTERVAL_SEC = 5
+HEARTBEAT_TIMEOUT_SEC = 10
+BACKOFF_MIN = 1
+BACKOFF_MAX = 60
 
 
-class Dealer:
-    def __init__(self, port: int, bind: bool = False, name: str = None, identity: str = None):
-        self.context = zmq.Context()
-        self.socket = self.context.socket(zmq.DEALER)
-        self.socket.setsockopt(zmq.SNDHWM, 1)
+class DealerClient:
+    def __init__(self, name: str, host: str, port: int):
+        self.ctx = zmq.Context()
+        self.identity = uuid.uuid4().hex.encode()
+        self.socket = None
 
-        self.identity = identity or f"dealer-{uuid.uuid4().hex[:8]}"
-        self.socket.setsockopt(zmq.IDENTITY, self.identity.encode())
-        self.name = name or self.identity
-
-        address = f"tcp://*:{port}" if bind else f"tcp://localhost:{port}"
-        if bind:
-            logging.info("[%s] Binding to %s", self.name, address)
-            self.socket.bind(address)
-        else:
-            logging.info("[%s] Connecting to %s", self.name, address)
-            self.socket.connect(address)
-
-        self.running = False
-        self.receiver_thread = None
-        self.registered = False
-
-    def start_receiving(self, callback):
-        if self.receiver_thread is not None:
-            raise RuntimeError("Receiver already started.")
+        self.last_contact = time.time()
+        self.backoff = BACKOFF_MIN
+        self.connected = False
+        self.name = name
+        self.address = "tcp://{}:{}".format(host, port)
+        self.lock = threading.Lock()
         self.running = True
 
-        def receive_loop():
-            self._try_register()
-            while self.running:
-                try:
-                    msg = self.socket.recv(flags=zmq.NOBLOCK)
-                    try:
-                        data = json.loads(msg.decode())
-                        cls_name = data.get("__class__")
-                        if cls_name == "OrderBook":
-                            obj = OrderBook.from_dict(data)
-                        elif cls_name == "Order":
-                            obj = Order.from_dict(data)
-                        elif cls_name == "Trade":
-                            obj = Trade.from_dict(data)
-                        else:
-                            obj = data
-                    except Exception:
-                        obj = msg.decode()
-                    print(f"[{self.name}] Received: {obj}")
-                    if isinstance(obj, dict) and obj.get("__class__") == "Ack":
-                        print(f"[{self.name}] Registration acknowledged: {obj}")
-                    callback(obj)
-                except zmq.Again:
-                    time.sleep(0.01)
+        # user-defined message handlers
+        self.handlers : dict[bytes, EventHandler] = {}
+        self.connection_handler = []
 
-        self.receiver_thread = threading.Thread(target=receive_loop, daemon=True)
-        self.receiver_thread.start()
+        self.connect()
+        self.bg_thread = threading.Thread(target=self._run, daemon=True)
+        self.bg_thread.start()
 
-    def _try_register(self):
-        if not self.registered:
+
+    def register_on_connected(self,callback):
+        self.connection_handler.append(callback)
+
+    def change_connection_state(self,connection_state :bool):
+        if self.connected!= connection_state:
+            logging.info(f"[{self.name}] Connection state changed to {connection_state}")
+            self.connected = connection_state
+            for listener in self.connection_handler:
+                listener(self.connected)
+
+    def register_handler(self, msg_type: bytes, callback :EventHandler):
+        """Register a callback for a specific message type"""
+        self.handlers[msg_type] = callback
+
+    def connect(self):
+        if self.socket:
+            self.socket.close()
+
+        self.socket = self.ctx.socket(zmq.DEALER)
+
+        # For high-volume applications, use even larger values
+        self.socket.setsockopt(zmq.SNDHWM, 1000)  # Send buffer: 1000 messages
+        self.socket.setsockopt(zmq.RCVHWM, 1000)  # Receive buffer: 1000 messages
+        # If using TCP transport
+        self.socket.setsockopt(zmq.TCP_KEEPALIVE, 1)
+        self.socket.setsockopt(zmq.TCP_KEEPALIVE_IDLE, 30)
+        self.socket.setsockopt(zmq.LINGER, 0)
+
+        self.socket.setsockopt(zmq.IDENTITY, self.identity)
+        self.socket.connect(self.address)
+
+        logging.info(f"[{self.name}] [Client] Connected TCP as {self.identity} to {self.address}")
+
+        self.change_connection_state(False)
+        self.last_contact = time.time()
+        self.send_logon()
+
+    def send_logon(self):
+        try:
+            self.socket.send_multipart([b"", b"LOGON_REQUEST"])
+            logging.info(f"[{self.name}] [Client] -> LOGON_REQUEST")
+            self.last_contact = time.time()
+        except zmq.ZMQError:
+            pass
+
+    def sleep_with_backoff(self):
+        delay = self.backoff + random.random()
+        logging.info(f"[{self.name}] [Client] Reconnect wait: {delay:.1f} sec")
+        time.sleep(delay)
+        self.backoff = min(self.backoff * 2, BACKOFF_MAX)
+
+    def send_heartbeat(self):
+        try:
+            self.socket.send_multipart([b"", b"PING"])
+            logging.info(f"[{self.name}] [Client] -> PING")
+            self.last_contact = time.time()
+        except zmq.ZMQError:
+            pass
+
+    def _run(self):
+        while self.running:
+            # Receive messages
             try:
-                self.send(Register(self.identity))
-                self.registered = True
-            except Exception as e:
-                logging.error("[%s] Registration failed: %s", self.name, e)
+                parts = self.socket.recv_multipart(flags=zmq.NOBLOCK)
+                payload = parts[-1]
 
-    def send(self, obj):
-        msg = json.dumps(obj.to_dict()) if isinstance(obj, Serializable) else json.dumps(obj) if isinstance(obj, dict) else str(obj)
-        print(f"[{self.name}] Sending: {msg}")
-        self.socket.send(msg.encode(), flags=zmq.NOBLOCK)
+                logging.debug(f"[{self.name}] [Client] -> {payload}")
+                self.last_contact = time.time()
+
+                handled = False
+
+                # LOGON_RESPONSE
+                if payload == b"LOGON_RESPONSE":
+                    logging.info(f"[{self.name}] [Client] <- LOGON_RESPONSE")
+                    with self.lock:
+                        self.change_connection_state(True)
+                        self.backoff = BACKOFF_MIN
+                    if b"LOGON_RESPONSE" in self.handlers:
+                        self.handlers[b"LOGON_RESPONSE"].handle(identity="",payload=payload)
+                        handled = True
+
+                # PONG
+                elif payload == b"PONG":
+                    logging.info(f"[{self.name}] [Client] <- PONG")
+                    if b"PONG" in self.handlers:
+                        self.handlers[b"PONG"].handle(identity="",payload=payload)
+                        handled = True
+
+                # Other business messages
+                else:
+                    logging.debug(f"[{self.name}] [Client] Reply: {parts}")
+                    if b"*" in self.handlers:
+                        # wildcard handler
+                        self.handlers[b"*"].handle(identity="", payload=payload)
+                        handled = True
+
+                if not handled:
+                    pass  # message not handled, default logging.info()ed
+
+            except zmq.Again:
+                pass
+
+            # Heartbeat if idle and logged on
+            with self.lock:
+                idle = time.time() - self.last_contact
+                if idle >= HEARTBEAT_INTERVAL_SEC and self.connected:
+                    self.send_heartbeat()
+
+                # Detect lost connection
+                if time.time() - self.last_contact > HEARTBEAT_TIMEOUT_SEC:
+                    logging.info(f"[{self.name}] [Client] LOST — reconnecting…")
+                    self.change_connection_state(False)
+                    self.connect()
+                    self.sleep_with_backoff()
+
+            time.sleep(0.1)
+
+    def send(self, msg:Serializable):
+        """Send message to server."""
+        self.send_request(json.dumps(msg.to_dict()).encode())
+
+    def send_request(self, data: bytes):
+        with self.lock:
+            if not self.connected:
+                logging.info(f"[{self.name}] [Client] Waiting for LOGON_RESPONSE before sending…")
+                return
+            self.socket.send_multipart([b"", data])
+            logging.info(f"[Client] Send: {data}")
+            # self.last_contact = time.time()
 
     def stop(self):
-        self.send(Unregister(self.identity))
         self.running = False
-        if self.receiver_thread:
-            self.receiver_thread.join(timeout=1)
+        self.bg_thread.join(timeout=1)
         self.socket.close()
-        self.context.term()
+        self.ctx.term()
+        logging.info(f"[{self.name}] [Client] Stopped")
 
 
+
+if __name__ == "__main__":
+    def callback(ident:str,obj:object):
+        logging.info(f"Received event: {ident} {obj}")
+        handle_message(ident,obj)
+
+    def handle_message(ident: str, msg: object):
+       if isinstance(msg, OrderBook):
+           logging.info(f"Received OrderBook: {ident} {msg}")
+
+    to_stdout()
+    client = DealerClient("Remote Order Order Connection","localhost",5555)
+
+    MESSAGE_TYPES: tuple[Type[Serializable], ...] = (
+        OrderBook,
+        MarkPrice,
+        PriceLevel
+    )
+
+    business_message_handler = EventHandlerImpl(callback, *MESSAGE_TYPES)
+    # Register handlers
+    client.register_handler(b"*", business_message_handler)  # wildcard for all other messages
+
+    # Send business messages in main thread
+    try:
+        while True:
+            pass
+            # order = Order("A123",Side.BUY,0,"BTCUSDT",current_milli_time(),OrderType.Limit,123,)
+            # logging.info(f"Submitted Order: {order}")
+            # client.send_request(json.dumps(order.to_dict()).encode())
+            # time.sleep(3)
+    except KeyboardInterrupt:
+        client.stop()

@@ -25,6 +25,7 @@ class ReferenceDataManager:
         self.reference_price_manager = reference_price_manager
 
     def init_reference_data(self, reference_data: Dict[str, ReferenceData]):
+        logging.info(f"Initializing reference data. {len(reference_data)} records")
         self.reference_data = reference_data
 
     def convert_notional_to_quantity(
