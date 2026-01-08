@@ -50,9 +50,10 @@ def main():
 
     # Get configuration from environment variables
     environment = os.getenv("ENVIRONMENT", "development")
+    sub_module_path = os.getenv("SUB_MODULE_PATH", "")
     logging.info("Environment: %s", environment)
 
-    config = basic_config_loader.load_config(environment)
+    config = basic_config_loader.load_config(environment,sub_module_path)
     logging.info(f"Config loaded. {config}")
     components = basic_config_loader.create_objects(config)
     logging.info(f"Components Created. {components}")
@@ -125,7 +126,8 @@ def main():
     # init account
     account = components["account"]
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
-    risk_manager.on_wallet_balance_update(account.on_wallet_balance_update)
+    account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
+
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)

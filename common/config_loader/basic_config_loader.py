@@ -26,7 +26,7 @@ import json
 from common.config_logging import to_stdout
 
 
-def load_config(env: str):
+def load_config(env: str,submodule_path:str=""):
     """Load JSON config dynamically for the given environment.
     Resolves the path relative to where the main script is run.
     """
@@ -36,7 +36,8 @@ def load_config(env: str):
     base_dir = os.getcwd()
 
     # Default: look for config folder under engine/config
-    config_dir = os.path.join(base_dir, "config")
+    config_dir = os.path.join(base_dir, submodule_path)
+    config_dir = os.path.join(config_dir, "config")
     filename = os.path.join(config_dir, f"config_{env}.json")
 
     # Allow override via CONFIG_PATH environment variable

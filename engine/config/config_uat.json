@@ -183,12 +183,12 @@
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
             "bar_type": "ETHUSDT-1h",
-            "roc_period": 22,
-            "roc_upper": 3.4,
-            "roc_lower": -3.6,
-            "roc_mid": -2.1,
+            "roc_period": 10,
+            "roc_upper": 1,
+            "roc_lower": -1,
+            "roc_mid": 0,
             "notional_amount": 500.0,
-            "stop_loss_percent": 0.021,
+            "stop_loss_percent": 0.5,
             "max_holding_bars": 100
         }
     },

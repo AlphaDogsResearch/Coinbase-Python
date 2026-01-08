@@ -43,8 +43,10 @@ if __name__ == '__main__':
     # json config for gateway variables
     environment = os.getenv("ENVIRONMENT", "development")
     logging.info("Environment: %s", environment)
+    environment = os.getenv("ENVIRONMENT", "development")
+    sub_module_path = os.getenv("SUB_MODULE_PATH", "")
 
-    config = basic_config_loader.load_config(environment)
+    config = basic_config_loader.load_config(environment,sub_module_path)
     logging.info(f"Config loaded. {config}")
     components = basic_config_loader.create_objects(config)
     logging.info(f"Components Created. {components}")
