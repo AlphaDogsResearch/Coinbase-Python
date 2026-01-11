@@ -181,9 +181,6 @@ class RiskManager:
         if qty <= 0:
             logging.warning("Preorder rejected: non-positive quantity")
             return False
-        # if self.allowed_symbols and symbol not in self.allowed_symbols:
-        #     logging.warning(f"Preorder rejected: {symbol} not in allowed symbols")
-        #     return False
         # Per-symbol min order size
         min_size = self.min_order_size
         if getattr(self, '_symbol_min_order_size', None) is not None:
@@ -191,12 +188,6 @@ class RiskManager:
         if abs(qty) < min_size:
             logging.warning(f"Preorder rejected: quantity {qty} below minimum {min_size}")
             return False
-        # # Price must be available (either on order or via provider/cache)
-        # if exec_price is None or exec_price < 0.0:
-        #     logging.warning("Preorder rejected: price not available (order.price missing and mark price unavailable)")
-        #     return False
-        # else:
-        #     exec_price = order.price
         return True
 
     # ------------------------
@@ -213,28 +204,6 @@ class RiskManager:
             self._publish_block_event()
             return False
 
-        symbol = order.symbol
-        qty = float(abs(order.leaves_qty)) if order.leaves_qty is not None else 0.0
-        if getattr(order, 'side', None) == Side.SELL:
-            delta_qty = -qty
-        else:
-            delta_qty = qty
-
-        # # Resolve current position and open orders
-        # position_amt, open_orders = self._get_position_and_open_orders(symbol)
-        #
-        # # Directional gating: prevent adding to same direction
-        # if position_amt > 0 and delta_qty > 0:
-        #     logging.warning(
-        #         f"Order rejected: long position open ({position_amt}); adding to same direction (BUY) is disabled."
-        #     )
-        #     return False
-        # if position_amt < 0 and delta_qty < 0:
-        #     logging.warning(
-        #         f"Order rejected: short position open ({position_amt}); adding to same direction (SELL) is disabled."
-        #     )
-        #     return False
-
         # Portfolio-level drawdown gate
         if self._peak_aum and self._peak_aum > 0 and self._current_drawdown_ratio > self.max_drawdown:
             self.trading_blocked = True
@@ -246,37 +215,6 @@ class RiskManager:
             )
             self._publish_block_event()
             return False
-
-        # # Resolve price
-        # if exec_price is None or exec_price < 0.0:
-        #     logging.warning("Order rejected: missing price for notional/leverage checks")
-        #     return False
-        # else:
-        #     exec_price = order.price
-        #
-        # # Max order notional
-        # notional = abs(qty) * float(exec_price)
-        # if notional > self.max_order_value:
-        #     logging.warning(f"Order rejected: notional {notional} exceeds max order value {self.max_order_value}.")
-        #     return False
-        #
-        # # Max position notional
-        # future_position_notional = abs(position_amt + delta_qty) * float(exec_price)
-        # if future_position_notional > self.max_position_value:
-        #     logging.warning(f"Order rejected: position size would exceed max position value {self.max_position_value}.")
-        #     return False
-
-        # Max open orders per symbol
-        # if open_orders >= self.max_open_orders:
-        #     logging.warning(f"Order rejected: open orders {open_orders} exceeds max {self.max_open_orders}.")
-        #     return False
-
-        # # Leverage
-        # if self.aum > 0:
-        #     leverage = future_position_notional / self.aum
-        #     if leverage > self.max_leverage:
-        #         logging.warning(f"Order rejected: leverage {leverage:.2f}x exceeds max {self.max_leverage}x.")
-        #         return False
 
         return True
 
