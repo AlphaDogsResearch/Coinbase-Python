@@ -96,7 +96,7 @@ class ADXMeanReversionStrategy(Strategy):
         """Initialize strategy on start."""
         self.instrument = self.cache.instrument(self.instrument_id)
         if self.instrument is None:
-            self.log.error(f"Instrument {self.instrument_id} not found in cache")
+            self.log.error(f"Instrument {self.instrument_id} not found in cache \n")
             # In a real system we might request it or fail, here we assume it's pre-loaded or we proceed
 
         self.subscribe_bars(self.bar_type)

@@ -167,7 +167,7 @@ class RemoteOrderClient:
             self.received_reference_data_response(obj)
 
     def received_reference_data_response(self, reference_data_response: ReferenceDataResponse):
-        logging.info(f"Received ReferenceDataResponse: {reference_data_response}")
+        logging.info(f"Received ReferenceDataResponse: {len(reference_data_response.reference_data)} count")
         self.reference_data_manager.init_reference_data(reference_data_response.reference_data)
 
 

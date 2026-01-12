@@ -395,7 +395,7 @@ class FCFSOrderManager(OrderManager, ABC):
         logging.info(f"Order event received {order_event}")
         status = order_event.status
 
-        order = self.orders[order_event.client_id]
+        order = self.orders[order_event.client_order_id]
         if order is not None:
             if status == OrderStatus.FILLED:
                 last_filled_quantity = float(order_event.last_filled_quantity)
@@ -450,7 +450,7 @@ class FCFSOrderManager(OrderManager, ABC):
                 logging.error(f"Unknown order status: {order_event.status} {type(order_event.status)}")
 
         if order.is_in_order_done_state:
-            order = self.orders.pop(order_event.client_id, None)
+            order = self.orders.pop(order_event.client_order_id, None)
             logging.info(f"Order is done: {order}")
             if order is not None:
                 self.order_pool.release(order)

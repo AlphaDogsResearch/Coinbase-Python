@@ -78,7 +78,7 @@ class APOMeanReversionStrategy(Strategy):
         """Initialize strategy on start."""
         self.instrument = self.cache.instrument(self.instrument_id)
         if self.instrument is None:
-            self.log.error(f"Instrument {self.instrument_id} not found in cache")
+            self.log.error(f"Instrument {self.instrument_id} not found in cache \n")
             pass
 
         self.subscribe_bars(self.bar_type)

@@ -102,7 +102,7 @@ class DealerClient:
     def send_heartbeat(self):
         try:
             self.socket.send_multipart([b"", b"PING"])
-            logging.info(f"[{self.name}] [Client] -> PING")
+            logging.debug(f"[{self.name}] [Client] -> PING")
             self.last_contact = time.time()
         except zmq.ZMQError:
             pass
@@ -131,7 +131,7 @@ class DealerClient:
 
                 # PONG
                 elif payload == b"PONG":
-                    logging.info(f"[{self.name}] [Client] <- PONG")
+                    logging.debug(f"[{self.name}] [Client] <- PONG")
                     if b"PONG" in self.handlers:
                         self.handlers[b"PONG"].handle(identity="",payload=payload)
                         handled = True

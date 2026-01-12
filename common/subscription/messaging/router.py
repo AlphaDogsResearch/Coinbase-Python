@@ -73,7 +73,7 @@ class RouterServer:
     '''
 
     def handle_message(self, ident, payload):
-        logging.info(f"[{self.name} Server] From {ident}: {payload}")
+
 
         if payload == b"LOGON_REQUEST":
             self.socket.send_multipart([ident, b"", b"LOGON_RESPONSE"])
@@ -83,9 +83,10 @@ class RouterServer:
 
         elif payload == b"PING":
             self.socket.send_multipart([ident, b"", b"PONG"])
-            logging.info(f"[{self.name}Server] -> PONG")
+            logging.debug(f"[{self.name}Server] -> PONG")
 
         else:
+            logging.info(f"[{self.name} Server] From {ident}: {payload}")
             self.handler.handle(ident, payload)
             # TODO do we need the ACK ??
             # self.socket.send_multipart([ident, b"", b"ACK:" + payload])
