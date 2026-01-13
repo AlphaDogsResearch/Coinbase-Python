@@ -188,7 +188,7 @@
             "roc_lower": -1,
             "roc_mid": 0,
             "notional_amount": 500.0,
-            "stop_loss_percent": 50,
+            "stop_loss_percent": 0.5,
             "max_holding_bars": 100
         }
     },
