@@ -1,5 +1,8 @@
 import logging
 import threading
+import time
+from dataclasses import dataclass
+from collections import deque
 from typing import Optional, Callable, List, Tuple
 import numpy as np
 
@@ -69,6 +72,13 @@ class RiskManager:
         self.max_drawdown = max_drawdown if max_drawdown is not None else 0.10
         self._peak_aum = None  # type: Optional[float]
         self._current_drawdown_ratio = 0.0
+
+        # ---- Shock risk (intrabar) state ----
+        # Per-symbol configuration, live windows, and lockout tracking
+        self._shock_cfgs = {}                 # symbol -> ShockRiskConfig
+        self._shock_live = {}                 # symbol -> LiveWindow
+        self._shock_lockout_until = {}        # symbol -> timestamp (float seconds)
+        self._shock_last_reason = {}          # symbol -> str
 
     def set_aum(self, aum: float):
         logging.info(f"Updating AUM to {aum}")
@@ -144,6 +154,11 @@ class RiskManager:
             self._latest_prices[symbol] = float(price)
         except Exception:
             self._latest_prices[symbol] = price
+        # feed shock risk live window if configured
+        live = self._shock_live.get(symbol)
+        if live is not None:
+            now = time.time()
+            live.add(now, float(price))
 
     # ------------------------
     # Block publication and queries
@@ -271,9 +286,115 @@ class RiskManager:
         return max_var_matrix
 
     def get_portfolio_var_matrices(self):
-        max_var_matrix = self._max_var_matrix()
+        max_var_matrix = self._portfolio_var_percent_matrix()
         historical_var = self._historical_var_matrix()
         iaum = self.initial_aum if self.initial_aum and self.initial_aum > 0 else 0
         max_var_amount = np.multiply(max_var_matrix, iaum)
         max_portfolio_trade_value = np.divide(max_var_amount, historical_var)
         return max_portfolio_trade_value
+
+    # =========================
+    # Shock Risk (Intrabar) overlay
+    # =========================
+    def configure_shock_risk(self, cfg: "ShockRiskConfig") -> None:
+        """Attach/replace a shock-risk configuration for a symbol on this RiskManager."""
+        self._shock_cfgs[cfg.symbol] = cfg
+        if cfg.symbol not in self._shock_live:
+            self._shock_live[cfg.symbol] = LiveWindow()
+
+    def is_in_shock_lockout(self, symbol: str, now: Optional[float] = None) -> bool:
+        now = time.time() if now is None else now
+        until = self._shock_lockout_until.get(symbol, 0.0)
+        return now < float(until)
+
+    def shock_last_reason(self, symbol: str) -> Optional[str]:
+        return self._shock_last_reason.get(symbol)
+
+    def check_shock_override(
+        self,
+        symbol: str,
+        position_qty: float,
+        entry_price: Optional[float],
+        now: Optional[float] = None,
+    ) -> Tuple[str, Optional[str]]:
+        """
+        Returns: (action, reason) with action in {"HOLD", "FLATTEN"}
+        Triggers FLATTEN and sets lockout when jump_abs_sum threshold or max loss threshold is hit.
+        """
+        now = time.time() if now is None else now
+
+        if position_qty == 0:
+            return "HOLD", None
+
+        if self.is_in_shock_lockout(symbol, now):
+            return "HOLD", None
+
+        cfg = self._shock_cfgs.get(symbol)
+        live = self._shock_live.get(symbol)
+        if cfg is None or live is None:
+            return "HOLD", None
+
+        # A) Jump/velocity detector
+        abs_sum = live.abs_return_sum(cfg.jump_window_sec, cfg.min_samples)
+        if abs_sum >= cfg.jump_abs_sum:
+            self._shock_lockout_until[symbol] = now + cfg.lockout_sec
+            self._shock_last_reason[symbol] = f"jump_abs_sum={abs_sum:.4f}"
+            return "FLATTEN", self._shock_last_reason[symbol]
+
+        # B) Optional hard max loss from entry (uses mark price)
+        if entry_price is not None:
+            px = live.last_price()
+            if px is not None:
+                pnl_pct = (px / entry_price - 1.0) * (1 if position_qty > 0 else -1)
+                if pnl_pct <= -cfg.max_loss_pct:
+                    self._shock_lockout_until[symbol] = now + cfg.lockout_sec
+                    self._shock_last_reason[symbol] = f"max_loss pnl_pct={pnl_pct:.4f}"
+                    return "FLATTEN", self._shock_last_reason[symbol]
+
+        return "HOLD", None
+
+class LiveWindow:
+    """
+    Stores a rolling window of mark prices (preferred) to detect shocks.
+    """
+    def __init__(self, maxlen: int = 5000):
+        self.ts = deque(maxlen=maxlen)
+        self.px = deque(maxlen=maxlen)
+
+    def add(self, t: float, px: float) -> None:
+        self.ts.append(t)
+        self.px.append(px)
+
+    def abs_return_sum(self, window_sec: int, min_samples: int) -> float:
+        if len(self.ts) < min_samples:
+            return 0.0
+        t_now = self.ts[-1]
+        # find first index within window
+        idx0 = None
+        for i, t in enumerate(self.ts):
+            if t >= t_now - window_sec:
+                idx0 = i
+                break
+        if idx0 is None:
+            return 0.0
+        p = np.asarray(list(self.px)[idx0:], dtype=float)
+        if p.size < min_samples:
+            return 0.0
+        r = p[1:] / p[:-1] - 1.0
+        return float(np.sum(np.abs(r)))
+
+    def last_price(self) -> Optional[float]:
+        return float(self.px[-1]) if self.px else None
+
+
+@dataclass
+class ShockRiskConfig:
+    symbol: str
+    ws_symbol: str | None = None
+    jump_window_sec: int = 20
+    jump_abs_sum: float = 0.010
+    lockout_sec: int = 15 * 60
+    max_loss_pct: float = 0.020
+    min_samples: int = 5
+
+ 
