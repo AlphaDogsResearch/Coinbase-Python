@@ -30,7 +30,7 @@ def load_config(env: str,submodule_path:str=""):
     """Load JSON config dynamically for the given environment.
     Resolves the path relative to where the main script is run.
     """
-    to_stdout()
+
 
     # Base path = where the main script is executed
     base_dir = os.getcwd()

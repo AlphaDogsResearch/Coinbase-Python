@@ -22,15 +22,15 @@ import time
 from dotenv import load_dotenv
 
 from common.config_loader import basic_config_loader
-from common.config_logging import to_stdout
+from common.config_logging import to_stdout, to_stdout_and_daily_file
 from gateways.binance.binance_gateway import BinanceGateway, ProductType
 from gateways.binance.market_connection import MarketDataConnection
 from gateways.binance.order_connection import OrderConnection
 from common.config_symbols import TRADING_SYMBOLS
 
 if __name__ == '__main__':
+    to_stdout_and_daily_file(log_dir="logs", log_prefix="binance")
     logging.info("Running Binance Gateway...")
-    to_stdout()
 
     # read key and secret from environment variable file
     base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located

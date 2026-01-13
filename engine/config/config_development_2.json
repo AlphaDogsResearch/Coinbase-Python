@@ -110,6 +110,21 @@
             "reference_data_manager": "@reference_data_manager"
         }
     },
+      "roc_strategy_config": {
+        "module": "engine.strategies.roc_mean_reversion_strategy",
+        "class": "ROCMeanReversionStrategyConfig",
+        "params": {
+            "instrument_id": "@default_settings.selected_symbol",
+            "bar_type": "ETHUSDT-1s",
+            "roc_period": 2,
+            "roc_upper": 0.01,
+            "roc_lower": -0.01,
+            "roc_mid": 0,
+            "notional_amount": 500.0,
+            "stop_loss_percent": 50,
+            "max_holding_bars": 100
+        }
+    },
     "simple_order_test_strategy_config": {
         "module": "engine.strategies.simple_order_test_strategy",
         "class": "SimpleOrderTestStrategyConfig",
@@ -121,11 +136,11 @@
         }
     },
     "strategy_map": {
-        "simple_order_test_strategy": {
-            "module": "engine.strategies.simple_order_test_strategy",
-            "class": "SimpleOrderTestStrategy",
+        "roc_mean_reversion_strategy": {
+            "module": "engine.strategies.roc_mean_reversion_strategy",
+            "class": "ROCMeanReversionStrategy",
             "params": {
-                "config": "@simple_order_test_strategy_config"
+                "config": "@roc_strategy_config"
             }
         }
     }
