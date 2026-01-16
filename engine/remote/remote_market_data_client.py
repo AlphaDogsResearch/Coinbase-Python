@@ -14,9 +14,10 @@ from engine.market_data.market_data_client import MarketDataClient
 
 
 class RemoteMarketDataClient(MarketDataClient):
-    def __init__(self):
-        self.port = 8080
-        self.name = "Remote Market Data Connection"
+    def __init__(self,port:int,name:str):
+        self.port = port
+        self.name = name
+        logging.info(f"[{name}] connecting to port {port}")
         self.order_book_listeners: Dict[str, List[Callable[[OrderBook], None]]] = {}  # list of callbacks
         self.mark_price_listener: List[Callable[[MarkPrice], None]] = []
 

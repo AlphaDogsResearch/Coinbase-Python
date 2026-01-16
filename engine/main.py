@@ -59,16 +59,6 @@ def main():
     logging.info(f"Components Created. {components}")
 
     default_settings_parameters = components["default_settings"]
-    notional_amount = default_settings_parameters["notional_amount"]
-
-    interval_seconds = default_settings_parameters["interval_seconds"]
-
-    logging.info(
-        "Candle interval: %d seconds (%s)",
-        interval_seconds,
-        "1-second" if interval_seconds == 1 else "1-hour",
-    )
-    logging.info("Notional Amount: %s", notional_amount)
 
     start = True
 

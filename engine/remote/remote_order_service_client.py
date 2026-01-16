@@ -23,11 +23,12 @@ from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
 class RemoteOrderClient:
-    def __init__(self, margin_manager: MarginInfoManager, position_manager: PositionManager, account: Account,
+    def __init__(self,port:int,name:str, margin_manager: MarginInfoManager, position_manager: PositionManager, account: Account,
                  trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager):
         # make port configurable
-        self.port = 8081
-        self.name = "Remote Order Connection"
+        self.port = port
+        self.name = name
+        logging.info(f"[{name}] connecting to port {port}")
         self.order_event_listeners: Dict[str, Callable[[OrderEvent], None]] = {} # dict of callbacks
 
         # self.remote_order_server = PairConnection(self.port, False, self.name)

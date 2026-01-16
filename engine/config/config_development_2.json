@@ -10,11 +10,10 @@
                 "ETHUSDT"
             ],
             "executor_order_type": "@common.interface_order.OrderType.Market",
-            "interval_seconds": 1,
-            "notional_amount": 500,
-            "gateway_name": "binance_gateway",
-            "market_data_connection_port": 5555,
-            "order_connection_port": 5556
+            "remote_market_data_connection_port": 8080,
+            "remote_market_data_connection_name": "Remote Market Data Connection",
+            "remote_order_connection_port": 8081,
+            "remote_order_connection_name": "Remote Order Connection"
         }
     },
     "position": {
@@ -72,7 +71,11 @@
     },
     "remote_market_data_client": {
         "module": "engine.remote.remote_market_data_client",
-        "class": "RemoteMarketDataClient"
+        "class": "RemoteMarketDataClient",
+        "params": {
+            "port": "@default_settings.remote_market_data_connection_port",
+            "name": "@default_settings.remote_market_data_connection_name"
+        }
     },
     "reference_data_manager": {
         "module": "engine.reference_data.reference_data_manager",
@@ -85,6 +88,8 @@
         "module": "engine.remote.remote_order_service_client",
         "class": "RemoteOrderClient",
         "params": {
+            "port": "@default_settings.remote_order_connection_port",
+            "name": "@default_settings.remote_order_connection_name",
             "margin_manager": "@margin_manager",
             "position_manager": "@position_manager",
             "account": "@account",
