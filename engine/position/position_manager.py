@@ -1,7 +1,7 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor
 from operator import truediv
-from typing import Callable, List, Dict, Set, Optional, Tuple
+from typing import Callable, List, Dict, Set, Optional, Tuple, TYPE_CHECKING
 
 from common.interface_order import OrderEvent, OrderStatus, OrderType
 from common.interface_reference_point import MarkPrice
@@ -12,6 +12,9 @@ from engine.reference_data.reference_price_manager import ReferencePriceManager
 from engine.trading_cost.trading_cost_manager import TradingCostManager
 from engine.trading_cost.trading_cost import TradingCost
 
+if TYPE_CHECKING:
+    from engine.database.database_manager import DatabaseManager
+
 
 class PositionManager:
     def __init__(
@@ -19,6 +22,7 @@ class PositionManager:
         margin_manager: MarginInfoManager,
         trading_cost_manager: TradingCostManager,
         reference_price_manager: ReferencePriceManager,
+        database_manager: "DatabaseManager" = None,
     ):
         self.name = "Position Manager"
         # Aggregate positions by symbol (backward compatible)
@@ -41,6 +45,8 @@ class PositionManager:
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="POS")
         # Optional order lookup to resolve strategy_id from order_id/client_id
         self._order_lookup: Optional[Callable[[str], Optional[object]]] = None
+        # Database manager for persistence (optional)
+        self.database_manager = database_manager
 
     def set_order_lookup(self, lookup_fn: Callable[[str], Optional[object]]):
         """
@@ -192,6 +198,30 @@ class PositionManager:
 
         # Maintain aggregate position by symbol for backward compatibility
         self._update_aggregate_position(symbol)
+        
+        # Persist position to database
+        if self.database_manager:
+            try:
+                pos_side = "FLAT"
+                if position.position_amount > 0:
+                    pos_side = "LONG"
+                elif position.position_amount < 0:
+                    pos_side = "SHORT"
+                    
+                self.database_manager.upsert_position({
+                    "strategy_id": strategy_id,
+                    "symbol": symbol,
+                    "side": pos_side,
+                    "quantity": position.position_amount,
+                    "entry_price": position.entry_price,
+                    "mark_price": self.mark_price_dict.get(symbol, 0),
+                    "unrealized_pnl": position.unrealised_pnl,
+                    "realized_pnl": position.net_realized_pnl,
+                    "total_commission": position.total_trading_cost,
+                })
+            except Exception as e:
+                logging.error(f"Failed to persist position: {e}")
+        
         # Emit position amount update
         try:
             for listener in self.position_amount_listener:

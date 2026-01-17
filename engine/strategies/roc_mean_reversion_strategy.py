@@ -8,6 +8,7 @@ from common.interface_order import OrderSizeMode
 from .strategy_action import StrategyAction
 from .strategy_order_mode import StrategyOrderMode
 from ..market_data.candle import MidPriceCandle
+from engine.database.models import build_roc_signal_context
 
 
 @dataclass(frozen=True)
@@ -161,12 +162,35 @@ class ROCMeanReversionStrategy(Strategy):
             order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        current_roc = self.roc.value * 100
+        signal_context = build_roc_signal_context(
+            reason=reason,
+            current_roc=current_roc,
+            previous_roc=self._previous_roc,
+            roc_upper=self.roc_upper,
+            roc_lower=self.roc_lower,
+            roc_mid=self.roc_mid,
+            roc_period=self.roc_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": candle.open,
+                "high": candle.high,
+                "low": candle.low,
+                "close": candle.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=1,  # BUY
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:
@@ -196,12 +220,35 @@ class ROCMeanReversionStrategy(Strategy):
             order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        current_roc = self.roc.value * 100
+        signal_context = build_roc_signal_context(
+            reason=reason,
+            current_roc=current_roc,
+            previous_roc=self._previous_roc,
+            roc_upper=self.roc_upper,
+            roc_lower=self.roc_lower,
+            roc_mid=self.roc_mid,
+            roc_period=self.roc_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": candle.open,
+                "high": candle.high,
+                "low": candle.low,
+                "close": candle.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=-1,  # SELL
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:
