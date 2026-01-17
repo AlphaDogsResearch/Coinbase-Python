@@ -48,9 +48,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.reference_data_manager = reference_data_manager
         self.single_asset_strategy_position = {}
 
-        self.order_pool = ObjectPool(
-            create_func=lambda: Order.create_base_order(""), size=100
-        )
+        self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(""), size=100)
 
         # Statistics
         self.stats = {"total_orders": 0, "by_strategy": {}}
@@ -63,7 +61,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self._entry_by_signal: Dict[tuple, dict] = {}
         # (strategy_id, symbol, signal_id) -> pending stop info { 'side': Side, 'trigger_price': float, 'tags': List[str]|None }
         self._pending_stop_by_signal: Dict[tuple, dict] = {}
-        
+
         # Database manager for persistence (optional)
         self.database_manager = database_manager
 
@@ -117,7 +115,7 @@ class FCFSOrderManager(OrderManager, ABC):
             )
             if tags:
                 logging.info(f"Tags: {tags}")
-            
+
             # Persist signal to database if context provided
             if self.database_manager and signal_context:
                 try:
@@ -420,20 +418,22 @@ class FCFSOrderManager(OrderManager, ABC):
         if self.database_manager:
             try:
                 meta = self.order_meta.get(order.order_id, {})
-                self.database_manager.insert_order({
-                    "order_id": order.order_id,
-                    "strategy_id": order.strategy_id,
-                    "symbol": order.symbol,
-                    "side": order.side.name if order.side else "UNKNOWN",
-                    "order_type": order.order_type.name if order.order_type else "Market",
-                    "quantity": order.quantity,
-                    "price": order.price,
-                    "stop_price": meta.get("trigger_price"),
-                    "status": order.order_status.name if order.order_status else "PENDING_NEW",
-                    "action": meta.get("action"),
-                    "tags": meta.get("tags"),
-                    "timestamp": order.timestamp,
-                })
+                self.database_manager.insert_order(
+                    {
+                        "order_id": order.order_id,
+                        "strategy_id": order.strategy_id,
+                        "symbol": order.symbol,
+                        "side": order.side.name if order.side else "UNKNOWN",
+                        "order_type": order.order_type.name if order.order_type else "Market",
+                        "quantity": order.quantity,
+                        "price": order.price,
+                        "stop_price": meta.get("trigger_price"),
+                        "status": order.order_status.name if order.order_status else "PENDING_NEW",
+                        "action": meta.get("action"),
+                        "tags": meta.get("tags"),
+                        "timestamp": order.timestamp,
+                    }
+                )
             except Exception as e:
                 logging.error(f"Failed to persist order: {e}")
 
@@ -549,7 +549,9 @@ class FCFSOrderManager(OrderManager, ABC):
                     except Exception as e:
                         logging.error(f"Failed to persist new event: {e}")
             else:
-                logging.error(f"Unknown order status: {order_event.status} {type(order_event.status)}")
+                logging.error(
+                    f"Unknown order status: {order_event.status} {type(order_event.status)}"
+                )
 
         if order.is_in_order_done_state:
             order = self.orders.pop(order_event.client_order_id, None)

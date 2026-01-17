@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 
-from .base import Strategy
-from .models import Bar, PositionSide
-from .indicators import CommodityChannelIndex
+from engine.strategies.base import Strategy
+from engine.strategies.models import Bar, PositionSide
+from engine.strategies.indicators import CommodityChannelIndex
 from common.interface_order import OrderSizeMode
-from .strategy_action import StrategyAction
-from .strategy_order_mode import StrategyOrderMode
+from engine.strategies.strategy_action import StrategyAction
+from engine.strategies.strategy_order_mode import StrategyOrderMode
+from engine.database.models import build_cci_signal_context
 
 
 @dataclass(frozen=True)
@@ -145,12 +146,34 @@ class CCIMomentumStrategy(Strategy):
             notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        signal_context = build_cci_signal_context(
+            reason=reason,
+            cci=current_cci,
+            prev_cci=self._previous_cci,
+            cci_upper=self.cci_upper,
+            cci_lower=self.cci_lower,
+            cci_mid=self.cci_mid,
+            cci_period=self.cci_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=1,  # BUY
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:
@@ -180,12 +203,34 @@ class CCIMomentumStrategy(Strategy):
             notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        signal_context = build_cci_signal_context(
+            reason=reason,
+            cci=current_cci,
+            prev_cci=self._previous_cci,
+            cci_upper=self.cci_upper,
+            cci_lower=self.cci_lower,
+            cci_mid=self.cci_mid,
+            cci_period=self.cci_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=-1,  # SELL
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:

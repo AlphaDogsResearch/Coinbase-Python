@@ -156,7 +156,7 @@ class Strategy:
     ) -> bool:
         """
         Submit an order via the on_signal method on the order manager.
-        
+
         Args:
             signal: Signal direction (1=BUY, -1=SELL, 0=HOLD)
             price: Current price at signal time
@@ -164,7 +164,7 @@ class Strategy:
             strategy_order_mode: Order sizing mode (NOTIONAL or QUANTITY)
             tags: Optional list of tags for the order
             signal_context: Optional SignalContext with indicator values and reason
-            
+
         Returns:
             True if order was submitted successfully, False otherwise
         """

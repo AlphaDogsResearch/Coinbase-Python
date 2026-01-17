@@ -14,13 +14,13 @@ from typing import Any, Dict, List, Optional
 class SignalContext:
     """
     Captures full context at the moment a trading signal is generated.
-    
+
     This is used to record WHY a signal was generated, including:
     - The human-readable reason
     - All indicator values at signal time
     - Strategy configuration
     - Candle data
-    
+
     Example usage in a strategy:
         signal_context = SignalContext(
             reason="ROC oversold recovery",
@@ -37,25 +37,25 @@ class SignalContext:
             candle={"open": 3000.0, "high": 3050.0, "low": 2990.0, "close": 3020.0}
         )
     """
-    
+
     # Human-readable reason for the signal
     reason: str
-    
+
     # Indicator values at signal time (e.g., {"roc": 1.23, "prev_roc": -0.5})
     indicators: Dict[str, Any]
-    
+
     # Strategy configuration snapshot (optional)
     config: Optional[Dict[str, Any]] = None
-    
+
     # Candle OHLCV data (optional)
     candle: Optional[Dict[str, float]] = None
-    
+
     # Action type: ENTRY, CLOSE, STOP_LOSS, REVERSAL
     action: Optional[str] = None
-    
+
     # Additional tags (optional)
     tags: Optional[List[str]] = None
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for database insertion."""
         return asdict(self)
@@ -64,13 +64,14 @@ class SignalContext:
 @dataclass
 class CandleSnapshot:
     """Snapshot of candle data at signal time."""
+
     open: float
     high: float
     low: float
     close: float
     volume: Optional[float] = None
     timestamp: Optional[int] = None
-    
+
     def to_dict(self) -> Dict[str, float]:
         """Convert to dictionary."""
         result = {
@@ -108,7 +109,7 @@ def build_roc_signal_context(
 ) -> SignalContext:
     """
     Build SignalContext for ROC Mean Reversion strategy.
-    
+
     Args:
         reason: Why the signal was generated
         current_roc: Current ROC value (as percentage, e.g., 1.23)
@@ -293,4 +294,3 @@ def build_cci_signal_context(
         candle=candle,
         action=action,
     )
-
