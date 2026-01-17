@@ -2,7 +2,7 @@ import logging
 from dataclasses import dataclass
 
 from .base import Strategy
-from .models import Bar, PositionSide, Instrument
+from .models import PositionSide, Instrument
 from .indicators import RateOfChange
 from common.interface_order import OrderSizeMode
 from .strategy_action import StrategyAction
@@ -18,15 +18,15 @@ class ROCMeanReversionStrategyConfig:
     bar_type: str
 
     # ROC Parameters
-    roc_period: int = 22
-    roc_upper: float = 3.4  # Upper threshold for mean reversion
-    roc_lower: float = -3.6  # Lower threshold for mean reversion
-    roc_mid: float = -2.1  # Midpoint for exit
+    roc_period: int = 10
+    roc_upper: float = 1  # Upper threshold for mean reversion
+    roc_lower: float = -1  # Lower threshold for mean reversion
+    roc_mid: float = 0  # Midpoint for exit
 
     # Position Management
     quantity: float = 1.0  # Position size (deprecated, use notional_amount)
     notional_amount: float = 500.0  # Order size in notional value
-    stop_loss_percent: float = 0.021  # Stop loss distance (decimal: 0.021 = 2.1%)
+    stop_loss_percent: float = 0.5  # Stop loss distance (decimal: 0.5 = 50%)
 
     # Risk Management
     max_holding_bars: int = 100  # Max holding period in bars
@@ -106,10 +106,13 @@ class ROCMeanReversionStrategy(Strategy):
         current_roc = self.roc.value * 100
 
         # Entry conditions (mean reversion)
-        logging.debug(f" [{self.instrument_id}] Cache is Flat {self.cache.is_flat(self.instrument_id)}")
+        logging.debug(
+            f" [{self.instrument_id}] Cache is Flat {self.cache.is_flat(self.instrument_id)}"
+        )
 
         logging.debug(
-            f"Previous ROC: {self._previous_roc} Current ROC: {current_roc} Lower ROC: {self.roc_lower} Upper ROC: {self.roc_upper}")
+            f"Previous ROC: {self._previous_roc} Current ROC: {current_roc} Lower ROC: {self.roc_lower} Upper ROC: {self.roc_upper}"
+        )
 
         if self.cache.is_flat(self.instrument_id):
             # Long entry: ROC crosses above lower threshold (oversold recovery)
@@ -122,18 +125,18 @@ class ROCMeanReversionStrategy(Strategy):
 
         # Exit conditions (midpoint)
         else:
-            # Exit long: ROC crosses below midpoint
+            # Exit long: ROC crosses ABOVE midpoint (was below, now at/above - recovery complete)
             if (
-                self._previous_roc > self.roc_mid
-                and current_roc <= self.roc_mid
+                self._previous_roc < self.roc_mid
+                and current_roc >= self.roc_mid
                 and self.cache.is_net_long(self.instrument_id)
             ):
                 self._close_position(candle, "ROC returned to midpoint")
 
-            # Exit short: ROC crosses above midpoint
+            # Exit short: ROC crosses BELOW midpoint (was above, now at/below - decline complete)
             elif (
-                self._previous_roc < self.roc_mid
-                and current_roc >= self.roc_mid
+                self._previous_roc > self.roc_mid
+                and current_roc <= self.roc_mid
                 and self.cache.is_net_short(self.instrument_id)
             ):
                 self._close_position(candle, "ROC returned to midpoint")
@@ -155,8 +158,7 @@ class ROCMeanReversionStrategy(Strategy):
 
         # Create strategy order mode with notional
         strategy_order_mode = StrategyOrderMode(
-            order_size_mode=OrderSizeMode.NOTIONAL,
-            notional_value=self.notional_amount
+            order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
         # Submit order via on_signal
@@ -191,8 +193,7 @@ class ROCMeanReversionStrategy(Strategy):
 
         # Create strategy order mode with notional
         strategy_order_mode = StrategyOrderMode(
-            order_size_mode=OrderSizeMode.NOTIONAL,
-            notional_value=self.notional_amount
+            order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
         # Submit order via on_signal
@@ -230,10 +231,7 @@ class ROCMeanReversionStrategy(Strategy):
 
         # Submit market close order directly
         ok = self._order_manager.submit_market_close(
-            strategy_id=self._strategy_id,
-            symbol=self._symbol,
-            price=close_price,
-            tags=tags
+            strategy_id=self._strategy_id, symbol=self._symbol, price=close_price, tags=tags
         )
 
         if ok:
@@ -258,9 +256,9 @@ class ROCMeanReversionStrategy(Strategy):
         # Check stop loss for long position
         if self._position_side == PositionSide.LONG and close_price <= self._stop_loss_price:
             self._close_position(candle, f"Stop loss triggered at {close_price:.4f}")
+            self._position_side = None
 
         # Check stop loss for short position
         elif self._position_side == PositionSide.SHORT and close_price >= self._stop_loss_price:
             self._close_position(candle, f"Stop loss triggered at {close_price:.4f}")
-
-        self._position_side = None
+            self._position_side = None
