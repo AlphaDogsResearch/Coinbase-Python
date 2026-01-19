@@ -231,9 +231,10 @@ class FCFSOrderManager(OrderManager, ABC):
                 # Normalize using StopMarket rules (treated like Market for lot sizing)
                 try:
                     qty_to_use = float(
-                        self.reference_data_manager.get_effective_quantity(
-                            OrderType.Market, symbol, quantity
-                        )
+                        # self.reference_data_manager.get_effective_quantity(
+                        #     OrderType.Market, symbol, quantity
+                        # )
+                        self.get_single_asset_current_strategy_position(order.strategy_id)
                     )
                 except Exception:
                     qty_to_use = float(quantity)
@@ -242,9 +243,10 @@ class FCFSOrderManager(OrderManager, ABC):
                 if entry is not None:
                     try:
                         qty_to_use = float(
-                            self.reference_data_manager.get_effective_quantity(
-                                OrderType.Market, symbol, entry["qty"]
-                            )
+                            # self.reference_data_manager.get_effective_quantity(
+                            #     OrderType.Market, symbol, entry["qty"]
+                            # )
+                            self.get_single_asset_current_strategy_position(order.strategy_id)
                         )
                     except Exception:
                         qty_to_use = float(entry["qty"])
@@ -338,9 +340,10 @@ class FCFSOrderManager(OrderManager, ABC):
             close_side = Side.BUY
         # Normalization as for entry
         try:
-            effective_qty = self.reference_data_manager.get_effective_quantity(
-                OrderType.Market, symbol, qty
-            )
+            # effective_qty = self.reference_data_manager.get_effective_quantity(
+            #     OrderType.Market, symbol, qty
+            # )
+            effective_qty = self.get_single_asset_current_strategy_position(strategy_id)
         except Exception:
             effective_qty = qty
         order = self.order_pool.acquire()
@@ -427,9 +430,10 @@ class FCFSOrderManager(OrderManager, ABC):
                             pass
                         try:
                             qty = float(
-                                self.reference_data_manager.get_effective_quantity(
-                                    OrderType.Market, order.symbol, order.filled_qty
-                                )
+                                # self.reference_data_manager.get_effective_quantity(
+                                #     OrderType.Market, order.symbol, order.filled_qty
+                                # )
+                                self.get_single_asset_current_strategy_position(order.strategy_id)
                             )
                         except Exception:
                             qty = float(order.filled_qty)
