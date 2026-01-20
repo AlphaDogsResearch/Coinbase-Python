@@ -1,3 +1,4 @@
+import logging
 from abc import ABC, abstractmethod
 from typing import List, Optional, Any
 from collections import deque
@@ -34,6 +35,7 @@ class SimpleMovingAverage(Indicator):
         if len(self.buffer) == self.period:
             self.value = sum(self.buffer) / self.period
             self._initialized = True
+            logging.info(f"SimpleMovingAverage initialized {self.value}")
         else:
             self._initialized = False
             self.value = 0.0 # Or partial average
@@ -72,6 +74,7 @@ class ExponentialMovingAverage(Indicator):
             
             if self._count >= self.period:
                 self._initialized = True
+                logging.info(f"ExponentialMovingAverage initialized {self.value}")
         else:
             close_price = candle.close if candle.close is not None else 0.0
             self.value = (close_price - self.value) * self.alpha + self.value
@@ -106,6 +109,7 @@ class WeightedMovingAverage(Indicator):
             weighted_sum = sum(price * weight for price, weight in zip(self.buffer, self.weights))
             self.value = weighted_sum / self.weight_sum
             self._initialized = True
+            logging.info(f"WeightedMovingAverage initialized {self.value}")
         else:
             self._initialized = False
 
@@ -138,6 +142,7 @@ class DoubleExponentialMovingAverage(Indicator):
             if self.ema2.initialized:
                 self.value = 2 * self.ema1.value - self.ema2.value
                 self._initialized = True
+                logging.info(f"DoubleExponentialMovingAverage initialized {self.value}")
 
     def reset(self) -> None:
         self.ema1.reset()
@@ -204,6 +209,7 @@ class DirectionalMovement(Indicator):
                 self._initialized = True
                 self.pos = 100 * self.pos_dm_smooth / self.tr_smooth if self.tr_smooth != 0 else 0
                 self.neg = 100 * self.neg_dm_smooth / self.tr_smooth if self.tr_smooth != 0 else 0
+                logging.info(f"DirectionalMovement initialized {self.pos}")
         else:
             # Subsequent values: Smooth = Prev - (Prev/N) + Current
             self.tr_smooth = self.tr_smooth - (self.tr_smooth / self.period) + tr
@@ -256,6 +262,7 @@ class APO(Indicator):
         if self.fast_ma.initialized and self.slow_ma.initialized:
             self.value = self.fast_ma.value - self.slow_ma.value
             self._initialized = True
+            logging.info(f"APO initialized {self.value}")
 
     def reset(self) -> None:
         self.fast_ma.reset()
@@ -285,6 +292,7 @@ class PPO(Indicator):
         if self.fast_ma.initialized and self.slow_ma.initialized and self.slow_ma.value != 0:
             self.value = ((self.fast_ma.value - self.slow_ma.value) / self.slow_ma.value) * 100
             self._initialized = True
+            logging.info(f"PPO initialized {self.value}")
 
     def reset(self) -> None:
         self.fast_ma.reset()
@@ -334,9 +342,11 @@ class ADX(Indicator):
         if len(self._dx_values) == self.period:
             self._adx_value = sum(self._dx_values) / self.period
             self._initialized = True
+            logging.info(f"ADX initialized {self.value}")
         elif len(self._dx_values) > self.period:
             self._adx_value = (self._previous_adx * (self.period - 1) + dx) / self.period
             self._initialized = True
+            logging.info(f"ADX initialized {self.value}")
             
         self._previous_adx = self._adx_value
 
@@ -364,6 +374,7 @@ class RateOfChange(Indicator):
             else:
                 self.value = 0.0
             self._initialized = True
+            logging.info(f"RateOfChange initialized {self.value}")
         else:
             self.value = 0.0
             self._initialized = False
@@ -396,6 +407,7 @@ class CommodityChannelIndex(Indicator):
             else:
                 self.value = 0.0
             self._initialized = True
+            logging.info(f"CommodityChannelIndex initialized {self.value}")
         else:
             self.value = 0.0
             self._initialized = False

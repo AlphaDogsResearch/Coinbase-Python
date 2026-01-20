@@ -32,7 +32,7 @@ class Position:
         self.maint_margin = maint_margin
         self.unrealised_pnl_decimal_place = 4
         self.maint_margin_decimal_place = 4
-        self.net_realized_pnl = 0.0
+        self.net_cumulative_realized_pnl = 0.0
         self.realized_pnl_listener = realized_pnl_listener or (lambda symbol, pnl: None)
         self.taker_fee = float(trading_cost.taker_fee) if trading_cost else 0.0
         self.maker_fee = float(trading_cost.maker_fee) if trading_cost else 0.0
@@ -51,7 +51,7 @@ class Position:
             "entry_price": self.entry_price,
             "unrealised_pnl": self.unrealised_pnl,
             "maint_margin": self.maint_margin,
-            "net_realized_pnl": self.net_realized_pnl,
+            "net_realized_pnl": self.net_cumulative_realized_pnl,
             "taker_fee": self.taker_fee,
             "maker_fee": self.maker_fee,
             "total_trading_cost": self.total_trading_cost,
@@ -74,7 +74,7 @@ class Position:
                 self.entry_price = state.get("entry_price", 0.0)
                 self.unrealised_pnl = state.get("unrealised_pnl", 0.0)
                 self.maint_margin = state.get("maint_margin", 0.0)
-                self.net_realized_pnl = state.get("net_realized_pnl", 0.0)
+                self.net_cumulative_realized_pnl = state.get("net_realized_pnl", 0.0)
                 self.taker_fee = state.get("taker_fee", 0.0)
                 self.maker_fee = state.get("maker_fee", 0.0)
                 self.total_trading_cost = state.get("total_trading_cost", 0.0)
@@ -131,8 +131,12 @@ class Position:
             if old_qty < 0:
                 realized_pnl *= -1
             net_pnl = realized_pnl - trading_cost
-            self.net_realized_pnl += net_pnl
-            self.realized_pnl_listener(self.symbol, self.net_realized_pnl)
+            self.net_cumulative_realized_pnl += net_pnl
+            logging.info("Realized PNL for %s: %s", self.symbol, net_pnl)
+            # published net_pnl instead of cumulative
+            self.realized_pnl_listener(self.symbol, net_pnl)
+
+
         if old_qty == 0 or (old_qty * trade_qty > 0):
             total_cost = self.entry_price * abs(old_qty) + trade_price * abs(trade_qty)
             self.entry_price = total_cost / abs(new_qty)
@@ -164,7 +168,7 @@ class Position:
         self.entry_price = 0
         self.unrealised_pnl = 0
         self.maint_margin = 0
-        self.net_realized_pnl = 0
+        self.net_cumulative_realized_pnl = 0
         self.total_trading_cost = 0
         self.open_orders = 0
         self.position_pnl = 0
@@ -177,7 +181,7 @@ class Position:
             f"Position Amount={self.position_amount}, "
             f"Entry Price={self.entry_price}, "
             f"Unrealized PNL={self.unrealised_pnl}, "
-            f"Realized PNL={self.net_realized_pnl}, "
+            f"Realized PNL={self.net_cumulative_realized_pnl}, "
             f"Maint Margin={self.maint_margin}, "
             f"Open Orders={self.open_orders}"
         )
@@ -190,7 +194,7 @@ class Position:
             "entry_price": self.entry_price,
             "unrealised_pnl": self.unrealised_pnl,
             "maint_margin": self.maint_margin,
-            "net_realized_pnl": self.net_realized_pnl,
+            "net_realized_pnl": self.net_cumulative_realized_pnl,
             "taker_fee": self.taker_fee,
             "maker_fee": self.maker_fee,
             "total_trading_cost": self.total_trading_cost,
@@ -215,7 +219,7 @@ class Position:
             realized_pnl_listener=dummy_listener,
             storage_path="position_state.json",
         )
-        pos.net_realized_pnl = d.get("net_realized_pnl", 0.0)
+        pos.net_cumulative_realized_pnl = d.get("net_realized_pnl", 0.0)
         pos.total_trading_cost = d.get("total_trading_cost", 0.0)
         pos.open_orders = d.get("open_orders", 0)
         pos.position_pnl = d.get("position_pnl", 0.0)

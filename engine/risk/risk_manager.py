@@ -27,7 +27,7 @@ class RiskManager:
             max_open_orders: Optional[int] = None,
             min_order_size: Optional[float] = None,
             position: Optional[Position] = None,
-            max_drawdown: Optional[float] = 0.10,
+            max_drawdown: Optional[float] = 1,
     ):
         # Global limits
         self.max_order_value = (
@@ -69,7 +69,7 @@ class RiskManager:
         self._block_publisher: Optional[Callable[[dict], None]] = None
 
         # Lifetime drawdown tracking
-        self.max_drawdown = max_drawdown if max_drawdown is not None else 0.10
+        self.max_drawdown = max_drawdown if max_drawdown is not None else 1
         self._peak_aum = None  # type: Optional[float]
         self._current_drawdown_ratio = 0.0
 
@@ -192,9 +192,9 @@ class RiskManager:
         if not symbol:
             logging.warning("Preorder rejected: missing symbol")
             return False
-        qty = float(abs(order.leaves_qty)) if getattr(order, 'leaves_qty', None) is not None else 0.0
+        qty = float(abs(order.quantity)) if getattr(order, 'quantity', None) is not None else 0.0
         if qty <= 0:
-            logging.warning("Preorder rejected: non-positive quantity")
+            logging.warning(f"Preorder rejected: non-positive quantity, qty={qty}")
             return False
         # Per-symbol min order size
         min_size = self.min_order_size

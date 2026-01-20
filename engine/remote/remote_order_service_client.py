@@ -23,7 +23,7 @@ from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
 class RemoteOrderClient:
-    def __init__(self,port:int,name:str, margin_manager: MarginInfoManager, position_manager: PositionManager, account: Account,
+    def __init__(self,port:int,name:str, margin_manager: MarginInfoManager, account: Account,
                  trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager):
         # make port configurable
         self.port = port
@@ -61,7 +61,7 @@ class RemoteOrderClient:
         # trade manager
         self.trade_manager = trade_manager
 
-        self.add_order_event_listener("Position-Event",self.position_manager.on_order_event)
+        # self.add_order_event_listener("Position-Event",self.position_manager.on_order_event)
         self.add_order_event_listener("Trade-Manager",self.trade_manager.on_order_event)
         self.reference_data_manager = reference_data_manager
 

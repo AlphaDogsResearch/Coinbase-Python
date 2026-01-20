@@ -58,7 +58,8 @@
         "params": {
             "margin_manager": "@margin_manager",
             "trading_cost_manager": "@trading_cost_manager",
-            "reference_price_manager": "@reference_price_manager"
+            "reference_price_manager": "@reference_price_manager",
+            "position_manager": "@position_manager"
         }
     },
     "account": {

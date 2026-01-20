@@ -59,7 +59,7 @@ class PerStrategyPositionTests(unittest.TestCase):
         evt.last_filled_price = filled_price
         evt.last_filled_quantity = filled_qty
         # Route to PositionManager
-        self.position_manager.on_order_event(evt)
+        self.position_manager.on_order_event(evt,order.strategy_id)
 
     def test_isolated_positions_by_strategy(self):
         # Strategy A buys 1
@@ -143,7 +143,7 @@ class PerStrategyPositionTests(unittest.TestCase):
         self.assertIsNotNone(pos_a_after)
         self.assertAlmostEqual(pos_a_after.position_amount, 0.0, places=7)
         # Realized PnL positive (fees ignored in test default)
-        self.assertGreaterEqual(pos_a_after.net_realized_pnl, 0.0)
+        self.assertGreaterEqual(pos_a_after.net_cumulative_realized_pnl, 0.0)
 
         # Strategy B enters long 1 at 2100
         b_entry = self._submit_order("StratB", Side.BUY, 1.0, 2100.0)
@@ -159,7 +159,7 @@ class PerStrategyPositionTests(unittest.TestCase):
         self.assertIsNotNone(pos_b_after)
         self.assertAlmostEqual(pos_b_after.position_amount, 0.0, places=7)
         # Realized PnL negative (stopped below entry)
-        self.assertLessEqual(pos_b_after.net_realized_pnl, 0.0)
+        self.assertLessEqual(pos_b_after.net_cumulative_realized_pnl, 0.0)
 
         # Aggregate should be flat after both strategies closed
         agg = self.position_manager.aggregate_position(self.symbol)

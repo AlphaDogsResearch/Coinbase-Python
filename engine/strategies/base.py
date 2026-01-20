@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Optional, Any
 from engine.market_data.candle import MidPriceCandle
 from .models import Position, Instrument
@@ -7,13 +8,13 @@ from .strategy_order_mode import StrategyOrderMode
 
 class Logger:
     def info(self, msg: str):
-        print(f"[INFO] {msg}")
+        logging.info(f"{msg}")
 
     def warning(self, msg: str):
-        print(f"[WARN] {msg}")
+        logging.warning(f"[WARN] {msg}")
 
     def error(self, msg: str):
-        print(f"[ERROR] {msg}")
+        logging.error(f"[ERROR] {msg}")
 
     def debug(self, msg: str):
         # print(f"[DEBUG] {msg}")

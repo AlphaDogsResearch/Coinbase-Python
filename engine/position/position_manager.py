@@ -97,7 +97,10 @@ class PositionManager:
         if pos is not None:
             self.update_maint_margin(pos)
 
-    def on_order_event(self, order_event: OrderEvent):
+    def on_order_event(self, order_event: OrderEvent,strategy_id:str):
+        logging.info(f"[{self.name}] Order event: {order_event}")
+
+        # HM check if we need
         try:
             symbol = order_event.contract_name
             # Maintain open orders counts using order status
@@ -133,19 +136,48 @@ class PositionManager:
                         logging.error(self.name + " [OPEN_ORDERS] Listener raised an exception: %s", e)
 
             if order_event.status == OrderStatus.FILLED:
-                # Resolve strategy_id via lookup if available
-                strategy_id: Optional[str] = None
-                try:
-                    if self._order_lookup is not None and getattr(order_event, "client_id", None):
-                        order_obj = self._order_lookup(order_event.client_id)
-                        if order_obj is not None:
-                            strategy_id = getattr(order_obj, "strategy_id", None)
-                except Exception:
-                    logging.debug("Failed to resolve strategy_id from order lookup", exc_info=True)
+                # # Resolve strategy_id via lookup if available
+                # strategy_id: Optional[str] = None
+                # try:
+                #     if self._order_lookup is not None and getattr(order_event, "client_order_id", None):
+                #         order_obj = self._order_lookup(order_event.client_order_id)
+                #         if order_obj is not None:
+                #             strategy_id = getattr(order_obj, "strategy_id", None)
+                # except Exception:
+                #     logging.debug("Failed to resolve strategy_id from order lookup", exc_info=True)
 
                 self.update_or_add_position(order_event, strategy_id)
         except Exception:
             logging.error("Failed to resolve symbol %s", order_event.contract_name, exc_info=True)
+
+    def update_internal_position(self,position:Position,side:str,size:float,is_taker:bool,price:float):
+        current_size = size
+        if side == "SELL":
+            current_size = current_size * -1
+        position.add_trade(current_size, price, is_taker)
+
+    def create_position(self,key,symbol:str,side:str,size:float,price:float,strategy_id:str,position_mapping:dict)->Position:
+        current_size = size
+        if side == "SELL":
+            current_size = current_size * -1
+        try:
+            trading_cost = self.trading_cost_manager.get_trading_cost(symbol)
+        except Exception:
+            trading_cost = TradingCost(symbol, 0.0, 0.0)
+        new_pos = Position(
+            symbol,
+            strategy_id,
+            current_size,
+            price,
+            price,
+            0,
+            trading_cost,
+            self.on_realized_pnl_update,
+        )
+        position_mapping[key] = new_pos
+        logging.info(f"[{self.name}] Creating new Position (key={key}) {new_pos}")
+
+        return new_pos
 
     def update_or_add_position(self, order_event: OrderEvent, strategy_id: Optional[str] = None):
         symbol = order_event.contract_name
@@ -158,44 +190,36 @@ class PositionManager:
             is_taker = False
         # Per-strategy key (None means aggregate bucket)
         key = (strategy_id, symbol)
+        logging.info(f"[{self.name}][{key}] - Updating position due to : {order_event}")
         position = self.positions_by_key.get(key)
         if position is not None:
-            current_size = size
-            if side == "SELL":
-                current_size = current_size * -1
-            position.add_trade(current_size, price, is_taker)
-            logging.info("Updating Position %s %s", symbol, position)
+            self.update_internal_position(position,side,size,is_taker,price)
+            logging.info(f"{self.name} - Updating Strategy {key} ,Position")
         else:
-            current_size = size
-            if side == "SELL":
-                current_size = current_size * -1
-            try:
-                trading_cost = self.trading_cost_manager.get_trading_cost(symbol)
-            except Exception:
-                trading_cost = TradingCost(symbol, 0.0, 0.0)
-            new_pos = Position(
-                symbol,
-                strategy_id,
-                current_size,
-                price,
-                price,
-                0,
-                trading_cost,
-                self.on_realized_pnl_update,
-            )
-            self.positions_by_key[key] = new_pos
-            logging.info("Creating new Position %s (strategy=%s) %s", symbol, strategy_id, new_pos)
+            self.create_position(key,symbol,side,size,price,strategy_id,self.positions_by_key)
 
-        # update_maint_margin on per-strategy position
+
         position = self.positions_by_key[key]
-        self.update_maint_margin(position)
+        logging.info(f"[{self.name}][{key}] - Current Strategy Position {position}")
 
-        # Maintain aggregate position by symbol for backward compatibility
-        self._update_aggregate_position(symbol)
+        #Aggregated Position
+        agg_position  = self.positions.get(symbol)
+        if agg_position is not None:
+            self.update_internal_position(agg_position,side,size,is_taker,price)
+            logging.info(f"{self.name} - Updating Aggregated Position {position.symbol}")
+        else:
+            agg_position = self.create_position(symbol,symbol,side,size,price,"",self.positions)
+
+        logging.info(f"[{self.name}][{symbol}] - Current Aggregated Position {position}")
+        # update_maint_margin on aggregated position
+        self.update_maint_margin(agg_position)
+        #
+        # # Maintain aggregate position by symbol for backward compatibility
+        # self._update_aggregate_position(symbol)
         # Emit position amount update
         try:
             for listener in self.position_amount_listener:
-                listener(symbol, position.position_amount)
+                listener(symbol, agg_position.position_amount)
         except Exception as e:
             logging.error(self.name + " [POSITION_AMOUNT] Listener raised an exception: %s", e)
 
@@ -208,6 +232,15 @@ class PositionManager:
         if strategy_id is None:
             return self.positions.get(symbol)
         return self.positions_by_key.get((strategy_id, symbol))
+
+    def get_abs_current_position_amount(self, symbol: str, strategy_id: Optional[str] = None) -> float:
+        pos = self.get_position(symbol, strategy_id)
+        if pos is not None:
+            return abs(pos.position_amount)
+        else:
+            logging.info(f"{self.name} - Unable to get position for {symbol} {strategy_id} returning 0 ...")
+            return 0.0
+
 
     def aggregate_position(self, symbol: str) -> Optional[Position]:
         """Return aggregate position for symbol (alias of get_position without strategy)."""
@@ -227,7 +260,7 @@ class PositionManager:
             if sym != symbol:
                 continue
             total_qty += pos.position_amount
-            realized_pnl += pos.net_realized_pnl
+            realized_pnl += pos.net_cumulative_realized_pnl
             total_trading_cost += pos.total_trading_cost
 
         # Compute aggregate entry price: if net qty non-zero, use mark price from reference or last known
@@ -247,8 +280,10 @@ class PositionManager:
             existing = self.positions[symbol]
         existing.position_amount = round(total_qty, 7)
         existing.entry_price = entry_price
-        existing.net_realized_pnl = realized_pnl
+        existing.net_cumulative_realized_pnl = realized_pnl
         existing.total_trading_cost = total_trading_cost
+
+        logging.info(f"{self.name} - Updating Aggregated Position {symbol} {existing}")
 
     """
     update when mark price or position amount change 
@@ -290,7 +325,7 @@ class PositionManager:
             try:
                 listener(unreal)
             except Exception as e:
-                logging.error(self.name + "[UNREALIZED_PNL] Listener raised an exception: %s", e)
+                logging.error(self.name + "[UNREALIZED_PNL] Listener raised an exception: %s",e, exc_info=True)
 
     def on_update_maint_margin(self):
         maint_margin = 0.0
@@ -301,7 +336,7 @@ class PositionManager:
             try:
                 listener(maint_margin)
             except Exception as e:
-                logging.error(self.name + "[MARGIN] Listener raised an exception: %s", e)
+                logging.error(self.name + "[MARGIN] Listener raised an exception: %s", e,exc_info=True)
 
     def on_realized_pnl_update(self, symbol: str, realized_pnl: float):
         logging.info("Updating Realized PNL for %s : %s", symbol, realized_pnl)
@@ -317,7 +352,7 @@ class PositionManager:
                 try:
                     listener(real_pnl)
                 except Exception as e:
-                    logging.error(self.name + "[REALIZED_PNL] Listener raised an exception: %s", e)
+                    logging.error(self.name + "[REALIZED_PNL] Listener raised an exception: %s", e,exc_info=True)
 
         self.executor.submit(task)
 
