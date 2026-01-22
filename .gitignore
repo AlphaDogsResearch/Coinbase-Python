@@ -193,3 +193,6 @@ research/**/*.ipynb_checkpoints
 
 
 binance_keys
+
+# ignore db
+*.db

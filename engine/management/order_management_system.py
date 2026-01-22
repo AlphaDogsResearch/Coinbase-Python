@@ -31,8 +31,8 @@ class FCFSOrderManager(OrderManager, ABC):
         executor: Executor,
         risk_manager: RiskManager,
         reference_data_manager: ReferenceDataManager,
-        database_manager: "DatabaseManager" = None,
         position_manager: PositionManager,
+        database_manager: "DatabaseManager" = None,
     ):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS

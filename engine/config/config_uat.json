@@ -70,7 +70,6 @@
             "trading_cost_manager": "@trading_cost_manager",
             "reference_price_manager": "@reference_price_manager",
             "database_manager": "@database_manager"
-            "position_manager": "@position_manager"
         }
     },
     "account": {
@@ -124,6 +123,7 @@
             "executor": "@executor",
             "risk_manager": "@risk_manager",
             "reference_data_manager": "@reference_data_manager",
+            "position_manager": "@position_manager",
             "database_manager": "@database_manager"
         }
     },

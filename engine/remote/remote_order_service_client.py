@@ -54,14 +54,14 @@ class RemoteOrderClient:
         self.remote_order_client.register_handler(b"*", business_message_handler)  # wildcard for all other messages
 
         self.margin_manager = margin_manager
-        self.position_manager = position_manager
+
         self.account = account
         self.trading_cost_manager = trading_cost_manager
 
         # trade manager
         self.trade_manager = trade_manager
 
-        # self.add_order_event_listener("Position-Event",self.position_manager.on_order_event)
+
         self.add_order_event_listener("Trade-Manager",self.trade_manager.on_order_event)
         self.reference_data_manager = reference_data_manager
 
