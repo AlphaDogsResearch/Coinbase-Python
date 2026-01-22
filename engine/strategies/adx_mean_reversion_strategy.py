@@ -7,6 +7,7 @@ from engine.strategies.models import PositionSide
 from engine.strategies.indicators import ADX
 from engine.strategies.strategy_action import StrategyAction
 from engine.strategies.strategy_order_mode import StrategyOrderMode
+from engine.database.models import build_adx_signal_context
 
 
 @dataclass(frozen=True)
@@ -227,12 +228,39 @@ class ADXMeanReversionStrategy(Strategy):
             order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        di_spread = self.adx.pos - self.adx.neg
+        signal_context = build_adx_signal_context(
+            reason=reason,
+            adx=self.adx.value,
+            plus_di=self.adx.pos,
+            minus_di=self.adx.neg,
+            di_spread=di_spread,
+            adx_low=self.adx_low,
+            adx_mid=self.adx_mid,
+            adx_high=self.adx_high,
+            di_spread_extreme=self.di_spread_extreme,
+            di_spread_midline=self.di_spread_midline,
+            adx_period=self.adx_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": candle.open,
+                "high": candle.high,
+                "low": candle.low,
+                "close": candle.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=1,  # BUY
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:
@@ -262,12 +290,39 @@ class ADXMeanReversionStrategy(Strategy):
             order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        di_spread = self.adx.pos - self.adx.neg
+        signal_context = build_adx_signal_context(
+            reason=reason,
+            adx=self.adx.value,
+            plus_di=self.adx.pos,
+            minus_di=self.adx.neg,
+            di_spread=di_spread,
+            adx_low=self.adx_low,
+            adx_mid=self.adx_mid,
+            adx_high=self.adx_high,
+            di_spread_extreme=self.di_spread_extreme,
+            di_spread_midline=self.di_spread_midline,
+            adx_period=self.adx_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": candle.open,
+                "high": candle.high,
+                "low": candle.low,
+                "close": candle.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=-1,  # SELL
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:

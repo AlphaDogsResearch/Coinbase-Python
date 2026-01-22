@@ -5,7 +5,7 @@ import time
 from abc import ABC
 from decimal import Decimal
 from queue import Queue
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, TYPE_CHECKING
 
 from common.decimal_utils import convert_to_decimal, add_numbers
 from common.identifier import IdGenerator
@@ -20,6 +20,10 @@ from engine.risk.risk_manager import RiskManager
 from engine.strategies.strategy_action import StrategyAction
 from engine.strategies.strategy_order_mode import StrategyOrderMode
 
+if TYPE_CHECKING:
+    from engine.database.database_manager import DatabaseManager
+    from engine.database.models import SignalContext
+
 
 class FCFSOrderManager(OrderManager, ABC):
     def __init__(
@@ -27,6 +31,7 @@ class FCFSOrderManager(OrderManager, ABC):
         executor: Executor,
         risk_manager: RiskManager,
         reference_data_manager: ReferenceDataManager,
+        database_manager: "DatabaseManager" = None,
         position_manager: PositionManager,
     ):
         self.executor = executor
@@ -45,9 +50,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.reference_data_manager = reference_data_manager
         self.position_manager = position_manager
 
-        self.order_pool = ObjectPool(
-            create_func=lambda: Order.create_base_order(""), size=100
-        )
+        self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(""), size=100)
 
         # Statistics
         self.stats = {"total_orders": 0, "by_strategy": {}}
@@ -60,6 +63,8 @@ class FCFSOrderManager(OrderManager, ABC):
         self._entry_by_signal: Dict[tuple, dict] = {}
         # (strategy_id, symbol, signal_id) -> pending stop info { 'side': Side, 'trigger_price': float, 'tags': List[str]|None }
         self._pending_stop_by_signal: Dict[tuple, dict] = {}
+        # Database manager for persistence (optional)
+        self.database_manager = database_manager
 
     # def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
     #     logging.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
@@ -86,6 +91,7 @@ class FCFSOrderManager(OrderManager, ABC):
     # def get_abs_single_asset_current_strategy_position(self,strategy_id: str) -> float:
     #     return abs(self.get_single_asset_current_strategy_position(strategy_id))
 
+
     def on_signal(
         self,
         strategy_id: str,
@@ -95,6 +101,7 @@ class FCFSOrderManager(OrderManager, ABC):
         strategy_actions: StrategyAction,
         strategy_order_mode: StrategyOrderMode,
         tags: List[str] = None,
+        signal_context: "SignalContext" = None,
     ) -> bool:
 
         try:
@@ -116,6 +123,24 @@ class FCFSOrderManager(OrderManager, ABC):
             )
             if tags:
                 logging.info(f"Tags: {tags}")
+
+            # Persist signal to database if context provided
+            if self.database_manager and signal_context:
+                try:
+                    self.database_manager.insert_signal(
+                        strategy_id=strategy_id,
+                        symbol=symbol,
+                        signal=signal,
+                        price=price,
+                        reason=signal_context.reason,
+                        indicators=signal_context.indicators,
+                        action=signal_context.action,
+                        config=signal_context.config,
+                        candle=signal_context.candle,
+                        order_id=order.order_id,
+                    )
+                except Exception as e:
+                    logging.error(f"Failed to persist signal: {e}")
 
             order_quantity = 0
             if strategy_order_mode.get_order_mode() == OrderSizeMode.NOTIONAL:
@@ -399,6 +424,29 @@ class FCFSOrderManager(OrderManager, ABC):
 
         logging.info(f"Order {order.order_id} from {strategy_id} submitted at {order.timestamp}")
 
+        # Persist order to database
+        if self.database_manager:
+            try:
+                meta = self.order_meta.get(order.order_id, {})
+                self.database_manager.insert_order(
+                    {
+                        "order_id": order.order_id,
+                        "strategy_id": order.strategy_id,
+                        "symbol": order.symbol,
+                        "side": order.side.name if order.side else "UNKNOWN",
+                        "order_type": order.order_type.name if order.order_type else "Market",
+                        "quantity": order.quantity,
+                        "price": order.price,
+                        "stop_price": meta.get("trigger_price"),
+                        "status": order.order_status.name if order.order_status else "PENDING_NEW",
+                        "action": meta.get("action"),
+                        "tags": meta.get("tags"),
+                        "timestamp": order.timestamp,
+                    }
+                )
+            except Exception as e:
+                logging.error(f"Failed to persist order: {e}")
+
         return True
 
     def on_order_event(self, order_event: OrderEvent):
@@ -414,6 +462,28 @@ class FCFSOrderManager(OrderManager, ABC):
                 last_filled_quantity = float(order_event.last_filled_quantity)
                 last_filled_price = float(order_event.last_filled_price)
                 order.on_filled_event(last_filled_quantity, last_filled_price)
+
+                # Persist order event to database
+                if self.database_manager:
+                    try:
+                        self.database_manager.insert_order_event(
+                            order_id=order.order_id,
+                            event_type="FILL",
+                            status=status.name,
+                            exchange_order_id=order_event.order_id,
+                            filled_qty=last_filled_quantity,
+                            filled_price=last_filled_price,
+                        )
+                        # Update order status in database
+                        self.database_manager.update_order_status(
+                            order_id=order.order_id,
+                            status=order.order_status.name,
+                            exchange_order_id=order_event.order_id,
+                            filled_qty=order.filled_qty,
+                            avg_price=order.avg_filled_price,
+                        )
+                    except Exception as e:
+                        logging.error(f"Failed to persist order event: {e}")
 
                 # Handle entry fill -> auto-place stop by signal_id if pending
                 meta = self.order_meta.get(order.order_id)
@@ -457,10 +527,44 @@ class FCFSOrderManager(OrderManager, ABC):
                         )
             elif status == OrderStatus.CANCELED:
                 order.on_order_cancel_event()
+                # Persist cancel event to database
+                if self.database_manager:
+                    try:
+                        self.database_manager.insert_order_event(
+                            order_id=order.order_id,
+                            event_type="CANCEL",
+                            status=status.name,
+                            exchange_order_id=order_event.order_id,
+                        )
+                        self.database_manager.update_order_status(
+                            order_id=order.order_id,
+                            status="CANCELED",
+                            exchange_order_id=order_event.order_id,
+                        )
+                    except Exception as e:
+                        logging.error(f"Failed to persist cancel event: {e}")
             elif status == OrderStatus.NEW:
                 order.on_new_event()
+                # Persist new order acknowledgement to database
+                if self.database_manager:
+                    try:
+                        self.database_manager.insert_order_event(
+                            order_id=order.order_id,
+                            event_type="NEW",
+                            status=status.name,
+                            exchange_order_id=order_event.order_id,
+                        )
+                        self.database_manager.update_order_status(
+                            order_id=order.order_id,
+                            status="NEW",
+                            exchange_order_id=order_event.order_id,
+                        )
+                    except Exception as e:
+                        logging.error(f"Failed to persist new event: {e}")
             else:
-                logging.error(f"Unknown order status: {order_event.status} {type(order_event.status)}")
+                logging.error(
+                    f"Unknown order status: {order_event.status} {type(order_event.status)}"
+                )
 
         if order.is_in_order_done_state:
             order = self.orders.pop(order_event.client_order_id, None)

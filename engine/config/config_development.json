@@ -13,7 +13,16 @@
             "remote_market_data_connection_port": 8080,
             "remote_market_data_connection_name": "Remote Market Data Connection",
             "remote_order_connection_port": 8081,
-            "remote_order_connection_name": "Remote Order Connection"
+            "remote_order_connection_name": "Remote Order Connection",
+            "database_path": "trading.db"
+        }
+    },
+    "database_manager": {
+        "module": "engine.database.database_manager",
+        "class": "DatabaseManager",
+        "params": {
+            "database_path": "@default_settings.database_path",
+            "max_connections": 10
         }
     },
     "position": {
@@ -46,7 +55,8 @@
         "module": "engine.trades.trades_manager",
         "class": "TradesManager",
         "params": {
-            "sharpe_calculator": "@sharpe_calculator"
+            "sharpe_calculator": "@sharpe_calculator",
+            "database_manager": "@database_manager"
         }
     },
     "reference_price_manager": {
@@ -59,7 +69,8 @@
         "params": {
             "margin_manager": "@margin_manager",
             "trading_cost_manager": "@trading_cost_manager",
-            "reference_price_manager": "@reference_price_manager"
+            "reference_price_manager": "@reference_price_manager",
+            "database_manager": "@database_manager"
         }
     },
     "account": {
@@ -113,6 +124,7 @@
             "executor": "@executor",
             "risk_manager": "@risk_manager",
             "reference_data_manager": "@reference_data_manager",
+            "database_manager": "@database_manager"
             "position_manager": "@position_manager"
         }
     },

@@ -1,9 +1,13 @@
+
+from typing import Dict, List, Optional, Any, TYPE_CHECKING
 import logging
-from typing import Dict, List, Optional, Any
 from engine.market_data.candle import MidPriceCandle
 from .models import Position, Instrument
 from .strategy_action import StrategyAction
 from .strategy_order_mode import StrategyOrderMode
+
+if TYPE_CHECKING:
+    from engine.database.models import SignalContext
 
 
 class Logger:
@@ -150,8 +154,22 @@ class Strategy:
         strategy_actions: StrategyAction,
         strategy_order_mode: StrategyOrderMode,
         tags: List[str] = None,
+        signal_context: "SignalContext" = None,
     ) -> bool:
-        """Submit an order via the on_signal method on the order manager."""
+        """
+        Submit an order via the on_signal method on the order manager.
+
+        Args:
+            signal: Signal direction (1=BUY, -1=SELL, 0=HOLD)
+            price: Current price at signal time
+            strategy_actions: Action type (OPEN_CLOSE_POSITION, POSITION_REVERSAL, etc.)
+            strategy_order_mode: Order sizing mode (NOTIONAL or QUANTITY)
+            tags: Optional list of tags for the order
+            signal_context: Optional SignalContext with indicator values and reason
+
+        Returns:
+            True if order was submitted successfully, False otherwise
+        """
         if not self._order_manager:
             self.log.warning("Order manager not set, order not submitted")
             return False
@@ -164,6 +182,7 @@ class Strategy:
             strategy_actions=strategy_actions,
             strategy_order_mode=strategy_order_mode,
             tags=tags,
+            signal_context=signal_context,
         )
 
     def cancel_all_orders(self, instrument_id: str):

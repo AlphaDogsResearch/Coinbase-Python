@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 
-from .base import Strategy
-from .models import Bar, PositionSide
-from .indicators import APO
+from engine.strategies.base import Strategy
+from engine.strategies.models import Bar, PositionSide
+from engine.strategies.indicators import APO
 from common.interface_order import OrderSizeMode
-from .strategy_action import StrategyAction
-from .strategy_order_mode import StrategyOrderMode
+from engine.strategies.strategy_action import StrategyAction
+from engine.strategies.strategy_order_mode import StrategyOrderMode
+from engine.database.models import build_apo_signal_context
 
 
 @dataclass(frozen=True)
@@ -79,7 +80,6 @@ class APOMeanReversionStrategy(Strategy):
         self.instrument = self.cache.instrument(self.instrument_id)
         if self.instrument is None:
             self.log.error(f"Instrument {self.instrument_id} not found in cache \n")
-            pass
 
         self.subscribe_bars(self.bar_type)
         self.log.info(f"APOMeanReversionStrategy started for {self.instrument_id}")
@@ -151,12 +151,35 @@ class APOMeanReversionStrategy(Strategy):
             order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        signal_context = build_apo_signal_context(
+            reason=reason,
+            apo=self.apo.value,
+            prev_apo=self._previous_apo,
+            apo_upper=self.apo_upper,
+            apo_lower=self.apo_lower,
+            apo_mid=self.apo_mid,
+            apo_fast_period=self.apo_fast_period,
+            apo_slow_period=self.apo_slow_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=1,  # BUY
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:
@@ -186,12 +209,35 @@ class APOMeanReversionStrategy(Strategy):
             order_size_mode=OrderSizeMode.NOTIONAL, notional_value=self.notional_amount
         )
 
+        # Build signal context with full indicator snapshot
+        signal_context = build_apo_signal_context(
+            reason=reason,
+            apo=self.apo.value,
+            prev_apo=self._previous_apo,
+            apo_upper=self.apo_upper,
+            apo_lower=self.apo_lower,
+            apo_mid=self.apo_mid,
+            apo_fast_period=self.apo_fast_period,
+            apo_slow_period=self.apo_slow_period,
+            stop_loss_percent=self.stop_loss_percent,
+            max_holding_bars=self.max_holding_bars,
+            notional_amount=self.notional_amount,
+            candle={
+                "open": bar.open,
+                "high": bar.high,
+                "low": bar.low,
+                "close": bar.close,
+            },
+            action="ENTRY",
+        )
+
         # Submit order via on_signal
         ok = self.on_signal(
             signal=-1,  # SELL
             price=close_price,
             strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
             strategy_order_mode=strategy_order_mode,
+            signal_context=signal_context,
         )
 
         if ok:

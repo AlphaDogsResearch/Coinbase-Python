@@ -1,7 +1,11 @@
+import hashlib
+import json
 import logging
 import os
+import socket
 import sys
 import signal
+import uuid
 from pathlib import Path
 
 # Add project root to Python path
@@ -61,6 +65,36 @@ def main():
     default_settings_parameters = components["default_settings"]
 
     start = True
+    
+    # ===== Database Session Initialization =====
+    session_id = str(uuid.uuid4())
+    database_manager = components.get("database_manager")
+    if database_manager:
+        try:
+            # Compute config hash for tracking changes
+            config_hash = hashlib.md5(
+                json.dumps(config, sort_keys=True, default=str).encode()
+            ).hexdigest()
+            
+            # Get strategy names from config
+            strategy_names = list(config.get("strategy_map", {}).keys())
+            
+            # Start database session
+            database_manager.start_session(
+                session_id=session_id,
+                environment=environment,
+                symbols=default_settings_parameters.get("trading_symbols", []),
+                strategies=strategy_names,
+                config_hash=config_hash,
+                hostname=socket.gethostname(),
+                version="1.0.0",
+            )
+            logging.info(f"✅ Database session started: {session_id}")
+        except Exception as e:
+            logging.error(f"❌ Failed to start database session: {e}")
+            database_manager = None
+    else:
+        logging.info("📝 Database manager not configured - running without persistence")
 
     # Get symbol from CLI argument
     if len(sys.argv) < 2:
@@ -309,6 +343,16 @@ def main():
 
         if telegram_notifier:
             telegram_notifier.stop_bot_listener()
+            
+        # Stop database session
+        if database_manager:
+            try:
+                database_manager.stop_session(session_id, stop_reason="signal")
+                database_manager.close()
+                logging.info(f"✅ Database session stopped: {session_id}")
+            except Exception as e:
+                logging.error(f"❌ Failed to stop database session: {e}")
+                
         # Force exit after a short delay if graceful shutdown fails
         import threading
 
@@ -346,6 +390,16 @@ def main():
 
         if telegram_notifier:
             telegram_notifier.stop_bot_listener()
+            
+        # Stop database session
+        if database_manager:
+            try:
+                database_manager.stop_session(session_id, stop_reason="graceful")
+                database_manager.close()
+                logging.info(f"✅ Database session stopped: {session_id}")
+            except Exception as e:
+                logging.error(f"❌ Failed to stop database session: {e}")
+                
         logging.info("✅ Application stopped gracefully")
         sys.exit(0)
 
