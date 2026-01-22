@@ -64,7 +64,7 @@ class CandleAggregator:
         completed_candle = self._update(timestamp_sec, mid_price)
 
         if completed_candle:
-            logging.info(f"[CandleAggregator] Completed candle: {completed_candle}")
+            logging.debug(f"[CandleAggregator] Notifying callback for completed candle")
             self._notify_candle_created(completed_candle)
 
     def _update(self, timestamp: float, mid_price: float) -> Optional[MidPriceCandle]:

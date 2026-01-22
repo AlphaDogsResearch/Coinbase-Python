@@ -14,6 +14,7 @@ from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
 from engine.execution.executor import Executor
 from engine.pool.object_pool import ObjectPool
+from engine.position.position_manager import PositionManager
 from engine.reference_data.reference_data_manager import ReferenceDataManager
 from engine.risk.risk_manager import RiskManager
 from engine.strategies.strategy_action import StrategyAction
@@ -31,6 +32,7 @@ class FCFSOrderManager(OrderManager, ABC):
         risk_manager: RiskManager,
         reference_data_manager: ReferenceDataManager,
         database_manager: "DatabaseManager" = None,
+        position_manager: PositionManager,
     ):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
@@ -46,7 +48,7 @@ class FCFSOrderManager(OrderManager, ABC):
         )
         self.risk_manager = risk_manager
         self.reference_data_manager = reference_data_manager
-        self.single_asset_strategy_position = {}
+        self.position_manager = position_manager
 
         self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(""), size=100)
 
@@ -61,28 +63,34 @@ class FCFSOrderManager(OrderManager, ABC):
         self._entry_by_signal: Dict[tuple, dict] = {}
         # (strategy_id, symbol, signal_id) -> pending stop info { 'side': Side, 'trigger_price': float, 'tags': List[str]|None }
         self._pending_stop_by_signal: Dict[tuple, dict] = {}
-
         # Database manager for persistence (optional)
         self.database_manager = database_manager
 
-    def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
-        logging.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
-        actual_position = position
-        if side == Side.BUY:
-            actual_position = actual_position * 1
-        elif side == Side.SELL:
-            actual_position = actual_position * -1
+    # def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
+    #     logging.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
+    #     actual_position = position
+    #     if side == Side.BUY:
+    #         actual_position = actual_position * 1
+    #     elif side == Side.SELL:
+    #         actual_position = actual_position * -1
+    #
+    #     if strategy_id not in self.single_asset_strategy_position:
+    #         self.single_asset_strategy_position[strategy_id] = actual_position
+    #     else:
+    #         current_pos = self.single_asset_strategy_position[strategy_id]
+    #         self.single_asset_strategy_position[strategy_id] = add_numbers(
+    #             current_pos, actual_position
+    #         )
+    #
+    # def get_single_asset_current_strategy_position(self, strategy_id: str) -> float:
+    #     return self.single_asset_strategy_position.get(strategy_id, 0)
+    #
+    # '''
+    # get the abs of the position
+    # '''
+    # def get_abs_single_asset_current_strategy_position(self,strategy_id: str) -> float:
+    #     return abs(self.get_single_asset_current_strategy_position(strategy_id))
 
-        if strategy_id not in self.single_asset_strategy_position:
-            self.single_asset_strategy_position[strategy_id] = actual_position
-        else:
-            current_pos = self.single_asset_strategy_position[strategy_id]
-            self.single_asset_strategy_position[strategy_id] = add_numbers(
-                current_pos, actual_position
-            )
-
-    def get_single_asset_current_strategy_position(self, strategy_id: str) -> float:
-        return self.single_asset_strategy_position.get(strategy_id, 0)
 
     def on_signal(
         self,
@@ -147,7 +155,7 @@ class FCFSOrderManager(OrderManager, ABC):
                 logging.error(f"Something went wrong order_quantity:{order_quantity}")
 
             if strategy_actions == StrategyAction.POSITION_REVERSAL:
-                current_pos = self.get_single_asset_current_strategy_position(strategy_id)
+                current_pos = self.position_manager.get_abs_current_position_amount(symbol,strategy_id)
                 logging.info(f"Current position: {current_pos} strategy_id {strategy_id}")
                 if current_pos != 0:
                     order_quantity = order_quantity + convert_to_decimal(abs(current_pos))
@@ -158,7 +166,6 @@ class FCFSOrderManager(OrderManager, ABC):
             else:
                 # default to OPEN_CLOSE_POSITION
                 logging.info("Strategy Action Not Implemented , do nothing")
-            self.get_single_asset_current_strategy_position(strategy_id)
 
             logging.info(
                 f"Symbol {symbol} with  "
@@ -256,9 +263,10 @@ class FCFSOrderManager(OrderManager, ABC):
                 # Normalize using StopMarket rules (treated like Market for lot sizing)
                 try:
                     qty_to_use = float(
-                        self.reference_data_manager.get_effective_quantity(
-                            OrderType.Market, symbol, quantity
-                        )
+                        # self.reference_data_manager.get_effective_quantity(
+                        #     OrderType.Market, symbol, quantity
+                        # )
+                        self.position_manager.get_abs_current_position_amount(symbol,strategy_id)
                     )
                 except Exception:
                     qty_to_use = float(quantity)
@@ -267,9 +275,10 @@ class FCFSOrderManager(OrderManager, ABC):
                 if entry is not None:
                     try:
                         qty_to_use = float(
-                            self.reference_data_manager.get_effective_quantity(
-                                OrderType.Market, symbol, entry["qty"]
-                            )
+                            # self.reference_data_manager.get_effective_quantity(
+                            #     OrderType.Market, symbol, entry["qty"]
+                            # )
+                            self.position_manager.get_abs_current_position_amount(symbol,strategy_id)
                         )
                     except Exception:
                         qty_to_use = float(entry["qty"])
@@ -363,9 +372,10 @@ class FCFSOrderManager(OrderManager, ABC):
             close_side = Side.BUY
         # Normalization as for entry
         try:
-            effective_qty = self.reference_data_manager.get_effective_quantity(
-                OrderType.Market, symbol, qty
-            )
+            # effective_qty = self.reference_data_manager.get_effective_quantity(
+            #     OrderType.Market, symbol, qty
+            # )
+            effective_qty = self.position_manager.get_abs_current_position_amount(symbol,strategy_id)
         except Exception:
             effective_qty = qty
         order = self.order_pool.acquire()
@@ -444,12 +454,14 @@ class FCFSOrderManager(OrderManager, ABC):
         status = order_event.status
 
         order = self.orders[order_event.client_order_id]
+
         if order is not None:
+            self.position_manager.on_order_event(order_event,order.strategy_id)
+
             if status == OrderStatus.FILLED:
                 last_filled_quantity = float(order_event.last_filled_quantity)
                 last_filled_price = float(order_event.last_filled_price)
                 order.on_filled_event(last_filled_quantity, last_filled_price)
-                self.add_position_by_strategy(order.strategy_id, last_filled_quantity, order.side)
 
                 # Persist order event to database
                 if self.database_manager:
@@ -497,9 +509,10 @@ class FCFSOrderManager(OrderManager, ABC):
                             pass
                         try:
                             qty = float(
-                                self.reference_data_manager.get_effective_quantity(
-                                    OrderType.Market, order.symbol, order.filled_qty
-                                )
+                                # self.reference_data_manager.get_effective_quantity(
+                                #     OrderType.Market, order.symbol, order.filled_qty
+                                # )
+                                self.position_manager.get_abs_current_position_amount(order.symbol,order.strategy_id)
                             )
                         except Exception:
                             qty = float(order.filled_qty)
@@ -561,7 +574,6 @@ class FCFSOrderManager(OrderManager, ABC):
 
         logging.info(f"Normal Stats {self.get_stats()}")
         self.log_order_stats()
-        logging.info(f"Strategy Position {self.get_strategy_position_stats()}")
 
     def start(self):
         """Start order processing"""
@@ -630,8 +642,3 @@ class FCFSOrderManager(OrderManager, ABC):
         """Get current orders statistics - thread safe"""
         with self.stats_lock:
             return self.orders.copy()
-
-    def get_strategy_position_stats(self):
-        """Get current strategy to position statistics - thread safe"""
-        with self.stats_lock:
-            return self.single_asset_strategy_position.copy()

@@ -179,11 +179,11 @@ def main():
     order_manager.start()
 
     remote_order_client.add_order_event_listener("Order-Manager",order_manager.on_order_event)
-    # Allow PositionManager to resolve strategy_id from order_id/client_id
-    try:
-        position_manager.set_order_lookup(lambda cid: order_manager.orders.get(cid))
-    except Exception:
-        logging.debug("Failed to set order lookup on PositionManager", exc_info=True)
+    # # Allow PositionManager to resolve strategy_id from order_id/client_id
+    # try:
+    #     position_manager.set_order_lookup(lambda cid: order_manager.orders.get(cid))
+    # except Exception:
+    #     logging.debug("Failed to set order lookup on PositionManager", exc_info=True)
 
     # Initialize telegram notifier and wire as listener (non-blocking)
     # DISABLED: Telegram causing connection issues
