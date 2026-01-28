@@ -102,6 +102,7 @@
             "port": "@default_settings.remote_order_connection_port",
             "name": "@default_settings.remote_order_connection_name",
             "margin_manager": "@margin_manager",
+            "position_manager": "@position_manager",
             "account": "@account",
             "trading_cost_manager": "@trading_cost_manager",
             "trade_manager": "@trade_manager",

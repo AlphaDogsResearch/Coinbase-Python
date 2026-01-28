@@ -23,8 +23,10 @@ from engine.trading_cost.trading_cost_manager import TradingCostManager
 
 
 class RemoteOrderClient:
-    def __init__(self,port:int,name:str, margin_manager: MarginInfoManager, account: Account,
-                 trading_cost_manager: TradingCostManager, trade_manager: TradesManager, reference_data_manager: ReferenceDataManager):
+    def __init__(self, port: int, name: str, margin_manager: MarginInfoManager, position_manager: PositionManager,
+                 account: Account,
+                 trading_cost_manager: TradingCostManager, trade_manager: TradesManager,
+                 reference_data_manager: ReferenceDataManager):
         # make port configurable
         self.port = port
         self.name = name
@@ -54,7 +56,7 @@ class RemoteOrderClient:
         self.remote_order_client.register_handler(b"*", business_message_handler)  # wildcard for all other messages
 
         self.margin_manager = margin_manager
-
+        self.position_manager = position_manager
         self.account = account
         self.trading_cost_manager = trading_cost_manager
 
