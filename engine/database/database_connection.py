@@ -16,7 +16,7 @@ class DatabaseConnectionPool:
     def _create_connection(self) -> sqlite3.Connection:
         logging.info("Creating database connection")
         """Create a new database connection"""
-        conn = sqlite3.connect(self.database_path)
+        conn = sqlite3.connect(self.database_path, check_same_thread=False)
         self._connections_created += 1
         return conn
 
@@ -25,14 +25,18 @@ class DatabaseConnectionPool:
         """Get a connection from the pool (context manager)"""
         conn = None
         try:
-            # Try to get from pool or create new one
-            if not self._pool.empty() or self._connections_created < self.max_connections:
-                with self._lock:
-                    if self._pool.empty() and self._connections_created < self.max_connections:
+            # Try to get from pool with lock
+            with self._lock:
+                # Try to get existing connection from pool
+                try:
+                    conn = self._pool.get_nowait()
+                except queue.Empty:
+                    # Pool is empty, create new connection if under limit
+                    if self._connections_created < self.max_connections:
                         conn = self._create_connection()
-                    else:
-                        conn = self._pool.get_nowait()
-            else:
+            
+            # If still no connection, wait for one to become available
+            if conn is None:
                 conn = self._pool.get()  # Wait for available connection
 
             yield conn
