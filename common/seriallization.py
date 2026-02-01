@@ -2,7 +2,8 @@ import inspect
 import logging
 from enum import Enum
 from typing import Type, Dict, Any
-
+# Add sys import if not already present
+import sys
 
 class Serializable:
     """Base class for objects that can serialize/deserialize themselves to/from dict."""
@@ -30,6 +31,7 @@ class Serializable:
                 SerializableRegistry.register_enum_from_instance(value)
                 result["data"][key] = {
                     "__enum__": value.__class__.__name__,
+                    "__module__": value.__class__.__module__,
                     "name": value.name,
                     "value": value.value
                 }
@@ -46,8 +48,6 @@ class Serializable:
         if "__class__" in d and "data" in d:
             class_name = d["__class__"]
             data = d["data"]
-            # print("class_name:", class_name)
-            # print("data:", data)
 
             # Look up the real class from registry
             klass = SerializableRegistry.get_class(class_name)
@@ -91,27 +91,11 @@ class Serializable:
     def _convert_enum(cls, enum_dict: Dict[str, Any]) -> Any:
         """Convert serialized enum dict back to Enum object using the new registry."""
         try:
-            # Use the new get_or_create_enum method
-            return SerializableRegistry.get_or_create_enum(enum_dict)
+            return SerializableRegistry.get_or_restore_enum(enum_dict)
         except (ValueError, AttributeError) as e:
-            # Fallback: try to find existing enum class
-            enum_name = enum_dict.get("__enum__")
-            enum_class = SerializableRegistry.get_enum(enum_name)
-
-            if enum_class and issubclass(enum_class, Enum):
-                # Try to get by name
-                if "name" in enum_dict:
-                    try:
-                        return getattr(enum_class, enum_dict["name"])
-                    except AttributeError:
-                        pass
-
-                # Fall back to value
-                if "value" in enum_dict:
-                    return enum_class(enum_dict["value"])
-
-            # If nothing works, return the original dict
-            return enum_dict
+            logging.warning(f"Failed to restore enum: {e}")
+            # If nothing works, return a proxy object that can compare with both value and name
+            return EnumProxy(enum_dict)
 
     def to_json(self, indent: int = 2) -> str:
         """Convert directly to JSON string."""
@@ -126,10 +110,33 @@ class Serializable:
         return cls.from_dict(data)
 
 
+class EnumProxy:
+    """Proxy for enum values that failed to deserialize properly."""
+
+    def __init__(self, enum_dict: Dict[str, Any]):
+        self.enum_dict = enum_dict
+        self.name = enum_dict.get("name")
+        self.value = enum_dict.get("value")
+        self.enum_name = enum_dict.get("__enum__")
+
+    def __eq__(self, other):
+        if isinstance(other, Enum):
+            return self.name == other.name and self.value == other.value
+        elif isinstance(other, EnumProxy):
+            return self.name == other.name and self.value == other.value
+        elif self.value is not None:
+            return self.value == other
+        return False
+
+    def __repr__(self):
+        return f"EnumProxy({self.enum_name}.{self.name}={self.value})"
+
+
 class SerializableRegistry:
     """Registry for dynamically reconstructing classes and enums by name."""
     _registry: Dict[str, Type] = {}
     _enum_registry: Dict[str, Type[Enum]] = {}
+    _global_enum_cache: Dict[str, Type[Enum]] = {}
 
     @classmethod
     def register(cls, klass):
@@ -142,11 +149,9 @@ class SerializableRegistry:
         return cls._registry.get(name, None)
 
     @classmethod
-    def get_or_create_enum(cls, enum_data: Dict[str, Any]) -> Enum:
+    def get_or_restore_enum(cls, enum_data: Dict[str, Any]) -> Enum:
         """
-        Get an existing enum member or create/update enum dynamically from serialized data.
-
-        Expected format: {"__enum__": "EnumName", "name": "MEMBER_NAME", "value": value}
+        Get an existing enum member or find the original enum class.
         """
         if not isinstance(enum_data, dict) or "__enum__" not in enum_data:
             raise ValueError("Invalid enum data format")
@@ -154,51 +159,95 @@ class SerializableRegistry:
         enum_name = enum_data["__enum__"]
         member_name = enum_data["name"]
         member_value = enum_data["value"]
+        module_name = enum_data.get("__module__")
 
-        # 1. Check if enum is already registered
+        # 1. Check if enum is already registered in our registry
         if enum_name in cls._enum_registry:
             enum_class = cls._enum_registry[enum_name]
-
-            # Try to get existing member
             try:
                 return enum_class[member_name]
             except KeyError:
-                # Member doesn't exist, need to create new enum with additional member
-                logging.info(f"Adding new member {member_name}:{member_value} to existing enum {enum_name}")
+                # Check by value
+                for member in enum_class:
+                    if member.value == member_value:
+                        return member
 
-                # Get all existing members
-                members_dict = {m.name: m.value for m in enum_class}
+        # 2. Try to find the enum in the global scope (module where it was defined)
+        if module_name:
+            try:
+                # Try to import the module and find the enum
+                module = __import__(module_name, fromlist=[enum_name])
+                if hasattr(module, enum_name):
+                    enum_class = getattr(module, enum_name)
+                    if issubclass(enum_class, Enum):
+                        cls._enum_registry[enum_name] = enum_class
+                        try:
+                            return enum_class[member_name]
+                        except KeyError:
+                            # Try to find by value
+                            for member in enum_class:
+                                if member.value == member_value:
+                                    return member
+            except (ImportError, AttributeError) as e:
+                logging.debug(f"Could not import enum {enum_name} from {module_name}: {e}")
 
-                # Check if value already exists with different name
-                for existing_name, existing_value in members_dict.items():
-                    if existing_value == member_value:
-                        logging.warning(f"Value {member_value} already exists as {existing_name} in {enum_name}")
-                        return enum_class(existing_value)
+        # 3. Try to find enum in already loaded modules by scanning
+        for module_name in sys.modules:
+            module = sys.modules[module_name]
+            if hasattr(module, enum_name):
+                enum_class = getattr(module, enum_name)
+                if isinstance(enum_class, type) and issubclass(enum_class, Enum):
+                    cls._enum_registry[enum_name] = enum_class
+                    try:
+                        return enum_class[member_name]
+                    except KeyError:
+                        # Try to find by value
+                        for member in enum_class:
+                            if member.value == member_value:
+                                return member
 
-                # Add new member
-                logging.info(f"Adding new member {member_name}:{member_value} to {enum_name}")
-                members_dict[member_name] = member_value
+        # 4. Last resort: create a temporary enum (for comparison purposes)
+        logging.warning(f"Creating temporary enum {enum_name} for deserialization")
 
-                # Create new enum class with all members
-                new_enum_class = Enum(enum_name, members_dict)
-                cls._enum_registry[enum_name] = new_enum_class
+        # Check if we've already created a temporary enum with this name
+        if enum_name in cls._enum_registry:
+            temp_enum = cls._enum_registry[enum_name]
+        else:
+            # Create a new temporary enum
+            temp_enum = Enum(enum_name, {member_name: member_value})
+            cls._enum_registry[enum_name] = temp_enum
 
-                return new_enum_class[member_name]
+        # Return the member
+        try:
+            return temp_enum[member_name]
+        except KeyError:
+            # If member doesn't exist in temp enum, recreate with this member
+            # Get all existing members
+            members = {}
+            for m in temp_enum:
+                members[m.name] = m.value
 
-        # 2. Create enum dynamically and register it
-        logging.info(f"Creating new enum {enum_name} : {member_name} : {member_value}")
-        enum_class = Enum(enum_name, {member_name: member_value})
-        cls._enum_registry[enum_name] = enum_class
+            # Add the new member if not already present
+            if member_name not in members:
+                members[member_name] = member_value
 
-        return enum_class[member_name]
+            # Create new enum with all members
+            new_temp_enum = Enum(enum_name, members)
+            cls._enum_registry[enum_name] = new_temp_enum
+            return new_temp_enum[member_name]
 
     @classmethod
     def register_enum_from_instance(cls, enum_instance: Enum) -> None:
         """Register an enum from an instance (used during serialization)."""
         if enum_instance:
             enum_class = enum_instance.__class__
-            if enum_class.__name__ not in cls._enum_registry:
-                cls._enum_registry[enum_class.__name__] = enum_class
+            enum_name = enum_class.__name__
+
+            if enum_name not in cls._enum_registry:
+                cls._enum_registry[enum_name] = enum_class
+
+            # Also store in global cache for lookup
+            cls._global_enum_cache[enum_name] = enum_class
 
     @classmethod
     def get_enum(cls, name):
@@ -210,4 +259,6 @@ class SerializableRegistry:
         """Clear the registry (mainly for testing)."""
         cls._registry.clear()
         cls._enum_registry.clear()
+        cls._global_enum_cache.clear()
+
 

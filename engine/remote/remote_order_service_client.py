@@ -95,7 +95,7 @@ class RemoteOrderClient:
                 # request for reference data
                 self.request_for_reference_data()
                 # request for trades
-                self.request_for_trades()
+                # self.request_for_trades()
                 # request for commission rate
                 self.request_for_commission_rate()
                 # request for position
