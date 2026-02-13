@@ -210,7 +210,7 @@ pip install --upgrade -r requirements.txt
 ## 📚 Next Steps
 
 1. **Configure API Keys**: Edit `gateways/binance/vault/binance_keys`
-2. **Test Strategies**: Run `python -m engine.strategies.backtest`
+2. **Run Backtests**: Run `python -m engine.backtest.backtest_runner --config engine/backtest/configs/simple_order_csv.json`
 3. **Read Documentation**: 
    - `README.md` - Project overview
    - `TEST_COMMANDS.md` - Testing guide

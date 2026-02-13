@@ -6,7 +6,7 @@ for persistence, particularly the SignalContext which captures full
 indicator state at signal generation time.
 """
 
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional
 
 
@@ -290,6 +290,104 @@ def build_cci_signal_context(
             "stop_loss_percent": stop_loss_percent,
             "max_holding_bars": max_holding_bars,
             "notional_amount": notional_amount,
+        },
+        candle=candle,
+        action=action,
+    )
+
+
+def build_rsi_signal_context(
+    reason: str,
+    rsi: float,
+    prev_rsi: float,
+    rsi_upper: float,
+    rsi_lower: float,
+    rsi_mid: float,
+    signal_mode: str,
+    exit_mode: str,
+    rsi_period: int,
+    stop_loss_percent: float,
+    take_profit_percent: float,
+    max_holding_bars: int,
+    cooldown_bars: int,
+    notional_amount: float,
+    use_stop_loss: bool,
+    use_take_profit: bool,
+    use_max_holding: bool,
+    allow_flip: bool,
+    candle: Optional[Dict[str, float]] = None,
+    action: str = None,
+) -> SignalContext:
+    """Build SignalContext for RSI Signal strategy."""
+    return SignalContext(
+        reason=reason,
+        indicators={
+            "rsi": rsi,
+            "prev_rsi": prev_rsi,
+            "rsi_upper": rsi_upper,
+            "rsi_lower": rsi_lower,
+            "rsi_mid": rsi_mid,
+            "signal_mode": signal_mode,
+            "exit_mode": exit_mode,
+        },
+        config={
+            "rsi_period": rsi_period,
+            "stop_loss_percent": stop_loss_percent,
+            "take_profit_percent": take_profit_percent,
+            "max_holding_bars": max_holding_bars,
+            "cooldown_bars": cooldown_bars,
+            "notional_amount": notional_amount,
+            "use_stop_loss": use_stop_loss,
+            "use_take_profit": use_take_profit,
+            "use_max_holding": use_max_holding,
+            "allow_flip": allow_flip,
+        },
+        candle=candle,
+        action=action,
+    )
+
+
+def build_tema_signal_context(
+    reason: str,
+    tema_short: float,
+    tema_long: float,
+    tema_diff: float,
+    prev_tema_diff: float,
+    short_window: int,
+    long_window: int,
+    stop_loss_percent: float,
+    take_profit_percent: float,
+    max_holding_bars: int,
+    cooldown_bars: int,
+    notional_amount: float,
+    use_stop_loss: bool,
+    use_take_profit: bool,
+    use_max_holding: bool,
+    allow_flip: bool,
+    candle: Optional[Dict[str, float]] = None,
+    action: str = None,
+) -> SignalContext:
+    """Build SignalContext for TEMA Crossover strategy."""
+    return SignalContext(
+        reason=reason,
+        indicators={
+            "tema_short": tema_short,
+            "tema_long": tema_long,
+            "tema_diff": tema_diff,
+            "prev_tema_diff": prev_tema_diff,
+        },
+        config={
+            "short_window": short_window,
+            "long_window": long_window,
+            "stop_loss_percent": stop_loss_percent,
+            "take_profit_percent": take_profit_percent,
+            "max_holding_bars": max_holding_bars,
+            "cooldown_bars": cooldown_bars,
+            "notional_amount": notional_amount,
+            "use_stop_loss": use_stop_loss,
+            "use_take_profit": use_take_profit,
+            "use_max_holding": use_max_holding,
+            "allow_flip": allow_flip,
         },
         candle=candle,
         action=action,
