@@ -263,7 +263,7 @@ class RSISignalStrategy(Strategy):
                 self._stopped_out_count = 0
             return
 
-        if self.use_max_holding and self._bars_held() > self.max_holding_bars:
+        if self.use_max_holding and self._bars_held() >= self.max_holding_bars:
             self._close_position(candle, "Max holding period reached")
 
     def _handle_short_position(
@@ -308,7 +308,7 @@ class RSISignalStrategy(Strategy):
                 self._stopped_out_count = 0
             return
 
-        if self.use_max_holding and self._bars_held() > self.max_holding_bars:
+        if self.use_max_holding and self._bars_held() >= self.max_holding_bars:
             self._close_position(candle, "Max holding period reached")
 
     def _enter_long(
