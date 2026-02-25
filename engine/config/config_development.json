@@ -173,6 +173,29 @@
       "allow_flip": true
     }
   },
+  "mom_strategy_config": {
+    "module": "engine.strategies.mom_signal_strategy",
+    "class": "MOMSignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "mom_period": 40,
+      "mom_upper": 130.0,
+      "mom_lower": -138.0,
+      "mom_mid": 27.0,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.067,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 16,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
   "strategy_map": {
     "roc_mean_reversion_strategy": {
       "module": "engine.strategies.roc_mean_reversion_strategy",
@@ -193,6 +216,13 @@
       "class": "RSISignalStrategy",
       "params": {
         "config": "@rsi_strategy_config"
+      }
+    },
+    "mom_signal_strategy": {
+      "module": "engine.strategies.mom_signal_strategy",
+      "class": "MOMSignalStrategy",
+      "params": {
+        "config": "@mom_strategy_config"
       }
     }
   }

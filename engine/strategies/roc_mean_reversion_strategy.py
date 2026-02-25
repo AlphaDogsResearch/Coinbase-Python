@@ -81,7 +81,7 @@ class ROCMeanReversionStrategy(Strategy):
             pass
 
         self.subscribe_bars(self.bar_type)
-        self.log.info(f"ROCMeanReversionStrategy started for {self.instrument_id}")
+        self.log.info(f"[SIGNAL] ROCMeanReversionStrategy started for {self.instrument_id}")
 
     def on_candle_created(self, candle: MidPriceCandle):
         # """Handle incoming candle data."""
@@ -197,7 +197,7 @@ class ROCMeanReversionStrategy(Strategy):
             # Store stop loss price for checking at each bar
             self._stop_loss_price = stop_price
             self.log.info(
-                f"🟢 LONG ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
+                f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
             )
             self._position_side = PositionSide.LONG
             self._position_entry_bar = self._bars_processed
@@ -255,7 +255,7 @@ class ROCMeanReversionStrategy(Strategy):
             # Store stop loss price for checking at each bar
             self._stop_loss_price = stop_price
             self.log.info(
-                f"🔴 SHORT ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
+                f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
             )
             self._position_side = PositionSide.SHORT
             self._position_entry_bar = self._bars_processed
@@ -285,9 +285,9 @@ class ROCMeanReversionStrategy(Strategy):
             # Clear stop loss tracking
             self._stop_loss_price = None
             if position.is_long:
-                self.log.info(f"🟡 LONG EXIT: {reason} | Price: {close_price:.4f}")
+                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
             else:
-                self.log.info(f"🟡 SHORT EXIT: {reason} | Price: {close_price:.4f}")
+                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit close order")
 

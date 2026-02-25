@@ -118,7 +118,7 @@ class RSISignalStrategy(Strategy):
 
         self.subscribe_bars(self.bar_type)
         self.log.info(
-            f"RSISignalStrategy started for {self.instrument_id} "
+            f"[SIGNAL] RSISignalStrategy started for {self.instrument_id} "
             f"(mode={self.signal_mode}, exit={self.exit_mode})"
         )
 
@@ -348,7 +348,7 @@ class RSISignalStrategy(Strategy):
             self._position_side = PositionSide.LONG
             self._entry_bar = self._bars_processed
             self._entry_price = close_price
-            self.log.info(f"🟢 LONG ENTRY | {reason} | Price: {close_price:.4f}")
+            self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit long entry order")
 
@@ -389,7 +389,7 @@ class RSISignalStrategy(Strategy):
             self._position_side = PositionSide.SHORT
             self._entry_bar = self._bars_processed
             self._entry_price = close_price
-            self.log.info(f"🔴 SHORT ENTRY | {reason} | Price: {close_price:.4f}")
+            self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit short entry order")
 
@@ -432,7 +432,7 @@ class RSISignalStrategy(Strategy):
             self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
-                f"🟠 REVERSAL TO {side_label} | {reason} | Price: {close_price:.4f}"
+                f"[SIGNAL] REVERSAL TO {side_label} | {reason} | Price: {close_price:.4f}"
             )
         else:
             self.log.error("Failed to submit reversal order")
@@ -461,9 +461,9 @@ class RSISignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(f"🟡 LONG EXIT: {reason} | Price: {close_price:.4f}")
+                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
             else:
-                self.log.info(f"🟡 SHORT EXIT: {reason} | Price: {close_price:.4f}")
+                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
             self._position_side = None
             self._entry_bar = None
             self._entry_price = None

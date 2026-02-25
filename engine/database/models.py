@@ -347,6 +347,57 @@ def build_rsi_signal_context(
     )
 
 
+def build_mom_signal_context(
+    reason: str,
+    mom: float,
+    prev_mom: float,
+    mom_upper: float,
+    mom_lower: float,
+    mom_mid: float,
+    signal_mode: str,
+    exit_mode: str,
+    mom_period: int,
+    stop_loss_percent: float,
+    take_profit_percent: float,
+    max_holding_bars: int,
+    cooldown_bars: int,
+    notional_amount: float,
+    use_stop_loss: bool,
+    use_take_profit: bool,
+    use_max_holding: bool,
+    allow_flip: bool,
+    candle: Optional[Dict[str, float]] = None,
+    action: str = None,
+) -> SignalContext:
+    """Build SignalContext for Momentum Signal strategy."""
+    return SignalContext(
+        reason=reason,
+        indicators={
+            "mom": mom,
+            "prev_mom": prev_mom,
+            "mom_upper": mom_upper,
+            "mom_lower": mom_lower,
+            "mom_mid": mom_mid,
+            "signal_mode": signal_mode,
+            "exit_mode": exit_mode,
+        },
+        config={
+            "mom_period": mom_period,
+            "stop_loss_percent": stop_loss_percent,
+            "take_profit_percent": take_profit_percent,
+            "max_holding_bars": max_holding_bars,
+            "cooldown_bars": cooldown_bars,
+            "notional_amount": notional_amount,
+            "use_stop_loss": use_stop_loss,
+            "use_take_profit": use_take_profit,
+            "use_max_holding": use_max_holding,
+            "allow_flip": allow_flip,
+        },
+        candle=candle,
+        action=action,
+    )
+
+
 def build_tema_signal_context(
     reason: str,
     tema_short: float,

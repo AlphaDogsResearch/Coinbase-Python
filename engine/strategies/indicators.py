@@ -611,3 +611,29 @@ class CommodityChannelIndex(Indicator):
         self.tp_buffer.clear()
         self.value = 0.0
         self._initialized = False
+
+
+class Momentum(Indicator):
+    """Momentum indicator: close - close[period]"""
+
+    def __init__(self, period: int = 10):
+        super().__init__([period])
+        self.period = period
+        self.buffer = deque(maxlen=period + 1)
+        self.value = 0.0
+
+    def handle_bar(self, candle: MidPriceCandle) -> None:
+        close_price = candle.close if candle.close is not None else 0.0
+        self.buffer.append(close_price)
+        if len(self.buffer) == self.period + 1:
+            self.value = close_price - self.buffer[0]
+            self._initialized = True
+            logging.debug(f"Momentum initialized {self.value}")
+        else:
+            self.value = 0.0
+            self._initialized = False
+
+    def reset(self) -> None:
+        self.buffer.clear()
+        self.value = 0.0
+        self._initialized = False
