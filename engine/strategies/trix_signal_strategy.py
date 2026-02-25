@@ -350,7 +350,7 @@ class TRIXSignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.LONG
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_index_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -391,7 +391,7 @@ class TRIXSignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.SHORT
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_index_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -432,7 +432,11 @@ class TRIXSignalStrategy(Strategy):
             self._position_side = (
                 PositionSide.LONG if signal == 1 else PositionSide.SHORT
             )
-            self._entry_bar = self._bars_processed
+            # Pine parity: on flip reversals, entry_bar is not re-initialized.
+            # This preserves bars-held continuity across side changes and can
+            # trigger earlier max-hold exits right after a flip.
+            if self._entry_bar is None:
+                self._entry_bar = self._entry_bar_index_for_new_position()
             self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
@@ -465,9 +469,13 @@ class TRIXSignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}"
+                )
             else:
-                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
+                )
             self._position_side = None
             self._entry_bar = None
             self._entry_price = None
@@ -536,6 +544,19 @@ class TRIXSignalStrategy(Strategy):
         if self._entry_bar is None:
             return 0
         return self._bars_processed - self._entry_bar
+
+    def _entry_bar_index_for_new_position(self) -> int:
+        """
+        Pine parity for next-bar-open fills:
+        when orders execute on the next bar open, hold counting must start on
+        that fill bar (not the signal bar) to avoid one-bar-early max-hold exits.
+        """
+        order_manager = self._order_manager
+        config = getattr(order_manager, "config", None) if order_manager else None
+        execution_timing = str(getattr(config, "execution_timing", "")).lower()
+        if execution_timing == "next_bar_open":
+            return self._bars_processed + 1
+        return self._bars_processed
 
     def _candle_close(self, candle: MidPriceCandle) -> float:
         return candle.close if candle.close is not None else 0.0
