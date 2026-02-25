@@ -26,6 +26,7 @@ class BacktestEngineConfig:
     initial_capital: float = 100_000.0
     commission_rate: float = 0.0005
     close_open_position_at_end: bool = True
+    execution_timing: str = "bar_close"  # bar_close | next_bar_open
 
 
 @dataclass

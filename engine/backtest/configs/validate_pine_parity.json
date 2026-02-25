@@ -1,0 +1,34 @@
+{
+  "trix_strategy_config": {
+    "module": "engine.strategies.trix_signal_strategy",
+    "class": "TRIXSignalStrategyConfig",
+    "params": {
+      "instrument_id": "ETHUSDT",
+      "bar_type": "ETHUSDT-1h",
+      "trix_period": 6,
+      "trix_upper": 0.0676,
+      "trix_lower": -0.0522,
+      "trix_mid": -0.0193,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 100.0,
+      "stop_loss_percent": 0.05,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 10,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "strategy_map": {
+    "trix_signal_strategy": {
+      "module": "engine.strategies.trix_signal_strategy",
+      "class": "TRIXSignalStrategy",
+      "params": {
+        "config": "@trix_strategy_config"
+      }
+    }
+  }
+}

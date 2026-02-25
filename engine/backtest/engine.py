@@ -87,6 +87,7 @@ class SimulatedOrderManager:
         self._total_commission = 0.0
 
         self._current_candle: Optional[MidPriceCandle] = None
+        self._next_candle: Optional[MidPriceCandle] = None
         self._current_volume: float = 0.0
         self._current_bar_index: int = -1
         self._current_close_time: datetime = datetime.now(timezone.utc)
@@ -103,15 +104,40 @@ class SimulatedOrderManager:
         self,
         bar_index: int,
         candle: MidPriceCandle,
+        next_candle: Optional[MidPriceCandle],
         volume: float,
         interval_seconds: float,
     ) -> None:
         self._current_bar_index = bar_index
         self._current_candle = candle
+        self._next_candle = next_candle
         self._current_volume = volume
         self._current_close_time = candle.start_time + timedelta(
             seconds=interval_seconds
         )
+
+    def _use_next_bar_open_execution(self) -> bool:
+        return str(self.config.execution_timing).lower() == "next_bar_open"
+
+    def _resolve_execution(
+        self,
+        requested_price: float,
+    ) -> tuple[float, datetime, int]:
+        price = requested_price if requested_price > 0 else self._current_price()
+        timestamp = self._current_close_time
+        bar_index = self._current_bar_index
+
+        if self._use_next_bar_open_execution() and self._next_candle is not None:
+            next_open = _safe_candle_value(
+                self._next_candle.open,
+                _safe_candle_value(self._next_candle.close, 0.0),
+            )
+            if next_open > 0:
+                price = next_open
+                timestamp = self._next_candle.start_time
+                bar_index = self._current_bar_index + 1
+
+        return price, timestamp, bar_index
 
     def _current_price(self) -> float:
         if not self._current_candle:
@@ -174,6 +200,8 @@ class SimulatedOrderManager:
         quantity: float,
         price: float,
         reason: str,
+        execution_time: datetime,
+        execution_bar_index: int,
     ) -> None:
         notional = quantity * price
         entry_commission = notional * self.config.commission_rate
@@ -184,8 +212,8 @@ class SimulatedOrderManager:
             side=side,
             quantity=quantity,
             entry_price=price,
-            entry_time=self._current_close_time,
-            entry_bar_index=self._current_bar_index,
+            entry_time=execution_time,
+            entry_bar_index=execution_bar_index,
             entry_reason=reason,
             entry_commission=entry_commission,
         )
@@ -203,6 +231,8 @@ class SimulatedOrderManager:
         self,
         price: float,
         reason: str,
+        execution_time: datetime,
+        execution_bar_index: int,
     ) -> float:
         if self._position is None:
             return 0.0
@@ -226,10 +256,10 @@ class SimulatedOrderManager:
             side=position.side.value,
             quantity=quantity,
             entry_time=position.entry_time,
-            exit_time=self._current_close_time,
+            exit_time=execution_time,
             entry_price=position.entry_price,
             exit_price=price,
-            bars_held=max(0, self._current_bar_index - position.entry_bar_index),
+            bars_held=max(0, execution_bar_index - position.entry_bar_index),
             entry_reason=position.entry_reason,
             exit_reason=reason,
             pnl_gross=pnl_gross,
@@ -258,6 +288,8 @@ class SimulatedOrderManager:
         quantity: float,
         side_before: str,
         side_after: str,
+        execution_time: datetime,
+        execution_bar_index: int,
         tags: Optional[List[str]],
         signal_context: Any,
     ) -> None:
@@ -273,8 +305,8 @@ class SimulatedOrderManager:
 
         self.signals.append(
             BacktestSignalRecord(
-                timestamp=self._current_close_time,
-                bar_index=self._current_bar_index,
+                timestamp=execution_time,
+                bar_index=execution_bar_index,
                 strategy_id=self.strategy_id,
                 symbol=self.symbol,
                 signal=signal,
@@ -316,13 +348,14 @@ class SimulatedOrderManager:
         if signal not in (1, -1):
             return False
 
-        if price <= 0:
-            price = self._current_price()
-        if price <= 0:
+        execution_price, execution_time, execution_bar_index = self._resolve_execution(
+            price
+        )
+        if execution_price <= 0:
             logging.error("Cannot execute signal without valid price")
             return False
 
-        quantity = self._calculate_order_quantity(strategy_order_mode, price)
+        quantity = self._calculate_order_quantity(strategy_order_mode, execution_price)
         if quantity <= 0:
             logging.error("Calculated order quantity <= 0, signal ignored")
             return False
@@ -339,20 +372,51 @@ class SimulatedOrderManager:
         executed_quantity = 0.0
 
         if self._position is None:
-            self._open_position(target_side, quantity, price, reason)
+            self._open_position(
+                target_side,
+                quantity,
+                execution_price,
+                reason,
+                execution_time,
+                execution_bar_index,
+            )
             executed_quantity = quantity
             action_label = "ENTRY"
         elif self._position.side == target_side:
             action_label = "IGNORED_SAME_SIDE"
         else:
             if strategy_actions == StrategyAction.POSITION_REVERSAL:
-                self._close_position(price, f"REVERSAL_CLOSE: {reason}")
-                self._open_position(target_side, quantity, price, reason)
+                self._close_position(
+                    execution_price,
+                    f"REVERSAL_CLOSE: {reason}",
+                    execution_time,
+                    execution_bar_index,
+                )
+                self._open_position(
+                    target_side,
+                    quantity,
+                    execution_price,
+                    reason,
+                    execution_time,
+                    execution_bar_index,
+                )
                 action_label = "REVERSAL"
                 executed_quantity = quantity
             else:
-                self._close_position(price, f"OPPOSITE_SIGNAL_CLOSE: {reason}")
-                self._open_position(target_side, quantity, price, reason)
+                self._close_position(
+                    execution_price,
+                    f"OPPOSITE_SIGNAL_CLOSE: {reason}",
+                    execution_time,
+                    execution_bar_index,
+                )
+                self._open_position(
+                    target_side,
+                    quantity,
+                    execution_price,
+                    reason,
+                    execution_time,
+                    execution_bar_index,
+                )
                 action_label = "OPPOSITE_REENTRY"
                 executed_quantity = quantity
 
@@ -361,10 +425,12 @@ class SimulatedOrderManager:
             signal=signal,
             action=action_label,
             reason=reason,
-            price=price,
+            price=execution_price,
             quantity=executed_quantity,
             side_before=side_before,
             side_after=side_after,
+            execution_time=execution_time,
+            execution_bar_index=execution_bar_index,
             tags=tags,
             signal_context=signal_context,
         )
@@ -383,9 +449,10 @@ class SimulatedOrderManager:
                 f"expected=({self.strategy_id},{self.symbol}) got=({strategy_id},{symbol})"
             )
 
-        if price <= 0:
-            price = self._current_price()
-        if price <= 0:
+        execution_price, execution_time, execution_bar_index = self._resolve_execution(
+            price
+        )
+        if execution_price <= 0:
             logging.error("Cannot close without valid price")
             return False
 
@@ -395,7 +462,12 @@ class SimulatedOrderManager:
         action_label = "CLOSE_NO_POSITION"
 
         if self._position is not None:
-            quantity = self._close_position(price, reason)
+            quantity = self._close_position(
+                execution_price,
+                reason,
+                execution_time,
+                execution_bar_index,
+            )
             action_label = "CLOSE"
 
         side_after = self._position_side_text()
@@ -403,10 +475,12 @@ class SimulatedOrderManager:
             signal=0,
             action=action_label,
             reason=reason,
-            price=price,
+            price=execution_price,
             quantity=quantity,
             side_before=side_before,
             side_after=side_after,
+            execution_time=execution_time,
+            execution_bar_index=execution_bar_index,
             tags=tags,
             signal_context=None,
         )
@@ -526,9 +600,15 @@ class GenericBacktestEngine:
         strategy.on_start()
         for i, candle in enumerate(self.dataset.candles):
             volume = self.dataset.volumes[i] if i < len(self.dataset.volumes) else 0.0
+            next_candle = (
+                self.dataset.candles[i + 1]
+                if i + 1 < len(self.dataset.candles)
+                else None
+            )
             order_manager.set_market_context(
                 bar_index=i,
                 candle=candle,
+                next_candle=next_candle,
                 volume=volume,
                 interval_seconds=self.dataset.interval_seconds,
             )

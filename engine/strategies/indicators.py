@@ -748,47 +748,76 @@ class ChandeMomentumOscillator(Indicator):
 
 class TRIX(Indicator):
     """
-    TRIX indicator: 1-period percentage rate of change of a triple EMA.
+    TRIX indicator: 1-period percentage rate of change of EMA(EMA(EMA(close))).
 
-    TRIX = ((TEMA[t] - TEMA[t-1]) / TEMA[t-1]) * 100
-    Uses TripleExponentialMovingAverage internally.
+    TRIX = ((ema3[t] - ema3[t-1]) / ema3[t-1]) * 100
+
+    This matches the research notebook (`ta.TRIX`) and Pine reference strategy:
+    compute three nested EMAs, then rate-of-change of the third EMA.
     """
 
     def __init__(self, period: int = 14):
         super().__init__([period])
         self.period = period
-        self._tema = TripleExponentialMovingAverage(period)
-        self._prev_tema = None
+        self._ema1 = ExponentialMovingAverage(period)
+        self._ema2 = ExponentialMovingAverage(period)
+        self._ema3 = ExponentialMovingAverage(period)
+        self._prev_ema3 = None
         self.value = 0.0
 
+    def _build_derived_candle(
+        self, candle: MidPriceCandle, value: float
+    ) -> MidPriceCandle:
+        derived = MidPriceCandle(start_time=candle.start_time)
+        derived.open = value
+        derived.high = value
+        derived.low = value
+        derived.close = value
+        return derived
+
     def handle_bar(self, candle: MidPriceCandle) -> None:
-        self._tema.handle_bar(candle)
-
-        if not self._tema.initialized:
+        self._ema1.handle_bar(candle)
+        if not self._ema1.initialized:
             self._initialized = False
             self.value = 0.0
             return
 
-        current_tema = self._tema.value
-
-        if self._prev_tema is None:
-            self._prev_tema = current_tema
+        ema1_candle = self._build_derived_candle(candle, self._ema1.value)
+        self._ema2.handle_bar(ema1_candle)
+        if not self._ema2.initialized:
             self._initialized = False
             self.value = 0.0
             return
 
-        if self._prev_tema != 0.0:
-            self.value = ((current_tema - self._prev_tema) / self._prev_tema) * 100.0
+        ema2_candle = self._build_derived_candle(candle, self._ema2.value)
+        self._ema3.handle_bar(ema2_candle)
+        if not self._ema3.initialized:
+            self._initialized = False
+            self.value = 0.0
+            return
+
+        current_ema3 = self._ema3.value
+
+        if self._prev_ema3 is None:
+            self._prev_ema3 = current_ema3
+            self._initialized = False
+            self.value = 0.0
+            return
+
+        if self._prev_ema3 != 0.0:
+            self.value = ((current_ema3 - self._prev_ema3) / self._prev_ema3) * 100.0
         else:
             self.value = 0.0
 
-        self._prev_tema = current_tema
+        self._prev_ema3 = current_ema3
         self._initialized = True
         logging.debug(f"TRIX initialized {self.value}")
 
     def reset(self) -> None:
-        self._tema.reset()
-        self._prev_tema = None
+        self._ema1.reset()
+        self._ema2.reset()
+        self._ema3.reset()
+        self._prev_ema3 = None
         self.value = 0.0
         self._initialized = False
 
