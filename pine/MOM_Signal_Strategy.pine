@@ -27,7 +27,7 @@ signal_mode = input.string("momentum", "Signal Mode", options=["mean_reversion",
 exit_mode = input.string("breakout", "Exit Mode", options=["midpoint", "breakout"])
 
 // Position Management
-stop_loss_percent = input.float(6.671776862843266, "Stop Loss %", minval=0, maxval=100)
+stop_loss_percent = input.float(6.7, "Stop Loss %", minval=0, maxval=100)
 take_profit_percent = input.float(5.0, "Take Profit %", minval=0.1, maxval=50)
 max_holding_bars = input.int(16, "Max Holding Bars", minval=1)
 cooldown_bars = input.int(0, "Cooldown Bars", minval=0)

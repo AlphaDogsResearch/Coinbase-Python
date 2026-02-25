@@ -21,7 +21,7 @@ class RSISignalStrategyConfig:
 
     # RSI Parameters
     rsi_period: int = 30
-    rsi_upper: float = 65.0
+    rsi_upper: float = 67.0
     rsi_lower: float = 33.0
     rsi_mid: float = 45.0
 
@@ -32,7 +32,7 @@ class RSISignalStrategyConfig:
     # Position Management
     quantity: float = 1.0  # Position size (deprecated, use notional_amount)
     notional_amount: float = 500.0
-    stop_loss_percent: float = 0.10584115511051861  # decimal: 0.10 = 10%
+    stop_loss_percent: float = 0.106  # decimal: 0.10 = 10%
     take_profit_percent: float = 0.05  # decimal: 0.05 = 5%
     max_holding_bars: int = 15
     cooldown_bars: int = 0
@@ -461,9 +461,13 @@ class RSISignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}"
+                )
             else:
-                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
+                )
             self._position_side = None
             self._entry_bar = None
             self._entry_price = None

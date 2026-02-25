@@ -671,12 +671,12 @@ class BollingerBands(Indicator):
 
         # Standard deviation of the last `period` closes
         buf_list = list(self._close_buffer)
-        recent = buf_list[-self.period:] if len(buf_list) >= self.period else buf_list
+        recent = buf_list[-self.period :] if len(buf_list) >= self.period else buf_list
         n = len(recent)
         if n > 1:
             mean = sum(recent) / n
             variance = sum((x - mean) ** 2 for x in recent) / (n - 1)
-            std = variance ** 0.5
+            std = variance**0.5
         else:
             std = 0.0
 
@@ -815,5 +815,76 @@ class Momentum(Indicator):
 
     def reset(self) -> None:
         self.buffer.clear()
+        self.value = 0.0
+        self._initialized = False
+
+
+class UltimateOscillator(Indicator):
+    """
+    Ultimate Oscillator (ULTOSC).
+
+    UO = 100 * (4 * AVG(BP/TR, t1) + 2 * AVG(BP/TR, t2) + AVG(BP/TR, t3)) / 7
+    where:
+      BP = close - min(low, prev_close)
+      TR = max(high, prev_close) - min(low, prev_close)
+    """
+
+    def __init__(
+        self, timeperiod1: int = 7, timeperiod2: int = 14, timeperiod3: int = 28
+    ):
+        super().__init__([timeperiod1, timeperiod2, timeperiod3])
+        self.timeperiod1 = timeperiod1
+        self.timeperiod2 = timeperiod2
+        self.timeperiod3 = timeperiod3
+        self._prev_close = None
+        self._bp_buffer = deque(maxlen=timeperiod3)
+        self._tr_buffer = deque(maxlen=timeperiod3)
+        self.value = 0.0
+
+    def handle_bar(self, candle: MidPriceCandle) -> None:
+        high = candle.high if candle.high != float("-inf") else 0.0
+        low = candle.low if candle.low != float("inf") else 0.0
+        close = candle.close if candle.close is not None else 0.0
+
+        if self._prev_close is None:
+            self._prev_close = close
+            self.value = 0.0
+            self._initialized = False
+            return
+
+        bp = close - min(low, self._prev_close)
+        tr = max(high, self._prev_close) - min(low, self._prev_close)
+
+        self._bp_buffer.append(bp)
+        self._tr_buffer.append(tr)
+        self._prev_close = close
+
+        if len(self._bp_buffer) < self.timeperiod3:
+            self.value = 0.0
+            self._initialized = False
+            return
+
+        bp_values = list(self._bp_buffer)
+        tr_values = list(self._tr_buffer)
+
+        bp1 = sum(bp_values[-self.timeperiod1 :])
+        tr1 = sum(tr_values[-self.timeperiod1 :])
+        bp2 = sum(bp_values[-self.timeperiod2 :])
+        tr2 = sum(tr_values[-self.timeperiod2 :])
+        bp3 = sum(bp_values[-self.timeperiod3 :])
+        tr3 = sum(tr_values[-self.timeperiod3 :])
+
+        avg1 = (bp1 / tr1) if tr1 != 0.0 else 0.0
+        avg2 = (bp2 / tr2) if tr2 != 0.0 else 0.0
+        avg3 = (bp3 / tr3) if tr3 != 0.0 else 0.0
+
+        self.value = 100.0 * ((4.0 * avg1) + (2.0 * avg2) + avg3) / 7.0
+        self._initialized = True
+        logging.debug(f"UltimateOscillator initialized {self.value}")
+
+    def reset(self) -> None:
+        self._prev_close = None
+        self._bp_buffer.clear()
+        self._tr_buffer.clear()
         self.value = 0.0
         self._initialized = False

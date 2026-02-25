@@ -2,28 +2,30 @@ import logging
 from dataclasses import dataclass
 
 from common.interface_order import OrderSizeMode
-from engine.database.models import build_mom_signal_context
+from engine.database.models import build_ultosc_signal_context
 
 from ..market_data.candle import MidPriceCandle
 from .base import Strategy
-from .indicators import Momentum
+from .indicators import UltimateOscillator
 from .models import Instrument, PositionSide
 from .strategy_action import StrategyAction
 from .strategy_order_mode import StrategyOrderMode
 
 
 @dataclass(frozen=True)
-class MOMSignalStrategyConfig:
-    """MOM Signal Strategy configuration."""
+class ULTOSCSignalStrategyConfig:
+    """ULTOSC Signal Strategy configuration."""
 
     instrument_id: str
     bar_type: str
 
     # Indicator Parameters
-    mom_period: int = 40
-    mom_upper: float = 130.0
-    mom_lower: float = -138.0
-    mom_mid: float = 27.0
+    timeperiod1: int = 14
+    timeperiod2: int = 28
+    timeperiod3: int = 36
+    ultosc_upper: float = 60.0
+    ultosc_lower: float = 40.0
+    ultosc_mid: float = 50.0
 
     # Signal Behavior
     signal_mode: str = "momentum"  # mean_reversion | momentum
@@ -32,9 +34,9 @@ class MOMSignalStrategyConfig:
     # Position Management
     quantity: float = 1.0  # Deprecated, use notional_amount
     notional_amount: float = 500.0
-    stop_loss_percent: float = 0.067  # from Results summary.xlsx
+    stop_loss_percent: float = 0.03
     take_profit_percent: float = 0.05
-    max_holding_bars: int = 16
+    max_holding_bars: int = 100
     cooldown_bars: int = 0
 
     # Risk Management
@@ -44,27 +46,24 @@ class MOMSignalStrategyConfig:
     allow_flip: bool = True
 
 
-class MOMSignalStrategy(Strategy):
-    """
-    MOM Signal Strategy Implementation.
-
-    Uses the Momentum indicator (close - close[period]) to generate
-    entry/exit signals in momentum or mean-reversion mode.
-    """
+class ULTOSCSignalStrategy(Strategy):
+    """ULTOSC Signal Strategy implementation."""
 
     VALID_SIGNAL_MODES = {"mean_reversion", "momentum"}
     VALID_EXIT_MODES = {"midpoint", "breakout"}
 
-    def __init__(self, config: MOMSignalStrategyConfig) -> None:
+    def __init__(self, config: ULTOSCSignalStrategyConfig) -> None:
         super().__init__(config)
 
         self.config = config
 
-        # MOM Parameters
-        self.mom_period = config.mom_period
-        self.mom_upper = config.mom_upper
-        self.mom_lower = config.mom_lower
-        self.mom_mid = config.mom_mid
+        # ULTOSC Parameters
+        self.timeperiod1 = config.timeperiod1
+        self.timeperiod2 = config.timeperiod2
+        self.timeperiod3 = config.timeperiod3
+        self.ultosc_upper = config.ultosc_upper
+        self.ultosc_lower = config.ultosc_lower
+        self.ultosc_mid = config.ultosc_mid
 
         # Signal behavior
         self.signal_mode = config.signal_mode
@@ -95,11 +94,15 @@ class MOMSignalStrategy(Strategy):
         self.use_max_holding = config.use_max_holding
         self.allow_flip = config.allow_flip
 
-        # Initialize MOM indicator
-        self.mom = Momentum(period=self.mom_period)
+        # Initialize ULTOSC indicator
+        self.ultosc = UltimateOscillator(
+            timeperiod1=self.timeperiod1,
+            timeperiod2=self.timeperiod2,
+            timeperiod3=self.timeperiod3,
+        )
 
         # State tracking
-        self._previous_mom = 0.0
+        self._previous_ultosc = 0.0
         self._bars_processed = 0
         self._entry_bar = None
         self._entry_price = None
@@ -114,24 +117,22 @@ class MOMSignalStrategy(Strategy):
         self.instrument = None
 
     def on_start(self) -> None:
-        """Initialize strategy on start."""
         self.instrument = self.cache.instrument(self.instrument_id)
         if self.instrument is None:
             self.log.error(f"Instrument {self.instrument_id} not found in cache\n")
 
         self.subscribe_bars(self.bar_type)
         self.log.info(
-            f"[SIGNAL] MOMSignalStrategy started for {self.instrument_id} "
+            f"[SIGNAL] ULTOSCSignalStrategy started for {self.instrument_id} "
             f"(mode={self.signal_mode}, exit={self.exit_mode})"
         )
 
     def on_candle_created(self, candle: MidPriceCandle):
-        """Handle incoming candle data."""
-        self.mom.handle_bar(candle)
-        if not self.mom.initialized:
+        self.ultosc.handle_bar(candle)
+        if not self.ultosc.initialized:
             return
 
-        current_mom = self.mom.value
+        current_ultosc = self.ultosc.value
 
         if self._cooldown_left > 0 and self.cache.is_flat(self.instrument_id):
             self._cooldown_left -= 1
@@ -141,71 +142,79 @@ class MOMSignalStrategy(Strategy):
             short_entry_signal,
             long_exit_signal,
             short_exit_signal,
-        ) = self._compute_signals(current_mom)
+        ) = self._compute_signals(current_ultosc)
 
         if self.cache.is_flat(self.instrument_id):
             if self._cooldown_left == 0:
                 if long_entry_signal:
-                    self._enter_long(candle, current_mom, reason="MOM long entry")
+                    self._enter_long(candle, current_ultosc, reason="ULTOSC long entry")
                 elif short_entry_signal:
-                    self._enter_short(candle, current_mom, reason="MOM short entry")
+                    self._enter_short(
+                        candle, current_ultosc, reason="ULTOSC short entry"
+                    )
         else:
             self._sync_position_state()
 
             if self.cache.is_net_long(self.instrument_id):
                 self._handle_long_position(
                     candle=candle,
-                    current_mom=current_mom,
+                    current_ultosc=current_ultosc,
                     short_entry_signal=short_entry_signal,
                     long_exit_signal=long_exit_signal,
                 )
             elif self.cache.is_net_short(self.instrument_id):
                 self._handle_short_position(
                     candle=candle,
-                    current_mom=current_mom,
+                    current_ultosc=current_ultosc,
                     long_entry_signal=long_entry_signal,
                     short_exit_signal=short_exit_signal,
                 )
 
-        self._previous_mom = current_mom
+        self._previous_ultosc = current_ultosc
         self._bars_processed += 1
 
-    def _compute_signals(self, current_mom: float):
-        # Mean reversion: enter ON the band (counter-trend)
+    def _compute_signals(self, current_ultosc: float):
         mr_long_signal = (
-            self._previous_mom < self.mom_lower and current_mom >= self.mom_lower
+            self._previous_ultosc < self.ultosc_lower
+            and current_ultosc >= self.ultosc_lower
         )
         mr_short_signal = (
-            self._previous_mom > self.mom_upper and current_mom <= self.mom_upper
+            self._previous_ultosc > self.ultosc_upper
+            and current_ultosc <= self.ultosc_upper
         )
 
-        # Momentum: enter THROUGH the band (trend-following)
         mom_long_signal = (
-            self._previous_mom < self.mom_upper and current_mom >= self.mom_upper
+            self._previous_ultosc < self.ultosc_upper
+            and current_ultosc >= self.ultosc_upper
         )
         mom_short_signal = (
-            self._previous_mom > self.mom_lower and current_mom <= self.mom_lower
+            self._previous_ultosc > self.ultosc_lower
+            and current_ultosc <= self.ultosc_lower
         )
 
         if self.signal_mode == "mean_reversion":
             long_entry_signal = mr_long_signal
             short_entry_signal = mr_short_signal
-        else:  # momentum
+        else:
             long_entry_signal = mom_long_signal
             short_entry_signal = mom_short_signal
 
         mr_long_mid_exit = (
-            self._previous_mom < self.mom_mid and current_mom >= self.mom_mid
+            self._previous_ultosc < self.ultosc_mid
+            and current_ultosc >= self.ultosc_mid
         )
         mr_short_mid_exit = (
-            self._previous_mom > self.mom_mid and current_mom <= self.mom_mid
+            self._previous_ultosc > self.ultosc_mid
+            and current_ultosc <= self.ultosc_mid
         )
 
         mom_long_mid_exit = (
-            self._previous_mom > self.mom_mid and current_mom <= self.mom_mid
+            self._previous_ultosc > self.ultosc_mid
+            and current_ultosc <= self.ultosc_mid
         )
         mom_short_mid_exit = (
-            self._previous_mom < self.mom_mid and current_mom >= self.mom_mid
+            self._previous_ultosc < self.ultosc_mid
+            and current_ultosc >= self.ultosc_mid
         )
 
         if self.exit_mode == "midpoint":
@@ -229,7 +238,7 @@ class MOMSignalStrategy(Strategy):
     def _handle_long_position(
         self,
         candle: MidPriceCandle,
-        current_mom: float,
+        current_ultosc: float,
         short_entry_signal: bool,
         long_exit_signal: bool,
     ) -> None:
@@ -254,7 +263,7 @@ class MOMSignalStrategy(Strategy):
             return
 
         if long_exit_signal:
-            if self._close_position(candle, "MOM midpoint exit"):
+            if self._close_position(candle, "ULTOSC midpoint exit"):
                 self._stopped_out_count = 0
             return
 
@@ -262,7 +271,7 @@ class MOMSignalStrategy(Strategy):
             if self._reverse_position(
                 candle=candle,
                 signal=-1,
-                current_mom=current_mom,
+                current_ultosc=current_ultosc,
                 reason="Flip to short",
             ):
                 self._stopped_out_count = 0
@@ -274,7 +283,7 @@ class MOMSignalStrategy(Strategy):
     def _handle_short_position(
         self,
         candle: MidPriceCandle,
-        current_mom: float,
+        current_ultosc: float,
         long_entry_signal: bool,
         short_exit_signal: bool,
     ) -> None:
@@ -299,7 +308,7 @@ class MOMSignalStrategy(Strategy):
             return
 
         if short_exit_signal:
-            if self._close_position(candle, "MOM midpoint exit"):
+            if self._close_position(candle, "ULTOSC midpoint exit"):
                 self._stopped_out_count = 0
             return
 
@@ -307,7 +316,7 @@ class MOMSignalStrategy(Strategy):
             if self._reverse_position(
                 candle=candle,
                 signal=1,
-                current_mom=current_mom,
+                current_ultosc=current_ultosc,
                 reason="Flip to long",
             ):
                 self._stopped_out_count = 0
@@ -319,8 +328,8 @@ class MOMSignalStrategy(Strategy):
     def _enter_long(
         self,
         candle: MidPriceCandle,
-        current_mom: float,
-        reason: str = "MOM long entry",
+        current_ultosc: float,
+        reason: str = "ULTOSC long entry",
     ) -> None:
         if not self.cache.is_flat(self.instrument_id):
             return
@@ -336,7 +345,7 @@ class MOMSignalStrategy(Strategy):
 
         signal_context = self._build_signal_context(
             reason=reason,
-            current_mom=current_mom,
+            current_ultosc=current_ultosc,
             candle=candle,
             action="ENTRY",
         )
@@ -360,8 +369,8 @@ class MOMSignalStrategy(Strategy):
     def _enter_short(
         self,
         candle: MidPriceCandle,
-        current_mom: float,
-        reason: str = "MOM short entry",
+        current_ultosc: float,
+        reason: str = "ULTOSC short entry",
     ) -> None:
         if not self.cache.is_flat(self.instrument_id):
             return
@@ -377,7 +386,7 @@ class MOMSignalStrategy(Strategy):
 
         signal_context = self._build_signal_context(
             reason=reason,
-            current_mom=current_mom,
+            current_ultosc=current_ultosc,
             candle=candle,
             action="ENTRY",
         )
@@ -402,7 +411,7 @@ class MOMSignalStrategy(Strategy):
         self,
         candle: MidPriceCandle,
         signal: int,
-        current_mom: float,
+        current_ultosc: float,
         reason: str,
     ) -> bool:
         close_price = self._candle_close(candle)
@@ -416,7 +425,7 @@ class MOMSignalStrategy(Strategy):
 
         signal_context = self._build_signal_context(
             reason=reason,
-            current_mom=current_mom,
+            current_ultosc=current_ultosc,
             candle=candle,
             action="REVERSAL",
         )
@@ -484,20 +493,22 @@ class MOMSignalStrategy(Strategy):
     def _build_signal_context(
         self,
         reason: str,
-        current_mom: float,
+        current_ultosc: float,
         candle: MidPriceCandle,
         action: str,
     ):
-        return build_mom_signal_context(
+        return build_ultosc_signal_context(
             reason=reason,
-            mom=current_mom,
-            prev_mom=self._previous_mom,
-            mom_upper=self.mom_upper,
-            mom_lower=self.mom_lower,
-            mom_mid=self.mom_mid,
+            ultosc=current_ultosc,
+            prev_ultosc=self._previous_ultosc,
+            ultosc_upper=self.ultosc_upper,
+            ultosc_lower=self.ultosc_lower,
+            ultosc_mid=self.ultosc_mid,
             signal_mode=self.signal_mode,
             exit_mode=self.exit_mode,
-            mom_period=self.mom_period,
+            timeperiod1=self.timeperiod1,
+            timeperiod2=self.timeperiod2,
+            timeperiod3=self.timeperiod3,
             stop_loss_percent=self.stop_loss_percent,
             take_profit_percent=self.take_profit_percent,
             max_holding_bars=self.max_holding_bars,

@@ -18,7 +18,7 @@ strategy("RSI Signal Strategy",
 rsi_period = input.int(30, "RSI Period", minval=1)
 
 // RSI Thresholds
-rsi_upper = input.float(65.0, "RSI Upper Threshold", minval=0, maxval=100)
+rsi_upper = input.float(67.0, "RSI Upper Threshold", minval=0, maxval=100)
 rsi_lower = input.float(33.0, "RSI Lower Threshold", minval=0, maxval=100)
 rsi_mid = input.float(45.0, "RSI Midpoint", minval=0, maxval=100)
 
@@ -27,7 +27,7 @@ signal_mode = input.string("momentum", "Signal Mode", options=["mean_reversion",
 exit_mode = input.string("breakout", "Exit Mode", options=["midpoint", "breakout"])
 
 // Position Management
-stop_loss_percent = input.float(10.584115511051861, "Stop Loss %", minval=0, maxval=100)
+stop_loss_percent = input.float(10.6, "Stop Loss %", minval=0, maxval=100)
 take_profit_percent = input.float(5.0, "Take Profit %", minval=0.1, maxval=50)
 max_holding_bars = input.int(15, "Max Holding Bars", minval=1)
 cooldown_bars = input.int(0, "Cooldown Bars", minval=0)

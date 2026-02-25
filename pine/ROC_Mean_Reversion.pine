@@ -1,10 +1,10 @@
 //@version=6
 strategy("ROC Mean Reversion Strategy",
-         overlay=false, 
+         overlay=false,
          default_qty_type=strategy.cash,
          default_qty_value=100,
          initial_capital=100000,
-         commission_type=strategy.commission.percent, 
+         commission_type=strategy.commission.percent,
          commission_value=0.05,
          pyramiding=0,
          calc_on_every_tick=false,
@@ -15,19 +15,23 @@ strategy("ROC Mean Reversion Strategy",
 // ============================================================================
 
 // ROC Settings
-roc_period = input.int(10, "ROC Period", minval=1)
+roc_period = input.int(6, "ROC Period", minval=1)
 
 // ROC Thresholds
-roc_upper = input.float(1, "ROC Upper Threshold")
-roc_lower = input.float(-1, "ROC Lower Threshold")
+roc_upper = input.float(4, "ROC Upper Threshold")
+roc_lower = input.float(-3, "ROC Lower Threshold")
 roc_mid = input.float(0, "ROC Midpoint")
 
+// Signal Behavior
+signal_mode = input.string("momentum", "Signal Mode", options=["mean_reversion", "momentum"])
+exit_mode = input.string("midpoint", "Exit Mode", options=["midpoint", "breakout"])
+
 // Position Management
-stop_loss_percent = input.float(50, "Stop Loss %", minval=0, maxval=100)
+stop_loss_percent = input.float(4.7, "Stop Loss %", minval=0, maxval=100)
 take_profit_percent = input.float(5.0, "Take Profit %", minval=0.1, maxval=20)
 
 // Risk Management
-max_holding_bars = input.int(100, "Max Holding Bars", minval=1)
+max_holding_bars = input.int(20, "Max Holding Bars", minval=1)
 use_stop_loss = input.bool(true, "Use Stop Loss")
 use_take_profit = input.bool(false, "Use Take Profit")
 
@@ -43,11 +47,23 @@ roc = ta.roc(close, roc_period)
 // ============================================================================
 // Signal Detection
 // ============================================================================
-long_entry_signal = (roc[1] < roc_lower) and (roc[0] >= roc_lower)
-short_entry_signal = (roc[1] > roc_upper) and (roc[0] <= roc_upper)
+mr_long_signal = (roc[1] < roc_lower) and (roc >= roc_lower)
+mr_short_signal = (roc[1] > roc_upper) and (roc <= roc_upper)
 
-long_exit_signal = (roc[1] < roc_mid) and (roc[0] >= roc_mid)
-short_exit_signal = (roc[1] > roc_mid) and (roc[0] <= roc_mid)
+mom_long_signal = (roc[1] < roc_upper) and (roc >= roc_upper)
+mom_short_signal = (roc[1] > roc_lower) and (roc <= roc_lower)
+
+long_entry_signal = signal_mode == "mean_reversion" ? mr_long_signal : mom_long_signal
+short_entry_signal = signal_mode == "mean_reversion" ? mr_short_signal : mom_short_signal
+
+mr_long_mid_exit = (roc[1] < roc_mid) and (roc >= roc_mid)
+mr_short_mid_exit = (roc[1] > roc_mid) and (roc <= roc_mid)
+
+mom_long_mid_exit = (roc[1] > roc_mid) and (roc <= roc_mid)
+mom_short_mid_exit = (roc[1] < roc_mid) and (roc >= roc_mid)
+
+long_exit_signal = exit_mode == "midpoint" and (signal_mode == "mean_reversion" ? mr_long_mid_exit : mom_long_mid_exit)
+short_exit_signal = exit_mode == "midpoint" and (signal_mode == "mean_reversion" ? mr_short_mid_exit : mom_short_mid_exit)
 
 // ============================================================================
 // Position State Tracking
@@ -86,22 +102,22 @@ if is_long and not na(entry_price)
     long_stop = entry_price * (1 - stop_loss_percent / 100)
     long_tp = entry_price * (1 + take_profit_percent / 100)
     bars_held = bar_index - entry_bar
-    
+
     // Stop Loss
     if use_stop_loss and low <= long_stop
         strategy.close("Long", comment="SL")
         stopped_out_count := stopped_out_count + 1
-    
+
     // Take Profit
     else if use_take_profit and high >= long_tp
         strategy.close("Long", comment="TP")
         stopped_out_count := 0
-    
+
     // Midpoint Exit
     else if long_exit_signal
         strategy.close("Long", comment="Mid Exit")
         stopped_out_count := 0
-    
+
     // Max Holding Exit
     else if bars_held >= max_holding_bars
         strategy.close("Long", comment="Max Hold")
@@ -113,22 +129,22 @@ if is_short and not na(entry_price)
     short_stop = entry_price * (1 + stop_loss_percent / 100)
     short_tp = entry_price * (1 - take_profit_percent / 100)
     bars_held = bar_index - entry_bar
-    
+
     // Stop Loss
     if use_stop_loss and high >= short_stop
         strategy.close("Short", comment="SL")
         stopped_out_count := stopped_out_count + 1
-    
+
     // Take Profit
     else if use_take_profit and low <= short_tp
         strategy.close("Short", comment="TP")
         stopped_out_count := 0
-    
+
     // Midpoint Exit
     else if short_exit_signal
         strategy.close("Short", comment="Mid Exit")
         stopped_out_count := 0
-    
+
     // Max Holding Exit
     else if bars_held >= max_holding_bars
         strategy.close("Short", comment="Max Hold")
@@ -143,13 +159,13 @@ hline(roc_lower, "ROC Lower", color=color.green, linestyle=hline.style_dashed)
 hline(roc_mid, "ROC Midpoint", color=color.gray, linestyle=hline.style_dashed)
 
 // Plot signal markers
-plotshape(show_signals and long_entry_signal and is_flat ? roc_lower : na, 
+plotshape(show_signals and long_entry_signal and is_flat ? roc_lower : na,
           "Long Entry", shape.triangleup, location.absolute, color=color.lime, size=size.tiny)
-plotshape(show_signals and short_entry_signal and is_flat ? roc_upper : na, 
+plotshape(show_signals and short_entry_signal and is_flat ? roc_upper : na,
           "Short Entry", shape.triangledown, location.absolute, color=color.red, size=size.tiny)
-plotshape(show_signals and long_exit_signal and is_long ? roc_mid : na, 
+plotshape(show_signals and long_exit_signal and is_long ? roc_mid : na,
           "Long Exit", shape.circle, location.absolute, color=color.aqua, size=size.tiny)
-plotshape(show_signals and short_exit_signal and is_short ? roc_mid : na, 
+plotshape(show_signals and short_exit_signal and is_short ? roc_mid : na,
           "Short Exit", shape.circle, location.absolute, color=color.yellow, size=size.tiny)
 
 // Background colors
@@ -159,27 +175,28 @@ bgcolor(show_background and roc > roc_upper ? color.new(color.red, 95) : na, tit
 // ============================================================================
 // Info Table
 // ============================================================================
-var table info_table = table.new(position.top_right, 2, 6, bgcolor=color.new(color.gray, 80))
+var table info_table = table.new(position.top_right, 2, 7, bgcolor=color.new(color.gray, 80))
 if barstate.islast
     pos_text = is_long ? "LONG" : is_short ? "SHORT" : "FLAT"
     pos_color = is_long ? color.green : is_short ? color.red : color.gray
     bars_in_trade = not na(entry_bar) ? bar_index - entry_bar : 0
-    
+
     // Calculate current stop level for display
-    current_stop = is_long ? entry_price * (1 - stop_loss_percent / 100) : 
+    current_stop = is_long ? entry_price * (1 - stop_loss_percent / 100) :
                    is_short ? entry_price * (1 + stop_loss_percent / 100) : na
-    
+
     table.cell(info_table, 0, 0, "Position", text_color=color.white)
     table.cell(info_table, 1, 0, pos_text, text_color=pos_color)
     table.cell(info_table, 0, 1, "ROC", text_color=color.white)
     table.cell(info_table, 1, 1, str.tostring(roc, "#.##"), text_color=color.white)
-    table.cell(info_table, 0, 2, "Entry Price", text_color=color.white)
-    table.cell(info_table, 1, 2, not na(entry_price) ? str.tostring(entry_price, "#.##") : "-", text_color=color.white)
-    table.cell(info_table, 0, 3, "Stop Level", text_color=color.white)
-    table.cell(info_table, 1, 3, not na(current_stop) ? str.tostring(current_stop, "#.##") : "-", text_color=color.orange)
-    table.cell(info_table, 0, 4, "Bars Held", text_color=color.white)
-    table.cell(info_table, 1, 4, str.tostring(bars_in_trade) + "/" + str.tostring(max_holding_bars), 
+    table.cell(info_table, 0, 2, "Mode", text_color=color.white)
+    table.cell(info_table, 1, 2, signal_mode + "/" + exit_mode, text_color=color.white)
+    table.cell(info_table, 0, 3, "Entry Price", text_color=color.white)
+    table.cell(info_table, 1, 3, not na(entry_price) ? str.tostring(entry_price, "#.##") : "-", text_color=color.white)
+    table.cell(info_table, 0, 4, "Stop Level", text_color=color.white)
+    table.cell(info_table, 1, 4, not na(current_stop) ? str.tostring(current_stop, "#.##") : "-", text_color=color.orange)
+    table.cell(info_table, 0, 5, "Bars Held", text_color=color.white)
+    table.cell(info_table, 1, 5, str.tostring(bars_in_trade) + "/" + str.tostring(max_holding_bars),
                text_color=bars_in_trade >= max_holding_bars ? color.red : color.white)
-    table.cell(info_table, 0, 5, "Stop Count", text_color=color.white)
-    table.cell(info_table, 1, 5, str.tostring(stopped_out_count), text_color=color.white)
-
+    table.cell(info_table, 0, 6, "Stop Count", text_color=color.white)
+    table.cell(info_table, 1, 6, str.tostring(stopped_out_count), text_color=color.white)

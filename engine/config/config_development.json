@@ -131,13 +131,15 @@
     "params": {
       "instrument_id": "@default_settings.selected_symbol",
       "bar_type": "ETHUSDT-1h",
-      "roc_period": 22,
-      "roc_upper": 3.4,
-      "roc_lower": -3.6,
-      "roc_mid": -2.1,
+      "roc_period": 6,
+      "roc_upper": 4,
+      "roc_lower": -3,
+      "roc_mid": 0,
+      "signal_mode": "momentum",
+      "exit_mode": "midpoint",
       "notional_amount": 500.0,
-      "stop_loss_percent": 0.021,
-      "max_holding_bars": 100
+      "stop_loss_percent": 0.047,
+      "max_holding_bars": 20
     }
   },
   "simple_order_test_strategy_config": {
@@ -157,13 +159,13 @@
       "instrument_id": "@default_settings.selected_symbol",
       "bar_type": "ETHUSDT-1h",
       "rsi_period": 30,
-      "rsi_upper": 65.0,
+      "rsi_upper": 67.0,
       "rsi_lower": 33.0,
       "rsi_mid": 45.0,
       "signal_mode": "momentum",
       "exit_mode": "breakout",
       "notional_amount": 500.0,
-      "stop_loss_percent": 0.10584115511051861,
+      "stop_loss_percent": 0.106,
       "take_profit_percent": 0.05,
       "max_holding_bars": 15,
       "cooldown_bars": 0,
