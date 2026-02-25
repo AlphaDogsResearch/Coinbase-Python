@@ -580,17 +580,29 @@ class TripleExponentialMovingAverage(Indicator):
 
 
 class CommodityChannelIndex(Indicator):
-    def __init__(self, period: int = 14):
-        super().__init__([period])
+    """Commodity Channel Index with selectable source.
+
+    `source="typical"` uses hlc3, matching TA-Lib CCI behavior and current Pine.
+    `source="close"` is kept for legacy Pine exports that used close-only CCI.
+    """
+
+    VALID_SOURCES = {"typical", "close"}
+
+    def __init__(self, period: int = 14, source: str = "typical"):
+        super().__init__([period, source])
         self.period = period
+        self.source = source if source in self.VALID_SOURCES else "typical"
         self.tp_buffer = deque(maxlen=period)
         self.value = 0.0
 
     def handle_bar(self, candle: MidPriceCandle) -> None:
-        high = candle.high if candle.high != float("-inf") else 0.0
-        low = candle.low if candle.low != float("inf") else 0.0
         close = candle.close if candle.close is not None else 0.0
-        tp = (high + low + close) / 3.0
+        high = close if candle.high == float("-inf") else candle.high
+        low = close if candle.low == float("inf") else candle.low
+        if self.source == "close":
+            tp = close
+        else:
+            tp = (high + low + close) / 3.0
         self.tp_buffer.append(tp)
 
         if len(self.tp_buffer) == self.period:
@@ -675,7 +687,8 @@ class BollingerBands(Indicator):
         n = len(recent)
         if n > 1:
             mean = sum(recent) / n
-            variance = sum((x - mean) ** 2 for x in recent) / (n - 1)
+            # Pine ta.stdev() defaults to biased=True, i.e., population variance.
+            variance = sum((x - mean) ** 2 for x in recent) / n
             std = variance**0.5
         else:
             std = 0.0

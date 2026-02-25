@@ -60,6 +60,29 @@ python -m engine.backtest.validate_runner \
   --output-dir reports/validation
 ```
 
+Strict parity gate (BBAND ETHUSDT reference exported in UTC+8):
+
+```bash
+python -m engine.backtest.validate_runner \
+  --reference-file engine/backtest/pine_reference_list_of_trades/BBAND_Signal_Strategy_BINANCE_ETHUSDT.P_2026-02-26.csv \
+  --execution-timing next_bar_open \
+  --reference-utc-offset-hours 8 \
+  --strategy-config engine/backtest/configs/validate_pine_parity.json \
+  --output-dir reports/validation
+```
+
+Strict parity gate (CCI + CMO ETHUSDT references exported in UTC+8):
+
+```bash
+python -m engine.backtest.validate_runner \
+  --reference-file engine/backtest/pine_reference_list_of_trades/CCI_Signal_Strategy_BINANCE_ETHUSDT.P_2026-02-26.csv \
+  --reference-file engine/backtest/pine_reference_list_of_trades/CMO_Signal_Strategy_BINANCE_ETHUSDT.P_2026-02-26.csv \
+  --execution-timing next_bar_open \
+  --reference-utc-offset-hours 8 \
+  --strategy-config engine/backtest/configs/validate_pine_parity.json \
+  --output-dir reports/validation
+```
+
 Optional diagnostic only (do not treat as parity pass):
 
 ```bash
@@ -79,7 +102,9 @@ Notes:
 - Run strict settings first; use relaxed tolerances only to diagnose root cause after strict fails.
 - Use `--reference-utc-offset-hours` when Pine CSV timestamps are not UTC
   (example: `8` for UTC+8 exports).
-- `engine/backtest/configs/validate_pine_parity.json` contains TRIX overrides aligned to research/Pine defaults.
+- `engine/backtest/configs/validate_pine_parity.json` contains strategy overrides (including TRIX and BBAND) aligned to research/Pine defaults.
+- `engine/backtest/configs/validate_pine_parity.json` also includes CCI/CMO overrides aligned to research defaults (`notional_amount=100`, risk toggles/thresholds).
+- If you update CCI to research-aligned `hlc3` semantics (`ta.cci(hlc3, period)`), regenerate Pine CCI trade exports before using strict parity as an acceptance gate.
 - Validation writes per-strategy summaries, pair-diff CSVs, and a combined summary into `reports/validation` (or `--output-dir`).
 - This runner fetches historical market data from Binance for the validation window.
 

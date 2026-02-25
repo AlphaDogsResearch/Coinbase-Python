@@ -26,8 +26,8 @@ class BBANDSignalStrategyConfig:
     matype: int = 3  # 0=SMA, 1=EMA, 2=DEMA, 3=TEMA
 
     # Signal Behavior
-    signal_mode: str = "momentum"   # mean_reversion | momentum
-    exit_mode: str = "breakout"     # midpoint | breakout
+    signal_mode: str = "momentum"  # mean_reversion | momentum
+    exit_mode: str = "breakout"  # midpoint | breakout
 
     # Position Management
     quantity: float = 1.0
@@ -114,6 +114,9 @@ class BBANDSignalStrategy(Strategy):
         self._position_side = None
         self._cooldown_left = 0
         self._stopped_out_count = 0
+        self._previous_upper = None
+        self._previous_middle = None
+        self._previous_lower = None
 
         self.instrument_id = config.instrument_id
         instrument = Instrument(id=self.instrument_id, symbol=self.instrument_id)
@@ -177,21 +180,34 @@ class BBANDSignalStrategy(Strategy):
                 )
 
         self._previous_close = current_close
+        self._previous_upper = self.bband.upper
+        self._previous_middle = self.bband.middle
+        self._previous_lower = self.bband.lower
         self._bars_processed += 1
 
     def _compute_signals(self, current_close: float):
+        if (
+            self._previous_upper is None
+            or self._previous_middle is None
+            or self._previous_lower is None
+        ):
+            return (False, False, False, False)
+
         upper = self.bband.upper
         middle = self.bband.middle
         lower = self.bband.lower
         prev = self._previous_close
+        prev_upper = self._previous_upper
+        prev_middle = self._previous_middle
+        prev_lower = self._previous_lower
 
         # Mean reversion: enter when price crosses back inside the bands
-        mr_long_signal = prev < lower and current_close >= lower
-        mr_short_signal = prev > upper and current_close <= upper
+        mr_long_signal = prev < prev_lower and current_close >= lower
+        mr_short_signal = prev > prev_upper and current_close <= upper
 
         # Momentum: enter when price breaks out through the bands
-        mom_long_signal = prev < upper and current_close >= upper
-        mom_short_signal = prev > lower and current_close <= lower
+        mom_long_signal = prev < prev_upper and current_close >= upper
+        mom_short_signal = prev > prev_lower and current_close <= lower
 
         if self.signal_mode == "mean_reversion":
             long_entry_signal = mr_long_signal
@@ -201,10 +217,10 @@ class BBANDSignalStrategy(Strategy):
             short_entry_signal = mom_short_signal
 
         # Exit signals (midpoint mode only)
-        mr_long_mid_exit = prev < middle and current_close >= middle
-        mr_short_mid_exit = prev > middle and current_close <= middle
-        mom_long_mid_exit = prev > middle and current_close <= middle
-        mom_short_mid_exit = prev < middle and current_close >= middle
+        mr_long_mid_exit = prev < prev_middle and current_close >= middle
+        mr_short_mid_exit = prev > prev_middle and current_close <= middle
+        mom_long_mid_exit = prev > prev_middle and current_close <= middle
+        mom_short_mid_exit = prev < prev_middle and current_close >= middle
 
         if self.exit_mode == "midpoint":
             if self.signal_mode == "mean_reversion":
@@ -349,7 +365,7 @@ class BBANDSignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.LONG
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -390,7 +406,7 @@ class BBANDSignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.SHORT
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -431,7 +447,8 @@ class BBANDSignalStrategy(Strategy):
             self._position_side = (
                 PositionSide.LONG if signal == 1 else PositionSide.SHORT
             )
-            self._entry_bar = self._bars_processed
+            if self._entry_bar is None:
+                self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
@@ -464,9 +481,13 @@ class BBANDSignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}"
+                )
             else:
-                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
+                )
             self._position_side = None
             self._entry_bar = None
             self._entry_price = None
@@ -537,6 +558,17 @@ class BBANDSignalStrategy(Strategy):
         if self._entry_bar is None:
             return 0
         return self._bars_processed - self._entry_bar
+
+    def _entry_bar_for_new_position(self) -> int:
+        order_manager = getattr(self, "_order_manager", None)
+        engine_config = getattr(order_manager, "config", None)
+        execution_timing = str(
+            getattr(engine_config, "execution_timing", "bar_close")
+        ).lower()
+
+        if execution_timing == "next_bar_open":
+            return self._bars_processed + 1
+        return self._bars_processed
 
     def _candle_close(self, candle: MidPriceCandle) -> float:
         return candle.close if candle.close is not None else 0.0

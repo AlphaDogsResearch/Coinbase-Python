@@ -45,7 +45,7 @@ show_background = input.bool(true, "Show Background Colors")
 // ============================================================================
 // CCI Calculation
 // ============================================================================
-cci = ta.cci(close, cci_period)
+cci = ta.cci(hlc3, cci_period)
 
 // ============================================================================
 // Signal Detection (matches research notebook logic)

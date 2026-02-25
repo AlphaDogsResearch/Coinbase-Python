@@ -24,10 +24,11 @@ class CCISignalStrategyConfig:
     cci_upper: float = 205.0
     cci_lower: float = -101.0
     cci_mid: float = 12.0
+    cci_source: str = "typical"
 
     # Signal Behavior
-    signal_mode: str = "momentum"   # mean_reversion | momentum
-    exit_mode: str = "midpoint"     # midpoint | breakout
+    signal_mode: str = "momentum"  # mean_reversion | momentum
+    exit_mode: str = "midpoint"  # midpoint | breakout
 
     # Position Management
     quantity: float = 1.0
@@ -68,6 +69,7 @@ class CCISignalStrategy(Strategy):
         self.cci_upper = config.cci_upper
         self.cci_lower = config.cci_lower
         self.cci_mid = config.cci_mid
+        self.cci_source = config.cci_source
 
         # Signal behavior
         self.signal_mode = config.signal_mode
@@ -99,7 +101,10 @@ class CCISignalStrategy(Strategy):
         self.allow_flip = config.allow_flip
 
         # Initialize CCI indicator
-        self.cci = CommodityChannelIndex(period=self.cci_period)
+        self.cci = CommodityChannelIndex(
+            period=self.cci_period,
+            source=self.cci_source,
+        )
 
         # State tracking
         self._previous_cci = 0.0
@@ -354,7 +359,7 @@ class CCISignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.LONG
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -395,7 +400,7 @@ class CCISignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.SHORT
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -436,7 +441,8 @@ class CCISignalStrategy(Strategy):
             self._position_side = (
                 PositionSide.LONG if signal == 1 else PositionSide.SHORT
             )
-            self._entry_bar = self._bars_processed
+            if self._entry_bar is None:
+                self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
@@ -469,9 +475,13 @@ class CCISignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}"
+                )
             else:
-                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
+                self.log.info(
+                    f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
+                )
             self._position_side = None
             self._entry_bar = None
             self._entry_price = None
@@ -540,6 +550,17 @@ class CCISignalStrategy(Strategy):
         if self._entry_bar is None:
             return 0
         return self._bars_processed - self._entry_bar
+
+    def _entry_bar_for_new_position(self) -> int:
+        order_manager = getattr(self, "_order_manager", None)
+        engine_config = getattr(order_manager, "config", None)
+        execution_timing = str(
+            getattr(engine_config, "execution_timing", "bar_close")
+        ).lower()
+
+        if execution_timing == "next_bar_open":
+            return self._bars_processed + 1
+        return self._bars_processed
 
     def _candle_close(self, candle: MidPriceCandle) -> float:
         return candle.close if candle.close is not None else 0.0

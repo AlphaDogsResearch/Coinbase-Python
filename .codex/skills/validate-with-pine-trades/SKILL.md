@@ -28,6 +28,8 @@ Triggers: validate runner, pine reference mismatch, parity, backtest discrepancy
 - The objective is parity: Pine and strategy Python must align.
 - When in doubt, go back to the research notebook and re-derive logic.
 - When in doubt, research notebook logic and calculations are the source of truth.
+- If Pine differs from research, align Pine to research first, then align Python to the corrected Pine behavior.
+- When Pine is changed for research parity, explicitly notify the user that a new Pine trade export is required in `engine/backtest/pine_reference_list_of_trades/`.
 - Do not guess indicator or signal semantics from comments.
 - Always map notebook logic to code line-by-line before changing behavior.
 - Always run and report **strict** validation first. Strict output is the pass/fail gate.
@@ -101,6 +103,16 @@ Implement fixes in this order:
 
 Do not stop after diagnosis. Apply fixes for discovered discrepancies and re-run validation to confirm improvement.
 
+If Pine logic is updated to match research, require a fresh Pine trade export and validate against the new CSV:
+
+```bash
+python -m engine.backtest.validate_runner \
+  --reference-file engine/backtest/pine_reference_list_of_trades/<NEW_PINE_EXPORT>.csv \
+  --execution-timing next_bar_open \
+  --reference-utc-offset-hours <OFFSET_IF_NEEDED> \
+  --strategy-config engine/backtest/configs/validate_pine_parity.json
+```
+
 ### 5) Re-Run Strict and Quantify Before/After
 
 Run strict. Use relaxed only if strict still fails and only to isolate cause.
@@ -139,6 +151,7 @@ Update `engine/backtest/README.md` with reproducible commands used for parity ru
 - At least one concrete discrepancy fix is applied when mismatch exists.
 - Every logic change cites the corresponding `research/` logic it was derived from.
 - Pine and strategy Python behavior are aligned or remaining gaps are explicitly narrowed with a concrete next fix.
+- If Pine was corrected to match research, user is explicitly told to regenerate/reference the new Pine trade CSV and the strict run uses that new file.
 - Before/after metrics are reported.
 - README includes runnable parity command examples.
 - Backtest runner still executes basic sanity run.

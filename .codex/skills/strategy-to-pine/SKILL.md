@@ -37,7 +37,7 @@ strategy("<Strategy Name>",
          default_qty_value=100,
          initial_capital=100000,
          commission_type=strategy.commission.percent,
-         commission_value=0.0005,
+         commission_value=0.05,
          pyramiding=0,
          calc_on_every_tick=false,
          process_orders_on_close=false)
@@ -49,7 +49,7 @@ Rules:
 - `overlay=true` for price-overlay strategies (Bollinger Bands, moving average crossovers, etc.) — bands/lines must align with candles on the main chart. Do NOT also plot `close` when overlay=true, as the candles are already there.
 - `default_qty_type=strategy.cash` with `default_qty_value=100`
 - `initial_capital=100000`
-- Commission is `0.0005` (0.05%) — matches `TradingCost` in research
+- Commission is `0.05` with `strategy.commission.percent` (represents 0.05%) — matches `TradingCost=0.0005` in Python
 - `pyramiding=0` — no stacking positions
 - `calc_on_every_tick=false`
 - `process_orders_on_close=false`
@@ -117,6 +117,8 @@ Use Pine's built-in `ta.*` functions where possible:
 
 Translate `_compute_signals()` from the Python strategy. The `[1]` operator in Pine is equivalent to `self._previous_value` in Python.
 
+If Python strategy uses cached previous threshold series (for example previous Bollinger bands), Pine must also reference threshold `[1]` values on the left side of crossover checks.
+
 **For band-crossover strategies** (RSI, MOM, ROC, CCI — strategies with upper/lower/mid thresholds):
 
 ```pine
@@ -140,6 +142,21 @@ mom_short_mid_exit = (<indicator>[1] < <mid>) and (<indicator> >= <mid>)
 
 long_exit_signal = exit_mode == "midpoint" and (signal_mode == "mean_reversion" ? mr_long_mid_exit : mom_long_mid_exit)
 short_exit_signal = exit_mode == "midpoint" and (signal_mode == "mean_reversion" ? mr_short_mid_exit : mom_short_mid_exit)
+```
+
+**For dynamic-threshold band strategies** (for example Bollinger Bands):
+
+```pine
+mr_long_signal = (close[1] < lower[1]) and (close >= lower)
+mr_short_signal = (close[1] > upper[1]) and (close <= upper)
+
+mom_long_signal = (close[1] < upper[1]) and (close >= upper)
+mom_short_signal = (close[1] > lower[1]) and (close <= lower)
+
+mr_long_mid_exit = (close[1] < middle[1]) and (close >= middle)
+mr_short_mid_exit = (close[1] > middle[1]) and (close <= middle)
+mom_long_mid_exit = (close[1] > middle[1]) and (close <= middle)
+mom_short_mid_exit = (close[1] < middle[1]) and (close >= middle)
 ```
 
 **For crossover strategies** (TEMA — strategies with two lines crossing):
@@ -363,11 +380,12 @@ Examples:
 ## Checklist Before Done
 
 - [ ] `//@version=6` at top
-- [ ] Strategy declaration matches standard (cash qty, 100000 capital, 0.0005 commission)
+- [ ] Strategy declaration matches standard (cash qty, 100000 capital, `commission_value=0.05` with percent mode)
 - [ ] All config parameters mapped to `input.*()` calls with correct types
 - [ ] Stop loss percent correctly converted from decimal to percentage display
 - [ ] Indicator calculation uses `ta.*` built-in where available
 - [ ] Signal detection logic matches Python `_compute_signals()` exactly
+- [ ] Dynamic-threshold strategies use threshold `[1]` references where Python uses previous-band snapshots
 - [ ] Position state tracking section present (var entry_bar, cooldown, etc.)
 - [ ] Entry logic handles cooldown (if applicable)
 - [ ] Exit priority order: SL → TP → Signal Exit → Flip → Max Hold

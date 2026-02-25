@@ -23,6 +23,7 @@ Before starting, read these files to understand the framework:
 6. `engine/strategies/strategy_action.py` — StrategyAction enum
 7. `engine/strategies/strategy_order_mode.py` — StrategyOrderMode
 8. `engine/database/models.py` — SignalContext and context builder functions
+9. Matching Pine script in `pine/` (if it already exists for this strategy)
 
 ## Step-by-Step Process
 
@@ -35,6 +36,8 @@ Read the entire research notebook and extract:
 - **Exit modes**: midpoint vs breakout
 - **Risk management**: stop_loss, take_profit, max_holding, cooldown, allow_flip
 - **Optimized parameter values** (look for Optuna results or final parameter cells)
+- **Timestamp semantics**: bar-close vs next-bar-open assumptions and timezone of exported results
+- **Sizing/cost assumptions**: notional amount and commission assumptions used for parity runs
 
 ### Step 2: Check/Create Indicator
 
@@ -156,7 +159,7 @@ class <Name>SignalStrategyConfig:
 
     # Position Management
     quantity: float = 1.0
-    notional_amount: float = 500.0
+    notional_amount: float = 100.0
     stop_loss_percent: float = <from_research>
     take_profit_percent: float = 0.05
     max_holding_bars: int = <from_research>
@@ -234,6 +237,25 @@ def _compute_signals(self, current_value: float):
 
     return long_entry_signal, short_entry_signal, long_exit_signal, short_exit_signal
 ```
+
+#### Dynamic-band crossover rule (non-negotiable)
+
+For strategies where thresholds are SERIES (for example Bollinger Bands), compare previous value to previous threshold, not current threshold.
+
+```python
+# WRONG for dynamic thresholds:
+# self._previous_close < upper and current_close >= upper
+
+# RIGHT:
+prev_upper = self._previous_upper
+prev_lower = self._previous_lower
+prev_mid = self._previous_middle
+
+mom_long_signal = self._previous_close < prev_upper and current_close >= upper
+mom_short_signal = self._previous_close > prev_lower and current_close <= lower
+```
+
+Store previous dynamic thresholds every bar and return no signal until previous snapshots exist.
 
 ### Step 6: Logging with [SIGNAL] Prefix
 
@@ -314,6 +336,30 @@ ok = self._order_manager.submit_market_close(
 )
 ```
 
+### Step 9: Execution Timing and Max-Holding Alignment
+
+If parity run uses `next_bar_open`, entry/exit fills occur on the next bar open. `max_holding` counters must reflect fill timing, not signal timing.
+
+Required implementation rule:
+
+```python
+def _entry_bar_for_new_position(self) -> int:
+    execution_timing = str(self._order_manager.config.execution_timing).lower()
+    return self._bars_processed + 1 if execution_timing == "next_bar_open" else self._bars_processed
+```
+
+When reversing (flip), preserve hold-age behavior consistent with Pine strategy state tracking (do not blindly reset hold counter on every reversal if Pine does not).
+
+### Step 10: Parity-Ready Handoff (When Pine Trades Are Not Available Yet)
+
+If Pine trade exports are not available yet, still make the strategy parity-ready by explicitly documenting:
+- expected execution timing (`bar_close` vs `next_bar_open`)
+- expected timezone for eventual Pine exports
+- expected sizing/cost defaults (`notional_amount`, commission)
+- any dynamic-threshold crossover assumptions (`[1]` semantics)
+
+Then hand off with a short "validation pending" note so parity checks can be run later without re-deriving logic.
+
 ## Checklist Before Done
 
 - [ ] Indicator exists in `engine/strategies/indicators.py` (create if missing)
@@ -321,11 +367,14 @@ ok = self._order_manager.submit_market_close(
 - [ ] Strategy file created at `engine/strategies/<name>_signal_strategy.py`
 - [ ] Config dataclass has all parameters from research (with optimized defaults)
 - [ ] Signal logic matches the research notebook's crossover conditions exactly
+- [ ] Dynamic-threshold crossovers use previous threshold snapshots (`[1]` semantics)
 - [ ] ALL log messages use `[SIGNAL]` prefix (no emoji)
 - [ ] Stop loss, take profit, max holding, cooldown, and flip logic implemented
+- [ ] `next_bar_open` fill timing is reflected in max-holding bar counting
 - [ ] `_compute_signals()` supports both mean_reversion and momentum modes
 - [ ] `_compute_signals()` supports both midpoint and breakout exit modes
 - [ ] Signal context builder called with all indicator values and config
+- [ ] Parity assumptions (timing/timezone/sizing/cost) are explicitly documented for later validation
 
 ## Example: Converting "ETHSignal MOM v4.ipynb"
 
