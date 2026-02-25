@@ -613,6 +613,90 @@ class CommodityChannelIndex(Indicator):
         self._initialized = False
 
 
+class BollingerBands(Indicator):
+    """
+    Bollinger Bands indicator.
+
+    Computes upper, middle, and lower bands using a configurable moving average type:
+      0 = SMA, 1 = EMA, 2 = DEMA, 3 = TEMA (default)
+
+    upper  = middle + nbdevup  * std_dev
+    middle = MA(close, period)
+    lower  = middle - nbdevdn  * std_dev
+    """
+
+    def __init__(
+        self,
+        period: int = 16,
+        nbdevup: float = 1.41,
+        nbdevdn: float = 2.15,
+        matype: int = 3,
+    ):
+        super().__init__([period, nbdevup, nbdevdn, matype])
+        self.period = period
+        self.nbdevup = nbdevup
+        self.nbdevdn = nbdevdn
+        self.matype = matype
+
+        if matype == 0:
+            self._ma = SimpleMovingAverage(period)
+        elif matype == 1:
+            self._ma = ExponentialMovingAverage(period)
+        elif matype == 2:
+            self._ma = DoubleExponentialMovingAverage(period)
+        else:  # matype == 3 (TEMA)
+            self._ma = TripleExponentialMovingAverage(period)
+
+        self._close_buffer: deque = deque()
+        self.upper = 0.0
+        self.middle = 0.0
+        self.lower = 0.0
+        self.value = 0.0  # alias for middle
+
+    def handle_bar(self, candle: MidPriceCandle) -> None:
+        close_price = candle.close if candle.close is not None else 0.0
+        self._close_buffer.append(close_price)
+
+        self._ma.handle_bar(candle)
+        if not self._ma.initialized:
+            self._initialized = False
+            self.upper = 0.0
+            self.middle = 0.0
+            self.lower = 0.0
+            self.value = 0.0
+            return
+
+        self.middle = self._ma.value
+        self.value = self.middle
+
+        # Standard deviation of the last `period` closes
+        buf_list = list(self._close_buffer)
+        recent = buf_list[-self.period:] if len(buf_list) >= self.period else buf_list
+        n = len(recent)
+        if n > 1:
+            mean = sum(recent) / n
+            variance = sum((x - mean) ** 2 for x in recent) / (n - 1)
+            std = variance ** 0.5
+        else:
+            std = 0.0
+
+        self.upper = self.middle + self.nbdevup * std
+        self.lower = self.middle - self.nbdevdn * std
+        self._initialized = True
+        logging.debug(
+            f"BollingerBands middle={self.middle:.4f} upper={self.upper:.4f} lower={self.lower:.4f}"
+        )
+
+    def reset(self) -> None:
+        self._ma.reset()
+        self._close_buffer.clear()
+        self.upper = 0.0
+        self.middle = 0.0
+        self.lower = 0.0
+        self.value = 0.0
+        self._initialized = False
+
+
 class Momentum(Indicator):
     """Momentum indicator: close - close[period]"""
 
