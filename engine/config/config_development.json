@@ -142,16 +142,6 @@
       "max_holding_bars": 20
     }
   },
-  "simple_order_test_strategy_config": {
-    "module": "engine.strategies.simple_order_test_strategy",
-    "class": "SimpleOrderTestStrategyConfig",
-    "params": {
-      "instrument_id": "@default_settings.selected_symbol",
-      "bar_type": "ETHUSDT-1h",
-      "bars_per_trade": 20,
-      "notional_amount": 500.0
-    }
-  },
   "rsi_strategy_config": {
     "module": "engine.strategies.rsi_signal_strategy",
     "class": "RSISignalStrategyConfig",
@@ -198,19 +188,154 @@
       "allow_flip": true
     }
   },
+  "bband_strategy_config": {
+    "module": "engine.strategies.bband_signal_strategy",
+    "class": "BBANDSignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "bband_period": 16,
+      "nbdevup": 1.41,
+      "nbdevdn": 2.15,
+      "matype": 3,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.12,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 61,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "cci_strategy_config": {
+    "module": "engine.strategies.cci_signal_strategy",
+    "class": "CCISignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "cci_period": 14,
+      "cci_upper": 205.0,
+      "cci_lower": -101.0,
+      "cci_mid": 12.0,
+      "signal_mode": "momentum",
+      "exit_mode": "midpoint",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.074,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 25,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "cmo_strategy_config": {
+    "module": "engine.strategies.cmo_signal_strategy",
+    "class": "CMOSignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "cmo_period": 24,
+      "cmo_upper": 39.0,
+      "cmo_lower": -33.0,
+      "cmo_mid": -10.0,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.04,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 10,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "ppo_strategy_config": {
+    "module": "engine.strategies.ppo_signal_strategy",
+    "class": "PPOSignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "ppo_fast_period": 38,
+      "ppo_slow_period": 205,
+      "matype": 3,
+      "ppo_upper": 1.4,
+      "ppo_lower": -0.8,
+      "ppo_mid": 0.0,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.104,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 93,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "ultosc_strategy_config": {
+    "module": "engine.strategies.ultosc_signal_strategy",
+    "class": "ULTOSCSignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "timeperiod1": 14,
+      "timeperiod2": 28,
+      "timeperiod3": 36,
+      "ultosc_upper": 60.0,
+      "ultosc_lower": 40.0,
+      "ultosc_mid": 50.0,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.03,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 100,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "trix_strategy_config": {
+    "module": "engine.strategies.trix_signal_strategy",
+    "class": "TRIXSignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "trix_period": 6,
+      "trix_upper": 0.0676,
+      "trix_lower": -0.0522,
+      "trix_mid": -0.0193,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.05,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 10,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
   "strategy_map": {
     "roc_mean_reversion_strategy": {
       "module": "engine.strategies.roc_mean_reversion_strategy",
       "class": "ROCMeanReversionStrategy",
       "params": {
         "config": "@roc_strategy_config"
-      }
-    },
-    "simple_order_test_strategy": {
-      "module": "engine.strategies.simple_order_test_strategy",
-      "class": "SimpleOrderTestStrategy",
-      "params": {
-        "config": "@simple_order_test_strategy_config"
       }
     },
     "rsi_signal_strategy": {
@@ -225,6 +350,48 @@
       "class": "MOMSignalStrategy",
       "params": {
         "config": "@mom_strategy_config"
+      }
+    },
+    "bband_signal_strategy": {
+      "module": "engine.strategies.bband_signal_strategy",
+      "class": "BBANDSignalStrategy",
+      "params": {
+        "config": "@bband_strategy_config"
+      }
+    },
+    "cci_signal_strategy": {
+      "module": "engine.strategies.cci_signal_strategy",
+      "class": "CCISignalStrategy",
+      "params": {
+        "config": "@cci_strategy_config"
+      }
+    },
+    "cmo_signal_strategy": {
+      "module": "engine.strategies.cmo_signal_strategy",
+      "class": "CMOSignalStrategy",
+      "params": {
+        "config": "@cmo_strategy_config"
+      }
+    },
+    "ppo_signal_strategy": {
+      "module": "engine.strategies.ppo_signal_strategy",
+      "class": "PPOSignalStrategy",
+      "params": {
+        "config": "@ppo_strategy_config"
+      }
+    },
+    "ultosc_signal_strategy": {
+      "module": "engine.strategies.ultosc_signal_strategy",
+      "class": "ULTOSCSignalStrategy",
+      "params": {
+        "config": "@ultosc_strategy_config"
+      }
+    },
+    "trix_signal_strategy": {
+      "module": "engine.strategies.trix_signal_strategy",
+      "class": "TRIXSignalStrategy",
+      "params": {
+        "config": "@trix_strategy_config"
       }
     }
   }
