@@ -51,12 +51,12 @@ prev_close = nz(close[1], close)
 bp = close - math.min(low, prev_close)
 tr = math.max(high, prev_close) - math.min(low, prev_close)
 
-bp1 = ta.sum(bp, timeperiod1)
-tr1 = ta.sum(tr, timeperiod1)
-bp2 = ta.sum(bp, timeperiod2)
-tr2 = ta.sum(tr, timeperiod2)
-bp3 = ta.sum(bp, timeperiod3)
-tr3 = ta.sum(tr, timeperiod3)
+bp1 = ta.sma(bp, timeperiod1) * timeperiod1
+tr1 = ta.sma(tr, timeperiod1) * timeperiod1
+bp2 = ta.sma(bp, timeperiod2) * timeperiod2
+tr2 = ta.sma(tr, timeperiod2) * timeperiod2
+bp3 = ta.sma(bp, timeperiod3) * timeperiod3
+tr3 = ta.sma(tr, timeperiod3) * timeperiod3
 
 avg1 = tr1 != 0 ? bp1 / tr1 : 0.0
 avg2 = tr2 != 0 ? bp2 / tr2 : 0.0
