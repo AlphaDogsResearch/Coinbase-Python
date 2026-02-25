@@ -469,6 +469,108 @@ def build_mom_signal_context(
     )
 
 
+def build_cmo_signal_context(
+    reason: str,
+    cmo: float,
+    prev_cmo: float,
+    cmo_upper: float,
+    cmo_lower: float,
+    cmo_mid: float,
+    signal_mode: str,
+    exit_mode: str,
+    cmo_period: int,
+    stop_loss_percent: float,
+    take_profit_percent: float,
+    max_holding_bars: int,
+    cooldown_bars: int,
+    notional_amount: float,
+    use_stop_loss: bool,
+    use_take_profit: bool,
+    use_max_holding: bool,
+    allow_flip: bool,
+    candle: Optional[Dict[str, float]] = None,
+    action: str = None,
+) -> SignalContext:
+    """Build SignalContext for CMO Signal strategy."""
+    return SignalContext(
+        reason=reason,
+        indicators={
+            "cmo": cmo,
+            "prev_cmo": prev_cmo,
+            "cmo_upper": cmo_upper,
+            "cmo_lower": cmo_lower,
+            "cmo_mid": cmo_mid,
+            "signal_mode": signal_mode,
+            "exit_mode": exit_mode,
+        },
+        config={
+            "cmo_period": cmo_period,
+            "stop_loss_percent": stop_loss_percent,
+            "take_profit_percent": take_profit_percent,
+            "max_holding_bars": max_holding_bars,
+            "cooldown_bars": cooldown_bars,
+            "notional_amount": notional_amount,
+            "use_stop_loss": use_stop_loss,
+            "use_take_profit": use_take_profit,
+            "use_max_holding": use_max_holding,
+            "allow_flip": allow_flip,
+        },
+        candle=candle,
+        action=action,
+    )
+
+
+def build_trix_signal_context(
+    reason: str,
+    trix: float,
+    prev_trix: float,
+    trix_upper: float,
+    trix_lower: float,
+    trix_mid: float,
+    signal_mode: str,
+    exit_mode: str,
+    trix_period: int,
+    stop_loss_percent: float,
+    take_profit_percent: float,
+    max_holding_bars: int,
+    cooldown_bars: int,
+    notional_amount: float,
+    use_stop_loss: bool,
+    use_take_profit: bool,
+    use_max_holding: bool,
+    allow_flip: bool,
+    candle: Optional[Dict[str, float]] = None,
+    action: str = None,
+) -> SignalContext:
+    """Build SignalContext for TRIX Signal strategy."""
+    return SignalContext(
+        reason=reason,
+        indicators={
+            "trix": trix,
+            "prev_trix": prev_trix,
+            "trix_upper": trix_upper,
+            "trix_lower": trix_lower,
+            "trix_mid": trix_mid,
+            "signal_mode": signal_mode,
+            "exit_mode": exit_mode,
+        },
+        config={
+            "trix_period": trix_period,
+            "stop_loss_percent": stop_loss_percent,
+            "take_profit_percent": take_profit_percent,
+            "max_holding_bars": max_holding_bars,
+            "cooldown_bars": cooldown_bars,
+            "notional_amount": notional_amount,
+            "use_stop_loss": use_stop_loss,
+            "use_take_profit": use_take_profit,
+            "use_max_holding": use_max_holding,
+            "allow_flip": allow_flip,
+        },
+        candle=candle,
+        action=action,
+    )
+
+
 def build_tema_signal_context(
     reason: str,
     tema_short: float,

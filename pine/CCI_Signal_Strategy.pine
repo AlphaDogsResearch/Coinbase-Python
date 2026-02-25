@@ -5,7 +5,7 @@ strategy("CCI Signal Strategy",
          default_qty_value=100,
          initial_capital=100000,
          commission_type=strategy.commission.percent,
-         commission_value=0.0005,
+         commission_value=0.05,
          pyramiding=0,
          calc_on_every_tick=false,
          process_orders_on_close=false)

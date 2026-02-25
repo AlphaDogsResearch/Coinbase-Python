@@ -1,0 +1,202 @@
+//@version=6
+strategy("CMO Signal Strategy",
+         overlay=false,
+         default_qty_type=strategy.cash,
+         default_qty_value=100,
+         initial_capital=100000,
+         commission_type=strategy.commission.percent,
+         commission_value=0.05,
+         pyramiding=0,
+         calc_on_every_tick=false,
+         process_orders_on_close=false)
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+// CMO Settings
+cmo_period = input.int(24, "CMO Period", minval=1)
+
+// CMO Thresholds
+cmo_upper = input.float(39.0, "CMO Upper Threshold")
+cmo_lower = input.float(-33.0, "CMO Lower Threshold")
+cmo_mid = input.float(-10.0, "CMO Midpoint")
+
+// Signal Behavior
+signal_mode = input.string("momentum", "Signal Mode", options=["mean_reversion", "momentum"])
+exit_mode = input.string("breakout", "Exit Mode", options=["midpoint", "breakout"])
+
+// Position Management
+stop_loss_percent = input.float(4.0, "Stop Loss %", minval=0, maxval=100)
+take_profit_percent = input.float(5.0, "Take Profit %", minval=0.1, maxval=50)
+max_holding_bars = input.int(10, "Max Holding Bars", minval=1)
+cooldown_bars = input.int(0, "Cooldown Bars", minval=0)
+
+// Risk Management
+use_stop_loss = input.bool(true, "Use Stop Loss")
+use_take_profit = input.bool(false, "Use Take Profit")
+use_max_holding = input.bool(true, "Use Max Holding")
+allow_flip = input.bool(true, "Allow Flip On Opposite Signal")
+
+// Display Options
+show_signals = input.bool(true, "Show Signal Markers")
+show_background = input.bool(true, "Show Background Colors")
+
+// ============================================================================
+// CMO Calculation
+// ============================================================================
+cmo = ta.cmo(close, cmo_period)
+
+// ============================================================================
+// Signal Detection (matches research notebook logic)
+// ============================================================================
+mr_long_signal = (cmo[1] < cmo_lower) and (cmo >= cmo_lower)
+mr_short_signal = (cmo[1] > cmo_upper) and (cmo <= cmo_upper)
+
+mom_long_signal = (cmo[1] < cmo_upper) and (cmo >= cmo_upper)
+mom_short_signal = (cmo[1] > cmo_lower) and (cmo <= cmo_lower)
+
+long_entry_signal = signal_mode == "mean_reversion" ? mr_long_signal : mom_long_signal
+short_entry_signal = signal_mode == "mean_reversion" ? mr_short_signal : mom_short_signal
+
+mr_long_mid_exit = (cmo[1] < cmo_mid) and (cmo >= cmo_mid)
+mr_short_mid_exit = (cmo[1] > cmo_mid) and (cmo <= cmo_mid)
+
+mom_long_mid_exit = (cmo[1] > cmo_mid) and (cmo <= cmo_mid)
+mom_short_mid_exit = (cmo[1] < cmo_mid) and (cmo >= cmo_mid)
+
+long_exit_signal = exit_mode == "midpoint" and (signal_mode == "mean_reversion" ? mr_long_mid_exit : mom_long_mid_exit)
+short_exit_signal = exit_mode == "midpoint" and (signal_mode == "mean_reversion" ? mr_short_mid_exit : mom_short_mid_exit)
+
+// ============================================================================
+// Position State Tracking
+// ============================================================================
+var int entry_bar = na
+var int cooldown_left = 0
+var int stopped_out_count = 0
+
+is_flat = strategy.position_size == 0
+is_long = strategy.position_size > 0
+is_short = strategy.position_size < 0
+
+entry_price = strategy.position_avg_price
+
+if cooldown_left > 0 and is_flat
+    cooldown_left := cooldown_left - 1
+
+if is_long or is_short
+    if na(entry_bar)
+        entry_bar := bar_index
+else
+    entry_bar := na
+
+bars_held = not na(entry_bar) ? bar_index - entry_bar : 0
+
+// ============================================================================
+// Entry Logic
+// ============================================================================
+if is_flat and cooldown_left == 0
+    if long_entry_signal
+        strategy.entry("Long", strategy.long, comment="Long Entry")
+    else if short_entry_signal
+        strategy.entry("Short", strategy.short, comment="Short Entry")
+
+// ============================================================================
+// Exit Logic - Long Position
+// ============================================================================
+if is_long and not na(entry_price)
+    long_stop = entry_price * (1 - stop_loss_percent / 100)
+    long_tp = entry_price * (1 + take_profit_percent / 100)
+
+    if use_stop_loss and low <= long_stop
+        strategy.close("Long", comment="SL")
+        stopped_out_count := stopped_out_count + 1
+        cooldown_left := cooldown_bars
+    else if use_take_profit and high >= long_tp
+        strategy.close("Long", comment="TP")
+        stopped_out_count := 0
+    else if long_exit_signal
+        strategy.close("Long", comment="Mid Exit")
+        stopped_out_count := 0
+    else if allow_flip and short_entry_signal
+        strategy.close("Long", comment="Flip")
+        if cooldown_left == 0
+            strategy.entry("Short", strategy.short, comment="Flip to Short")
+        stopped_out_count := 0
+    else if use_max_holding and bars_held >= max_holding_bars
+        strategy.close("Long", comment="Max Hold")
+
+// ============================================================================
+// Exit Logic - Short Position
+// ============================================================================
+if is_short and not na(entry_price)
+    short_stop = entry_price * (1 + stop_loss_percent / 100)
+    short_tp = entry_price * (1 - take_profit_percent / 100)
+
+    if use_stop_loss and high >= short_stop
+        strategy.close("Short", comment="SL")
+        stopped_out_count := stopped_out_count + 1
+        cooldown_left := cooldown_bars
+    else if use_take_profit and low <= short_tp
+        strategy.close("Short", comment="TP")
+        stopped_out_count := 0
+    else if short_exit_signal
+        strategy.close("Short", comment="Mid Exit")
+        stopped_out_count := 0
+    else if allow_flip and long_entry_signal
+        strategy.close("Short", comment="Flip")
+        if cooldown_left == 0
+            strategy.entry("Long", strategy.long, comment="Flip to Long")
+        stopped_out_count := 0
+    else if use_max_holding and bars_held >= max_holding_bars
+        strategy.close("Short", comment="Max Hold")
+
+// ============================================================================
+// Plot CMO and Thresholds
+// ============================================================================
+plot(cmo, "CMO", color=color.blue, linewidth=2)
+
+hline(cmo_upper, "CMO Upper", color=color.red, linestyle=hline.style_dashed)
+hline(cmo_lower, "CMO Lower", color=color.green, linestyle=hline.style_dashed)
+hline(cmo_mid, "CMO Midpoint", color=color.gray, linestyle=hline.style_dashed)
+
+plotshape(show_signals and long_entry_signal and is_flat ? cmo_lower : na,
+          "Long Entry", shape.triangleup, location.absolute, color=color.lime, size=size.tiny)
+plotshape(show_signals and short_entry_signal and is_flat ? cmo_upper : na,
+          "Short Entry", shape.triangledown, location.absolute, color=color.red, size=size.tiny)
+plotshape(show_signals and long_exit_signal and is_long ? cmo_mid : na,
+          "Long Exit", shape.circle, location.absolute, color=color.aqua, size=size.tiny)
+plotshape(show_signals and short_exit_signal and is_short ? cmo_mid : na,
+          "Short Exit", shape.circle, location.absolute, color=color.yellow, size=size.tiny)
+
+bgcolor(show_background and cmo < cmo_lower ? color.new(color.green, 95) : na, title="Oversold")
+bgcolor(show_background and cmo > cmo_upper ? color.new(color.red, 95) : na, title="Overbought")
+
+// ============================================================================
+// Info Table
+// ============================================================================
+var table info_table = table.new(position.top_right, 2, 8, bgcolor=color.new(color.gray, 80))
+if barstate.islast
+    pos_text = is_long ? "LONG" : is_short ? "SHORT" : "FLAT"
+    pos_color = is_long ? color.green : is_short ? color.red : color.gray
+
+    current_stop = is_long ? entry_price * (1 - stop_loss_percent / 100) :
+                   is_short ? entry_price * (1 + stop_loss_percent / 100) : na
+
+    table.cell(info_table, 0, 0, "Position", text_color=color.white)
+    table.cell(info_table, 1, 0, pos_text, text_color=pos_color)
+    table.cell(info_table, 0, 1, "Mode", text_color=color.white)
+    table.cell(info_table, 1, 1, signal_mode + "/" + exit_mode, text_color=color.white)
+    table.cell(info_table, 0, 2, "CMO", text_color=color.white)
+    table.cell(info_table, 1, 2, str.tostring(cmo, "#.##"), text_color=color.white)
+    table.cell(info_table, 0, 3, "Entry Price", text_color=color.white)
+    table.cell(info_table, 1, 3, not na(entry_price) ? str.tostring(entry_price, "#.##") : "-", text_color=color.white)
+    table.cell(info_table, 0, 4, "Stop Level", text_color=color.white)
+    table.cell(info_table, 1, 4, not na(current_stop) ? str.tostring(current_stop, "#.##") : "-", text_color=color.orange)
+    table.cell(info_table, 0, 5, "Bars Held", text_color=color.white)
+    table.cell(info_table, 1, 5, str.tostring(bars_held) + "/" + str.tostring(max_holding_bars),
+               text_color=use_max_holding and bars_held >= max_holding_bars ? color.red : color.white)
+    table.cell(info_table, 0, 6, "Cooldown", text_color=color.white)
+    table.cell(info_table, 1, 6, str.tostring(cooldown_left), text_color=cooldown_left > 0 ? color.orange : color.white)
+    table.cell(info_table, 0, 7, "Stop Count", text_color=color.white)
+    table.cell(info_table, 1, 7, str.tostring(stopped_out_count), text_color=color.white)

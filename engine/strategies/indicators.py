@@ -697,6 +697,102 @@ class BollingerBands(Indicator):
         self._initialized = False
 
 
+class ChandeMomentumOscillator(Indicator):
+    """
+    Chande Momentum Oscillator (CMO).
+
+    CMO = 100 * (sum_up - sum_down) / (sum_up + sum_down)
+    where sum_up = sum of gains over period, sum_down = sum of losses over period.
+    Range: -100 to +100.
+    """
+
+    def __init__(self, period: int = 14):
+        super().__init__([period])
+        self.period = period
+        self._prev_close = None
+        self._changes: deque = deque(maxlen=period)
+        self.value = 0.0
+
+    def handle_bar(self, candle: MidPriceCandle) -> None:
+        close_price = candle.close if candle.close is not None else 0.0
+
+        if self._prev_close is None:
+            self._prev_close = close_price
+            self._initialized = False
+            return
+
+        change = close_price - self._prev_close
+        self._changes.append(change)
+        self._prev_close = close_price
+
+        if len(self._changes) == self.period:
+            sum_up = sum(c for c in self._changes if c > 0)
+            sum_down = sum(-c for c in self._changes if c < 0)
+            total = sum_up + sum_down
+            if total != 0:
+                self.value = 100.0 * (sum_up - sum_down) / total
+            else:
+                self.value = 0.0
+            self._initialized = True
+            logging.debug(f"ChandeMomentumOscillator initialized {self.value}")
+        else:
+            self.value = 0.0
+            self._initialized = False
+
+    def reset(self) -> None:
+        self._prev_close = None
+        self._changes.clear()
+        self.value = 0.0
+        self._initialized = False
+
+
+class TRIX(Indicator):
+    """
+    TRIX indicator: 1-period percentage rate of change of a triple EMA.
+
+    TRIX = ((TEMA[t] - TEMA[t-1]) / TEMA[t-1]) * 100
+    Uses TripleExponentialMovingAverage internally.
+    """
+
+    def __init__(self, period: int = 14):
+        super().__init__([period])
+        self.period = period
+        self._tema = TripleExponentialMovingAverage(period)
+        self._prev_tema = None
+        self.value = 0.0
+
+    def handle_bar(self, candle: MidPriceCandle) -> None:
+        self._tema.handle_bar(candle)
+
+        if not self._tema.initialized:
+            self._initialized = False
+            self.value = 0.0
+            return
+
+        current_tema = self._tema.value
+
+        if self._prev_tema is None:
+            self._prev_tema = current_tema
+            self._initialized = False
+            self.value = 0.0
+            return
+
+        if self._prev_tema != 0.0:
+            self.value = ((current_tema - self._prev_tema) / self._prev_tema) * 100.0
+        else:
+            self.value = 0.0
+
+        self._prev_tema = current_tema
+        self._initialized = True
+        logging.debug(f"TRIX initialized {self.value}")
+
+    def reset(self) -> None:
+        self._tema.reset()
+        self._prev_tema = None
+        self.value = 0.0
+        self._initialized = False
+
+
 class Momentum(Indicator):
     """Momentum indicator: close - close[period]"""
 
