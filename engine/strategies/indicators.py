@@ -644,8 +644,9 @@ class BollingerBands(Indicator):
     """
     Bollinger Bands indicator.
 
-    Computes upper, middle, and lower bands using a configurable moving average type:
-      0 = SMA, 1 = EMA, 2 = DEMA, 3 = TEMA (default)
+    Computes upper, middle, and lower bands using a configurable moving average type.
+    MAType follows TA-Lib convention (ta_defs.h):
+      0 = SMA, 1 = EMA, 2 = WMA, 3 = DEMA (default for BBAND), 4 = TEMA
 
     upper  = middle + nbdevup  * std_dev
     middle = MA(close, period)
@@ -670,9 +671,14 @@ class BollingerBands(Indicator):
         elif matype == 1:
             self._ma = ExponentialMovingAverage(period)
         elif matype == 2:
-            self._ma = DoubleExponentialMovingAverage(period)
-        else:  # matype == 3 (TEMA)
+            self._ma = WeightedMovingAverage(period)
+        elif matype == 3:
+            # DEMA with SMA seed matches Pine ta.ema initialization
+            self._ma = DoubleExponentialMovingAverage(period, use_sma_seed=True)
+        elif matype == 4:
             self._ma = TripleExponentialMovingAverage(period)
+        else:
+            self._ma = DoubleExponentialMovingAverage(period, use_sma_seed=True)
 
         self._close_buffer: deque = deque()
         self.upper = 0.0

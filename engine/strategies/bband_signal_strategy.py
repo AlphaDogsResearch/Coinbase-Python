@@ -23,7 +23,7 @@ class BBANDSignalStrategyConfig:
     bband_period: int = 16
     nbdevup: float = 1.41
     nbdevdn: float = 2.15
-    matype: int = 3  # 0=SMA, 1=EMA, 2=DEMA, 3=TEMA
+    matype: int = 3  # TA-Lib: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA
 
     # Signal Behavior
     signal_mode: str = "momentum"  # mean_reversion | momentum

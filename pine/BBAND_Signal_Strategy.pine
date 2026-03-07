@@ -18,9 +18,8 @@ strategy("BBAND Signal Strategy",
 bband_period = input.int(16, "BBAND Period", minval=1)
 nbdevup = input.float(1.41, "Std Dev Up Multiplier", minval=0.1)
 nbdevdn = input.float(2.15, "Std Dev Down Multiplier", minval=0.1)
-// matype: 0=SMA, 1=EMA, 2=DEMA, 3=TEMA — Pine ta.bb() uses SMA for basis;
-// TEMA basis computed manually below when matype==3
-matype = input.int(3, "MA Type (0=SMA,1=EMA,2=DEMA,3=TEMA)", minval=0, maxval=3)
+// matype: 0=SMA, 1=EMA, 2=DEMA (Pine BBAND simplified; Python uses TA-Lib 3=DEMA)
+matype = input.int(2, "MA Type (0=SMA,1=EMA,2=DEMA)", minval=0, maxval=2)
 
 // Signal Behavior
 signal_mode = input.string("momentum", "Signal Mode", options=["mean_reversion", "momentum"])
@@ -48,15 +47,11 @@ show_background = input.bool(true, "Show Background Colors")
 // Compute middle band per selected matype
 ema1 = ta.ema(close, bband_period)
 ema2 = ta.ema(ema1, bband_period)
-ema3 = ta.ema(ema2, bband_period)
-tema_basis = 3 * (ema1 - ema2) + ema3
-
 dema_basis = 2 * ema1 - ema2
 
 middle = matype == 0 ? ta.sma(close, bband_period) :
          matype == 1 ? ema1 :
-         matype == 2 ? dema_basis :
-         tema_basis
+         dema_basis
 
 // Standard deviation of close over period (population std dev, matches Python implementation)
 std_dev = ta.stdev(close, bband_period)
