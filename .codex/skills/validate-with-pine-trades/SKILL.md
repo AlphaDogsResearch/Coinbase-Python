@@ -23,9 +23,19 @@ Use when the user asks to:
 
 Triggers: validate runner, pine reference mismatch, parity, backtest discrepancy, strategy vs pine mismatch
 
+## Clarifications Required
+
+- **Strategy identification**: Always ask the user which strategy to validate. Do not infer from filenames.
+- **Indicator vs strategy changes**: When fixing indicator math, ask the user whether the fix belongs in `indicators.py` or the strategy file.
+
 ## Non-Negotiables
 
+- Success = 100% trade match (entry/exit timing and side). PnL differences are acceptable if trade matching is exact.
+- If no research notebook exists for the target strategy, stop and notify the user that one is required before proceeding.
+- Infer UTC offset from the data (e.g., comparing timestamps) rather than asking the user.
 - The objective is parity: Pine and strategy Python must align.
+- If any Pine script logic is changed, a new TradingView trade CSV export is mandatory before accepting parity.
+- After Pine changes, do not validate against stale files in `engine/backtest/pine_reference_list_of_trades/`; replace them with a fresh export first.
 - When in doubt, go back to the research notebook and re-derive logic.
 - When in doubt, research notebook logic and calculations are the source of truth.
 - If Pine differs from research, align Pine to research first, then align Python to the corrected Pine behavior.
@@ -42,7 +52,7 @@ Triggers: validate runner, pine reference mismatch, parity, backtest discrepancy
 ## Prerequisites
 
 Read these first:
-1. Research notebook in `research/` for the target strategy
+1. Research notebook (`.ipynb`) in `research/` for the target strategy - contains authoritative indicator math and signal logic calculations
 2. Matching Pine script in `pine/`
 3. `engine/backtest/validate_runner.py`
 4. Strategy file in `engine/strategies/*_strategy.py`
@@ -145,6 +155,8 @@ Update `engine/backtest/README.md` with reproducible commands used for parity ru
 
 ## Acceptance Criteria
 
+- 100% trade match rate on strict validation (all trades matched by time and side).
+- PnL differences are tolerated as long as trade matching is exact.
 - Validation runs successfully on target Pine CSV.
 - Strict validation results are reported and treated as the authoritative parity result.
 - Discrepancy root causes are backed by code + artifact evidence.

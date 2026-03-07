@@ -72,6 +72,7 @@ short_exit_signal = exit_mode == "midpoint" and (signal_mode == "mean_reversion"
 // Position State Tracking
 // ============================================================================
 var int entry_bar = na
+var int pending_entry_bar = na
 var int cooldown_left = 0
 var int stopped_out_count = 0
 
@@ -84,11 +85,16 @@ entry_price = strategy.position_avg_price
 if cooldown_left > 0 and is_flat
     cooldown_left := cooldown_left - 1
 
-if is_long or is_short
-    if na(entry_bar)
-        entry_bar := bar_index
-else
+if is_flat
     entry_bar := na
+else if not na(pending_entry_bar)
+    // Bind hold counting to the expected next-bar-open fill bar.
+    entry_bar := pending_entry_bar
+    pending_entry_bar := na
+else if na(entry_bar) or ta.change(strategy.position_size) != 0
+    // Reset hold counting on every fresh fill, including flip fills,
+    // to match research max-holding semantics (run length by side).
+    entry_bar := bar_index
 
 bars_held = not na(entry_bar) ? bar_index - entry_bar : 0
 
@@ -97,8 +103,10 @@ bars_held = not na(entry_bar) ? bar_index - entry_bar : 0
 // ============================================================================
 if is_flat and cooldown_left == 0
     if long_entry_signal
+        pending_entry_bar := bar_index + 1
         strategy.entry("Long", strategy.long, comment="Long Entry")
     else if short_entry_signal
+        pending_entry_bar := bar_index + 1
         strategy.entry("Short", strategy.short, comment="Short Entry")
 
 // ============================================================================
@@ -121,9 +129,10 @@ if is_long and not na(entry_price)
     else if allow_flip and short_entry_signal
         strategy.close("Long", comment="Flip")
         if cooldown_left == 0
+            pending_entry_bar := bar_index + 1
             strategy.entry("Short", strategy.short, comment="Flip to Short")
         stopped_out_count := 0
-    else if use_max_holding and bars_held >= max_holding_bars
+    else if use_max_holding and bars_held > max_holding_bars
         strategy.close("Long", comment="Max Hold")
 
 // ============================================================================
@@ -146,9 +155,10 @@ if is_short and not na(entry_price)
     else if allow_flip and long_entry_signal
         strategy.close("Short", comment="Flip")
         if cooldown_left == 0
+            pending_entry_bar := bar_index + 1
             strategy.entry("Long", strategy.long, comment="Flip to Long")
         stopped_out_count := 0
-    else if use_max_holding and bars_held >= max_holding_bars
+    else if use_max_holding and bars_held > max_holding_bars
         strategy.close("Short", comment="Max Hold")
 
 // ============================================================================
@@ -195,7 +205,7 @@ if barstate.islast
     table.cell(info_table, 1, 4, not na(current_stop) ? str.tostring(current_stop, "#.##") : "-", text_color=color.orange)
     table.cell(info_table, 0, 5, "Bars Held", text_color=color.white)
     table.cell(info_table, 1, 5, str.tostring(bars_held) + "/" + str.tostring(max_holding_bars),
-               text_color=use_max_holding and bars_held >= max_holding_bars ? color.red : color.white)
+               text_color=use_max_holding and bars_held > max_holding_bars ? color.red : color.white)
     table.cell(info_table, 0, 6, "Cooldown", text_color=color.white)
     table.cell(info_table, 1, 6, str.tostring(cooldown_left), text_color=cooldown_left > 0 ? color.orange : color.white)
     table.cell(info_table, 0, 7, "Stop Count", text_color=color.white)

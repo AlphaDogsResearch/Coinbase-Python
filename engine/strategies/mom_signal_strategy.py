@@ -268,7 +268,7 @@ class MOMSignalStrategy(Strategy):
                 self._stopped_out_count = 0
             return
 
-        if self.use_max_holding and self._bars_held() >= self.max_holding_bars:
+        if self.use_max_holding and self._bars_held() > self.max_holding_bars:
             self._close_position(candle, "Max holding period reached")
 
     def _handle_short_position(
@@ -313,7 +313,7 @@ class MOMSignalStrategy(Strategy):
                 self._stopped_out_count = 0
             return
 
-        if self.use_max_holding and self._bars_held() >= self.max_holding_bars:
+        if self.use_max_holding and self._bars_held() > self.max_holding_bars:
             self._close_position(candle, "Max holding period reached")
 
     def _enter_long(
@@ -351,7 +351,7 @@ class MOMSignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.LONG
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -392,7 +392,7 @@ class MOMSignalStrategy(Strategy):
 
         if ok:
             self._position_side = PositionSide.SHORT
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
@@ -433,7 +433,7 @@ class MOMSignalStrategy(Strategy):
             self._position_side = (
                 PositionSide.LONG if signal == 1 else PositionSide.SHORT
             )
-            self._entry_bar = self._bars_processed
+            self._entry_bar = self._entry_bar_for_new_position()
             self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
@@ -541,6 +541,19 @@ class MOMSignalStrategy(Strategy):
         if self._entry_bar is None:
             return 0
         return self._bars_processed - self._entry_bar
+
+    def _entry_bar_for_new_position(self) -> int:
+        """
+        Pine parity for next-bar-open fills:
+        when orders execute on the next bar open, hold counting must start on
+        that fill bar (not the signal bar) to avoid one-bar-early max-hold exits.
+        """
+        order_manager = self._order_manager
+        config = getattr(order_manager, "config", None) if order_manager else None
+        execution_timing = str(getattr(config, "execution_timing", "")).lower()
+        if execution_timing == "next_bar_open":
+            return self._bars_processed + 2
+        return self._bars_processed
 
     def _candle_close(self, candle: MidPriceCandle) -> float:
         return candle.close if candle.close is not None else 0.0

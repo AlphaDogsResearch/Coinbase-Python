@@ -452,11 +452,10 @@ class SimulatedOrderManager:
         execution_price, execution_time, execution_bar_index = self._resolve_execution(
             price
         )
+        reason = self._extract_reason(tags=tags, signal_context=None, fallback="CLOSE")
         if execution_price <= 0:
             logging.error("Cannot close without valid price")
             return False
-
-        reason = self._extract_reason(tags=tags, signal_context=None, fallback="CLOSE")
         side_before = self._position_side_text()
         quantity = 0.0
         action_label = "CLOSE_NO_POSITION"

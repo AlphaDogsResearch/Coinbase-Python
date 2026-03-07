@@ -54,43 +54,57 @@ class SimpleMovingAverage(Indicator):
 
 
 class ExponentialMovingAverage(Indicator):
-    def __init__(self, period: int):
+    """EMA. use_sma_seed=True matches Pine ta.ema (SMA of first period values)."""
+
+    def __init__(self, period: int, use_sma_seed: bool = False):
         super().__init__([period])
         self.period = period
+        self.use_sma_seed = use_sma_seed
         self.alpha = 2.0 / (period + 1)
         self.value = 0.0
         self._initialized = False
         self._count = 0
+        self._sma_buffer: deque = deque(maxlen=period)
 
     def handle_bar(self, candle: MidPriceCandle) -> None:
-        if not self._initialized:
-            # First value is SMA or just the price
-            self._count += 1
-            close_price = candle.close if candle.close is not None else 0.0
-            if self._count == 1:
-                self.value = close_price
-            else:
-                # Simple initialization: just start EMA from first point,
-                # or wait for 'period' bars to be accurate.
-                # TA-Lib usually waits or uses SMA for first 'period' bars.
-                # Here we'll use standard EMA formula from the start but mark initialized after period
-                self.value = (close_price - self.value) * self.alpha + self.value
+        close_price = candle.close if candle.close is not None else 0.0
 
-            if self._count >= self.period:
+        if self.use_sma_seed:
+            self._sma_buffer.append(close_price)
+            if len(self._sma_buffer) < self.period:
+                self._initialized = False
+                self.value = 0.0
+                return
+            if len(self._sma_buffer) == self.period and not self._initialized:
+                self.value = sum(self._sma_buffer) / self.period
                 self._initialized = True
-                logging.debug(f"ExponentialMovingAverage initialized {self.value}")
+                self._count = self.period
+                logging.debug(f"ExponentialMovingAverage (SMA seed) initialized {self.value}")
+            else:
+                self.value = (close_price - self.value) * self.alpha + self.value
         else:
-            close_price = candle.close if candle.close is not None else 0.0
-            self.value = (close_price - self.value) * self.alpha + self.value
+            if not self._initialized:
+                self._count += 1
+                if self._count == 1:
+                    self.value = close_price
+                else:
+                    self.value = (close_price - self.value) * self.alpha + self.value
+
+                if self._count >= self.period:
+                    self._initialized = True
+                    logging.debug(f"ExponentialMovingAverage initialized {self.value}")
+            else:
+                self.value = (close_price - self.value) * self.alpha + self.value
 
     def reset(self) -> None:
         self.value = 0.0
         self._initialized = False
         self._count = 0
+        self._sma_buffer.clear()
 
     @property
     def has_inputs(self) -> bool:
-        return self._count > 0
+        return self._count > 0 or len(self._sma_buffer) > 0
 
 
 # Placeholder for WMA and DEMA if needed, or map to EMA for simplicity if acceptable
@@ -128,11 +142,11 @@ class WeightedMovingAverage(Indicator):
 
 
 class DoubleExponentialMovingAverage(Indicator):
-    def __init__(self, period: int):
+    def __init__(self, period: int, use_sma_seed: bool = False):
         super().__init__([period])
         self.period = period
-        self.ema1 = ExponentialMovingAverage(period)
-        self.ema2 = ExponentialMovingAverage(period)
+        self.ema1 = ExponentialMovingAverage(period, use_sma_seed=use_sma_seed)
+        self.ema2 = ExponentialMovingAverage(period, use_sma_seed=use_sma_seed)
         self.value = 0.0
 
     def handle_bar(self, candle: MidPriceCandle) -> None:
@@ -344,9 +358,10 @@ class PPO(Indicator):
                 WeightedMovingAverage(slow_period),
             )
         elif ma_type == 3:
+            # DEMA with SMA seed matches Pine ta.ema initialization
             self.fast_ma, self.slow_ma = (
-                DoubleExponentialMovingAverage(fast_period),
-                DoubleExponentialMovingAverage(slow_period),
+                DoubleExponentialMovingAverage(fast_period, use_sma_seed=True),
+                DoubleExponentialMovingAverage(slow_period, use_sma_seed=True),
             )
         else:
             self.fast_ma, self.slow_ma = (
@@ -888,11 +903,9 @@ class UltimateOscillator(Indicator):
         low = candle.low if candle.low != float("inf") else 0.0
         close = candle.close if candle.close is not None else 0.0
 
+        # Pine: prev_close = nz(close[1], close) — bar 0 uses close as prev_close
         if self._prev_close is None:
             self._prev_close = close
-            self.value = 0.0
-            self._initialized = False
-            return
 
         bp = close - min(low, self._prev_close)
         tr = max(high, self._prev_close) - min(low, self._prev_close)

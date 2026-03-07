@@ -432,8 +432,9 @@ class CMOSignalStrategy(Strategy):
             self._position_side = (
                 PositionSide.LONG if signal == 1 else PositionSide.SHORT
             )
-            if self._entry_bar is None:
-                self._entry_bar = self._entry_bar_for_new_position()
+            # Pine sets entry_bar := bar_index on the signal bar for flips.
+            # Use _bars_processed (signal bar) to match.
+            self._entry_bar = self._bars_processed
             self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(

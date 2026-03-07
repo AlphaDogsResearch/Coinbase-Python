@@ -58,6 +58,7 @@ class ValidationSummary:
     symbol: str
     interval: str
     execution_timing: str
+    reference_utc_offset_hours: float
     reference_start: str
     reference_end: str
     fetch_start: str
@@ -267,6 +268,27 @@ def _resolve_refs(value: Any, root: Dict[str, Any]) -> Any:
     if isinstance(value, list):
         return [_resolve_refs(v, root) for v in value]
     return value
+
+
+def _load_strategy_utc_offset_overrides(
+    config_path: Optional[str],
+) -> Dict[str, float]:
+    """Load per-strategy UTC offset overrides from config. Returns dict of normalized strategy_key -> offset hours."""
+    if not config_path:
+        return {}
+
+    path = Path(config_path)
+    if not path.exists():
+        return {}
+
+    with path.open("r", encoding="utf-8") as fh:
+        payload = json.load(fh)
+
+    raw = payload.get("reference_utc_offset_hours_by_strategy")
+    if not isinstance(raw, dict):
+        return {}
+
+    return {_normalize_name(k): float(v) for k, v in raw.items() if isinstance(v, (int, float))}
 
 
 def _load_strategy_param_overrides(
@@ -883,6 +905,7 @@ def _validate_one_file(
         symbol=symbol,
         interval=interval,
         execution_timing=execution_timing,
+        reference_utc_offset_hours=reference_utc_offset_hours,
         reference_start=ref_start.isoformat(sep=" "),
         reference_end=ref_end.isoformat(sep=" "),
         fetch_start=fetch_start_aware.isoformat(),
@@ -993,15 +1016,21 @@ def main() -> None:
 
     strategy_catalog = _discover_strategy_catalog()
     strategy_overrides = _load_strategy_param_overrides(args.strategy_config)
+    utc_offset_overrides = _load_strategy_utc_offset_overrides(args.strategy_config)
 
     summaries: List[ValidationSummary] = []
     for reference_path in reference_paths:
+        strategy = _resolve_strategy_for_reference(reference_path, strategy_catalog)
+        offset = utc_offset_overrides.get(
+            _normalize_name(strategy.strategy_key),
+            args.reference_utc_offset_hours,
+        )
         summary = _validate_one_file(
             reference_file=reference_path,
             interval=args.interval,
             warmup_bars=args.warmup_bars,
             execution_timing=args.execution_timing,
-            reference_utc_offset_hours=args.reference_utc_offset_hours,
+            reference_utc_offset_hours=offset,
             time_tolerance_minutes=args.time_tolerance_minutes,
             price_tolerance=args.price_tolerance,
             require_price_match=args.require_price_match,
@@ -1025,7 +1054,7 @@ def main() -> None:
         print(f"Strategy: {summary.strategy_key}")
         print(f"  Reference: {summary.reference_file}")
         print(f"  Date window: {summary.reference_start} -> {summary.reference_end}")
-        print(f"  Reference UTC offset hours: {args.reference_utc_offset_hours}")
+        print(f"  Reference UTC offset hours: {summary.reference_utc_offset_hours}")
         print(f"  Fetch window: {summary.fetch_start} -> {summary.fetch_end}")
         print(f"  Execution timing: {args.execution_timing}")
         print(

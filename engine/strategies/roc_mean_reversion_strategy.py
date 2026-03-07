@@ -249,7 +249,7 @@ class ROCMeanReversionStrategy(Strategy):
                 f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
             )
             self._position_side = PositionSide.LONG
-            self._position_entry_bar = self._bars_processed
+            self._position_entry_bar = self._entry_bar_for_new_position()
         else:
             self.log.error("Failed to submit long entry order")
 
@@ -309,7 +309,7 @@ class ROCMeanReversionStrategy(Strategy):
                 f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
             )
             self._position_side = PositionSide.SHORT
-            self._position_entry_bar = self._bars_processed
+            self._position_entry_bar = self._entry_bar_for_new_position()
         else:
             self.log.error("Failed to submit short entry order")
 
@@ -349,27 +349,49 @@ class ROCMeanReversionStrategy(Strategy):
         else:
             self.log.error("Failed to submit close order")
 
+    def _candle_low(self, candle: MidPriceCandle) -> float:
+        if candle.low == float("inf"):
+            return candle.close if candle.close is not None else 0.0
+        return candle.low
+
+    def _candle_high(self, candle: MidPriceCandle) -> float:
+        if candle.high == float("-inf"):
+            return candle.close if candle.close is not None else 0.0
+        return candle.high
+
+    def _entry_bar_for_new_position(self) -> int:
+        order_manager = getattr(self, "_order_manager", None)
+        engine_config = getattr(order_manager, "config", None)
+        execution_timing = str(
+            getattr(engine_config, "execution_timing", "bar_close")
+        ).lower()
+        if execution_timing == "next_bar_open":
+            return self._bars_processed + 1
+        return self._bars_processed
+
     def _check_stop_loss(self, candle: MidPriceCandle) -> None:
-        """Check if stop loss should be triggered at current bar price."""
+        """Check if stop loss should be triggered at current bar price (intrabar low/high)."""
         if self._stop_loss_price is None or self.cache.is_flat(self.instrument_id):
             return
 
+        low_price = self._candle_low(candle)
+        high_price = self._candle_high(candle)
         close_price = candle.close if candle.close is not None else 0.0
         if close_price == 0.0:
             return
 
-        # Check stop loss for long position
+        # Check stop loss for long position (Pine uses low <= long_stop)
         if (
             self._position_side == PositionSide.LONG
-            and close_price <= self._stop_loss_price
+            and low_price <= self._stop_loss_price
         ):
-            self._close_position(candle, f"Stop loss triggered at {close_price:.4f}")
+            self._close_position(candle, f"Stop loss triggered at {low_price:.4f}")
             self._position_side = None
 
-        # Check stop loss for short position
+        # Check stop loss for short position (Pine uses high >= short_stop)
         elif (
             self._position_side == PositionSide.SHORT
-            and close_price >= self._stop_loss_price
+            and high_price >= self._stop_loss_price
         ):
-            self._close_position(candle, f"Stop loss triggered at {close_price:.4f}")
+            self._close_position(candle, f"Stop loss triggered at {high_price:.4f}")
             self._position_side = None
