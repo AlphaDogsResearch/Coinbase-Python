@@ -74,11 +74,13 @@ Strict parity gate (CMO ETHUSDT reference exported in UTC):
 
 ```bash
 python -m engine.backtest.validate_runner \
-  --reference-file engine/backtest/pine_reference_list_of_trades/CMO_Signal_Strategy_BINANCE_ETHUSDT.P_2026-03-07.csv \
+  --reference-file engine/backtest/pine_reference_list_of_trades/CMO_Signal_Strategy_BINANCE_ETHUSDT.P_2026-03-08.csv \
   --execution-timing next_bar_open \
   --strategy-config engine/backtest/configs/validate_pine_parity.json \
   --output-dir reports/validation
 ```
+
+**CMO re-export required:** Pine was updated to use TA-Lib-style CMO (Wilder smoothing) to align with research. If you changed the Pine script, export a fresh trade CSV from TradingView and replace the file in `engine/backtest/pine_reference_list_of_trades/` before validating.
 
 Strict parity gate (CCI ETHUSDT reference exported in UTC+8):
 

@@ -6,7 +6,10 @@ from engine.database.models import build_cmo_signal_context
 
 from ..market_data.candle import MidPriceCandle
 from .base import Strategy
-from .indicators import ChandeMomentumOscillator
+from .indicators import (
+    ChandeMomentumOscillator,
+    ChandeMomentumOscillatorWilder,
+)
 from .models import Instrument, PositionSide
 from .strategy_action import StrategyAction
 from .strategy_order_mode import StrategyOrderMode
@@ -24,6 +27,9 @@ class CMOSignalStrategyConfig:
     cmo_upper: float = 39.0
     cmo_lower: float = -33.0
     cmo_mid: float = -10.0
+
+    # CMO style: "talib" = Wilder smoothing (research/TA-Lib), "chande" = simple sum (legacy)
+    cmo_style: str = "talib"
 
     # Signal Behavior
     signal_mode: str = "momentum"  # mean_reversion | momentum
@@ -66,6 +72,12 @@ class CMOSignalStrategy(Strategy):
         self.cmo_upper = config.cmo_upper
         self.cmo_lower = config.cmo_lower
         self.cmo_mid = config.cmo_mid
+        self.cmo_style = config.cmo_style
+        if self.cmo_style not in ("chande", "talib"):
+            logging.warning(
+                f"Invalid cmo_style={self.cmo_style}, defaulting to talib"
+            )
+            self.cmo_style = "talib"
 
         # Signal behavior
         self.signal_mode = config.signal_mode
@@ -97,7 +109,10 @@ class CMOSignalStrategy(Strategy):
         self.allow_flip = config.allow_flip
 
         # Initialize CMO indicator
-        self.cmo = ChandeMomentumOscillator(period=self.cmo_period)
+        if self.cmo_style == "talib":
+            self.cmo = ChandeMomentumOscillatorWilder(period=self.cmo_period)
+        else:
+            self.cmo = ChandeMomentumOscillator(period=self.cmo_period)
 
         # State tracking
         self._previous_cmo = 0.0
@@ -499,6 +514,7 @@ class CMOSignalStrategy(Strategy):
             signal_mode=self.signal_mode,
             exit_mode=self.exit_mode,
             cmo_period=self.cmo_period,
+            cmo_style=self.cmo_style,
             stop_loss_percent=self.stop_loss_percent,
             take_profit_percent=self.take_profit_percent,
             max_holding_bars=self.max_holding_bars,

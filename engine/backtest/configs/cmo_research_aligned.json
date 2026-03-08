@@ -1,0 +1,27 @@
+{
+  "_comment": "CMO config aligned to research/ETHSignal CMO v4.ipynb. Uses TA-Lib style CMO (Wilder smoothing) and research default params.",
+  "cmo_strategy_config": {
+    "module": "engine.strategies.cmo_signal_strategy",
+    "class": "CMOSignalStrategyConfig",
+    "params": {
+      "instrument_id": "ETHUSDT",
+      "bar_type": "ETHUSDT-1h",
+      "cmo_period": 14,
+      "cmo_upper": 30.0,
+      "cmo_lower": -30.0,
+      "cmo_mid": 0.0,
+      "cmo_style": "talib",
+      "signal_mode": "mean_reversion",
+      "exit_mode": "breakout",
+      "notional_amount": 100.0,
+      "stop_loss_percent": 0.04,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 10,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  }
+}

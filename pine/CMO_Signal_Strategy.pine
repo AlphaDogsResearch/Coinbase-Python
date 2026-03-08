@@ -43,9 +43,15 @@ show_signals = input.bool(true, "Show Signal Markers")
 show_background = input.bool(true, "Show Background Colors")
 
 // ============================================================================
-// CMO Calculation
+// CMO Calculation (TA-Lib style: Wilder's smoothing, matches research ta.CMO)
 // ============================================================================
-cmo = ta.cmo(close, cmo_period)
+change = close - nz(close[1], close)
+gain = math.max(change, 0.0)
+loss = math.max(-change, 0.0)
+avg_gain = ta.rma(gain, cmo_period)
+avg_loss = ta.rma(loss, cmo_period)
+total = avg_gain + avg_loss
+cmo = total != 0.0 ? 100.0 * (avg_gain - avg_loss) / total : 0.0
 
 // ============================================================================
 // Signal Detection (matches research notebook logic)
