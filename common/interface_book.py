@@ -1,4 +1,5 @@
 # A price tier in the order book
+from common.decimal_utils import add_numbers, divide_numbers, subtract_numbers
 from common.seriallization import Serializable, SerializableRegistry
 
 
@@ -31,10 +32,10 @@ class OrderBook(Serializable):
         return string
 
     def get_best_mid(self):
-        return (self.bids[0].price + self.asks[0].price) / 2
+        return divide_numbers(add_numbers(self.bids[0].price + self.asks[0].price), 2)
 
     def get_spread(self):
-        return self.asks[0].price - self.bids[0].price
+        return subtract_numbers(self.asks[0].price, self.bids[0].price)
 
     def get_best_bid(self):
         return self.bids[0].price

@@ -302,10 +302,10 @@ class ROCMeanReversionStrategy(Strategy):
 
         # Check stop loss for long position
         if self._position_side == PositionSide.LONG and close_price <= self._stop_loss_price:
-            self._close_position(candle, f"Stop loss triggered at {close_price:.4f}")
+            self._close_position(candle, f"Close Long Position, Stop loss triggered at {close_price:.4f}")
             self._position_side = None
 
         # Check stop loss for short position
         elif self._position_side == PositionSide.SHORT and close_price >= self._stop_loss_price:
-            self._close_position(candle, f"Stop loss triggered at {close_price:.4f}")
+            self._close_position(candle, f"Close Short Position, Stop loss triggered at {close_price:.4f}")
             self._position_side = None

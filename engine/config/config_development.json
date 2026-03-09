@@ -14,7 +14,9 @@
             "remote_market_data_connection_name": "Remote Market Data Connection",
             "remote_order_connection_port": 8081,
             "remote_order_connection_name": "Remote Order Connection",
-            "database_path": "trading.db"
+            "database_path": "trading.db",
+            "endpoint_host": "0.0.0.0",
+            "endpoint_port": 8888
         }
     },
     "database_manager": {
@@ -72,6 +74,18 @@
             "reference_price_manager": "@reference_price_manager",
             "database_manager": "@database_manager"
         }
+    },
+    "websocket": {
+      "module": "common.subscription.external_transport.websocket",
+      "class": "MultiChannelWebSocket",
+      "params": {
+        "host": "@default_settings.endpoint_host",
+        "port": "@default_settings.endpoint_port"
+      }
+    },
+    "message_event_bus": {
+      "module": "common.subscription.messaging.event_bus.event_bus",
+      "class": "EventBus"
     },
     "account": {
         "module": "engine.account.account",

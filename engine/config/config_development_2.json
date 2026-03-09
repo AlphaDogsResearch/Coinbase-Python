@@ -14,7 +14,9 @@
             "remote_market_data_connection_name": "Remote Market Data Connection",
             "remote_order_connection_port": 8081,
             "remote_order_connection_name": "Remote Order Connection",
-            "database_path": "trading.db"
+            "database_path": "trading.db",
+            "endpoint_host": "0.0.0.0",
+            "endpoint_port": 8888
         }
     },
     "database_manager": {
@@ -72,6 +74,18 @@
             "reference_price_manager": "@reference_price_manager",
             "database_manager": "@database_manager"
         }
+    },
+      "websocket": {
+        "module": "common.subscription.external_transport.websocket",
+        "class": "MultiChannelWebSocket",
+      "params": {
+            "host": "@default_settings.endpoint_host",
+            "port": "@default_settings.endpoint_port"
+      }
+    },
+    "message_event_bus": {
+        "module": "common.subscription.messaging.event_bus.event_bus",
+        "class": "EventBus"
     },
     "account": {
         "module": "engine.account.account",
@@ -133,8 +147,8 @@
         "class": "ROCMeanReversionStrategyConfig",
         "params": {
             "instrument_id": "@default_settings.selected_symbol",
-            "bar_type": "ETHUSDT-1s",
-            "roc_period": 2,
+            "bar_type": "ETHUSDT-10s",
+            "roc_period": 10,
             "roc_upper": 0.01,
             "roc_lower": -0.01,
             "roc_mid": 0,
@@ -154,11 +168,11 @@
         }
     },
     "strategy_map": {
-        "roc_mean_reversion_strategy": {
-            "module": "engine.strategies.roc_mean_reversion_strategy",
-            "class": "ROCMeanReversionStrategy",
+        "simple_order_test_strategy": {
+            "module": "engine.strategies.simple_order_test_strategy",
+            "class": "SimpleOrderTestStrategy",
             "params": {
-                "config": "@roc_strategy_config"
+                "config": "@simple_order_test_strategy_config"
             }
         }
     }

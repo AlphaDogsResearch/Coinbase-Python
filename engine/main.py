@@ -8,6 +8,16 @@ import signal
 import uuid
 from pathlib import Path
 
+from param.ipython import message
+
+from common.subscription.external_transport.websocket import MultiChannelWebSocket
+from common.subscription.messaging.event_bus.event_bus import EventBus
+from common.subscription.external_transport.event_driven_producer import EventDrivenProducer
+from common.subscription.external_transport.sse_event_emitter import MultiChannelSSE
+from engine.external.channel import Channel
+from engine.external.external_publisher import ExternalPublisher
+from engine.external.message_model.json_data_model import JsonDataModel
+
 # Add project root to Python path
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()
 if str(PROJECT_ROOT) not in sys.path:
@@ -152,6 +162,14 @@ def main():
     account.add_wallet_balance_listener(sharpe_calculator.init_capital)
     account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
 
+    websocket = components["websocket"]
+    message_event_bus = components["message_event_bus"]
+
+    publisher = ExternalPublisher(message_event_bus,websocket)
+    publisher.register_publish_interval(key=Channel.ACCOUNT.value, data=account.account_state,formatter=JsonDataModel())
+
+    if isinstance(websocket, MultiChannelWebSocket):
+        websocket.run()
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)

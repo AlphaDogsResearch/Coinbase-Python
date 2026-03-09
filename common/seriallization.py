@@ -4,6 +4,7 @@ from enum import Enum
 from typing import Type, Dict, Any
 # Add sys import if not already present
 import sys
+import json
 
 class Serializable:
     """Base class for objects that can serialize/deserialize themselves to/from dict."""
@@ -99,13 +100,12 @@ class Serializable:
 
     def to_json(self, indent: int = 2) -> str:
         """Convert directly to JSON string."""
-        import json
         return json.dumps(self.to_dict(), indent=indent)
 
     @classmethod
     def from_json(cls, json_str: str):
         """Create object from JSON string."""
-        import json
+
         data = json.loads(json_str)
         return cls.from_dict(data)
 

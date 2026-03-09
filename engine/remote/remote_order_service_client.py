@@ -54,6 +54,8 @@ class RemoteOrderClient:
         business_message_handler = EventHandlerImpl(self.name,self.on_event, *MESSAGE_TYPES)
         # Register handlers
         self.remote_order_client.register_handler(b"*", business_message_handler)  # wildcard for all other messages
+        self.is_remote_connected=False
+        self.remote_order_client.register_on_connected(self.update_remote_connection_status)
 
         self.margin_manager = margin_manager
         self.position_manager = position_manager
@@ -81,12 +83,21 @@ class RemoteOrderClient:
         self._sender_thread = threading.Thread(target=self._send_orders_loop, daemon=True)
         self._sender_thread.start()
 
+
+    def update_remote_connection_status(self,is_connected: bool):
+        self.is_remote_connected = is_connected
+        logging.info(f"Remote Order Client Connection Status {self.is_remote_connected}")
+
+
+
     def init_request(self):
-        # try for 10 times
-        count  = 0
-        while count < 100:
+        while not self.is_remote_connected:
+            logging.info("Remote Order Client Connection Not Connected Yet...")
+            logging.info("Waiting For 5 seconds for Remote Order Client...")
+            time.sleep(5)
+
+        if self.is_remote_connected:
             try:
-                count +=1
                 time.sleep(1)
                 # request for account
                 self.request_for_account()
@@ -95,12 +106,11 @@ class RemoteOrderClient:
                 # request for reference data
                 self.request_for_reference_data()
                 # request for trades
-                # self.request_for_trades()
+                self.request_for_trades()
                 # request for commission rate
                 self.request_for_commission_rate()
                 # request for position
                 self.request_for_position()
-                break
             except Exception as e:
                 logging.error(f"Error occurred,unable to send request: {e}")
 

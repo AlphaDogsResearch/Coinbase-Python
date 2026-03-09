@@ -241,7 +241,7 @@ class PositionManager:
                     "entry_price": position.entry_price,
                     "mark_price": self.mark_price_dict.get(symbol, 0),
                     "unrealized_pnl": position.unrealised_pnl,
-                    "realized_pnl": position.net_realized_pnl,
+                    "realized_pnl": position.net_cumulative_realized_pnl,
                     "total_commission": position.total_trading_cost,
                 })
             except Exception as e:

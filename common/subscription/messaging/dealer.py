@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Type
+from typing import Type, Callable, List
 
 import zmq
 import time
@@ -41,15 +41,15 @@ class DealerClient:
 
         # user-defined message handlers
         self.handlers : dict[bytes, EventHandler] = {}
-        self.connection_handler = []
+        self.connection_handler : List[Callable[[bool], None]] = []
 
         self.connect()
         self.bg_thread = threading.Thread(target=self._run, daemon=True)
         self.bg_thread.start()
 
 
-    def register_on_connected(self,callback):
-        self.connection_handler.append(callback)
+    def register_on_connected(self, listener: Callable[[bool], None]):
+        self.connection_handler.append(listener)
 
     def change_connection_state(self,connection_state :bool):
         if self.connected!= connection_state:

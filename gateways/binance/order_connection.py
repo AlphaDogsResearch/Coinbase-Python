@@ -9,7 +9,7 @@ from common.seriallization import Serializable
 from common.subscription.messaging.gateway_server_handler import EventHandlerImpl
 from common.subscription.messaging.router import RouterServer
 from gateways.gateway_interface import GatewayInterface
-
+import pandas as pd
 
 def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
     symbol = order.symbol
@@ -254,3 +254,27 @@ class OrderConnection:
 
         trade_response= trades_request.handle(symbol,all_trades)
         self.order_event_server.send(ident, trade_response)
+
+        try:
+            rows = []
+
+            if trades:
+                for t in trades:
+                    rows.append({
+                        "time_epoch": t["time"],
+                        "time": (pd.to_datetime(t["time"], unit="ms", utc=True).tz_convert("Asia/Singapore")),
+                        "symbol": t["symbol"],
+                        "price": float(t["price"]),
+                        "qty": float(t["qty"]),
+                        "side": t["side"].upper(),
+                        "realized_pnl": float(t["realizedPnl"]),
+                        "order_id": t["orderId"],
+                    })
+
+            df = pd.DataFrame(rows)
+            df.to_csv("trades.csv", index=False)
+            logging.info("Trades Received save to trades.csv...")
+        except Exception as e:
+            logging.exception("Exception while handling trades...",e)
+
+

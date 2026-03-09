@@ -1,37 +1,28 @@
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import Callable, List
 
 from common.interface_req_res import AccountResponse
+from common.subscription.messaging.event_bus.event_bus import EventBus
+from engine.account.account_state import AccountState
 
 
 class Account:
     def __init__(self, margin_limit: float):
         self.name = "Account"
-        self.maint_margin = 0.0
-        self.unrealised_pnl = 0.0
-        self.wallet_balance = 0.0
-        self.margin_balance = 0.0
+        self.account_state = AccountState()
+        self.account_state.margin_limit = margin_limit  # ratio of margin limit
         self.initalised = False
-        self.margin_limit = margin_limit  # ratio of margin limit
         self.wallet_balance_listener: List[Callable[[float], None]] = []
         self.margin_ratio_listener: List[Callable[[float], None]] = []
         self.margin_warning_listeners: List[Callable[[str], None]] = []
 
-        self.executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="ACCOUNT")
-
-        self.start_checking()
-
     def init_account(self, account_response: AccountResponse):
-        self.wallet_balance = float(account_response.wallet_balance)
-        self.margin_balance = float(account_response.margin_balance)
-        self.unrealised_pnl = float(account_response.unrealised_pnl)
-        self.maint_margin = float(account_response.maint_margin)
-        self.on_wallet_balance_update(self.wallet_balance)
+        self.account_state.wallet_balance = float(account_response.wallet_balance)
+        self.account_state.margin_balance = float(account_response.margin_balance)
+        self.account_state.unrealised_pnl = float(account_response.unrealised_pnl)
+        self.account_state.maint_margin = float(account_response.maint_margin)
+        self.on_wallet_balance_update(self.account_state.wallet_balance)
         self.initalised = True
-
-    def start_checking(self):
-        self.executor.submit(self.check_margin)
 
     def add_wallet_balance_listener(self, callback: Callable[[float], None]):
         """Register a callback to receive wallet balance updates"""
@@ -56,34 +47,37 @@ class Account:
                 logging.error(self.name + " Listener raised an exception: %s", e)
 
     def update_wallet_with_realized_pnl(self, realized_pnl: float):
-        self.wallet_balance += realized_pnl
-        self.on_wallet_balance_update(self.wallet_balance)
+        self.account_state.wallet_balance += realized_pnl
+        self.account_state.realized_pnl += realized_pnl
+        self.on_wallet_balance_update(self.account_state.wallet_balance)
         self.update_margin_balance()
 
     def update_margin_balance(self):
-        self.margin_balance = self.wallet_balance + self.unrealised_pnl
-        logging.debug("Updating Margin balance to %s", self.margin_balance)
+        self.account_state.margin_balance = self.account_state.wallet_balance + self.account_state.unrealised_pnl
+        logging.debug("Updating Margin balance to %s", self.account_state.margin_balance)
 
     def update_maint_margin(self, new_maint_margin: float):
-        self.maint_margin = new_maint_margin
-        logging.debug("Updating Maint Margin to %s", self.maint_margin)
+        self.account_state.maint_margin = new_maint_margin
+        logging.debug("Updating Maint Margin to %s", self.account_state.maint_margin)
+        self.is_within_margin_limit(self.account_state.margin_limit)
 
     def on_maint_margin_update(self, new_maint_margin: float):
-        if self.maint_margin != new_maint_margin:
+        if self.account_state.maint_margin != new_maint_margin:
             self.update_maint_margin(new_maint_margin)
 
     def on_unrealised_pnl_update(self, new_unrealised_pnl: float):
-        if self.unrealised_pnl != new_unrealised_pnl:
-            self.unrealised_pnl = self.unrealised_pnl
+        if self.account_state.unrealised_pnl != new_unrealised_pnl:
+            self.account_state.unrealised_pnl = new_unrealised_pnl
             self.update_margin_balance()
+            self.is_within_margin_limit(self.account_state.margin_limit)
 
     def get_margin_ratio(self):
         try:
-            if self.margin_balance == 0:
+            if self.account_state.margin_balance == 0:
                 logging.error("⚠️  Margin balance is zero. Check account funding.")
                 return None
 
-            margin_ratio = self.maint_margin / self.margin_balance
+            margin_ratio = self.account_state.maint_margin / self.account_state.margin_balance
             # logging.debug(f"🧾 Margin Ratio: {margin_ratio:.4f} | Maint Margin: {self.maint_margin} | Margin Balance: {self.margin_balance}")
             return margin_ratio
 
@@ -93,6 +87,7 @@ class Account:
 
     def is_within_margin_limit(self, margin_limit: float) -> int:
         margin_ratio = self.get_margin_ratio()
+        self.account_state.margin_ratio = margin_ratio
         self.on_margin_ratio_update(margin_ratio)
         if margin_ratio is None:
             logging.error("Unable to get margin ratio")
@@ -102,7 +97,7 @@ class Account:
             logging.error("Margin Ratio breached")
             message = (
                 f"❗ Margin Ratio breached: {margin_ratio:.4f} | "
-                f"Maint Margin: {self.maint_margin} | Margin Balance: {self.margin_balance}"
+                f"Maint Margin: {self.account_state.maint_margin} | Margin Balance: {self.account_state.margin_balance}"
             )
             self._notify_margin_warning(message)
             return 2
@@ -126,8 +121,3 @@ class Account:
                 listener(margin_ratio)
             except Exception as e:
                 logging.error(self.name + " Listener raised an exception: %s", e)
-
-    def check_margin(self):
-        while True:
-            while self.initalised:
-                self.is_within_margin_limit(self.margin_limit)

@@ -92,7 +92,7 @@ def test_server_client():
 
     # Run server in thread
     def run_server():
-        server.run()
+        server.publish_account_state()
 
     server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
@@ -110,7 +110,7 @@ def test_server_client():
 
     # Run client in thread
     def run_client():
-        client.run()
+        client.publish_account_state()
 
     client_thread = threading.Thread(target=run_client, daemon=True)
     client_thread.start()

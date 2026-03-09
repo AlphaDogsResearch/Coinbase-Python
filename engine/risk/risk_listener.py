@@ -2,7 +2,7 @@
 
 This module defines a thin pub/sub layer to decouple the risk engine,
 strategy, and market data gateway. It uses the existing pub/sub utilities
-in `common.subscription.pubusb` to publish and subscribe to topics.
+in `common.subscription.pubsub` to publish and subscribe to topics.
 
 Topics:
 - market.mark_price: (exchange: str, symbol: str, mid: float)
@@ -20,8 +20,8 @@ Usage:
 from typing import Callable, Optional
 
 # Absolute imports consistent with repo structure
-from common.subscription.pubusb.server_publisher import ServerPublisher
-from common.subscription.pubusb.client_subscriber import ClientSubscriber
+from common.subscription.pubsub.server_publisher import Publisher
+from common.subscription.pubsub.client_subscriber import Subscriber
 
 # Topic constants
 TOPIC_MARK_PRICE = "market.mark_price"
@@ -35,8 +35,8 @@ class RiskPubSub:
 
     def __init__(self, channel: str = "risk-engine"):
         # Channel can map to a queue/socket or namespace depending on implementation
-        self.publisher = ServerPublisher(channel_name=channel)
-        self.subscriber = ClientSubscriber(channel_name=channel)
+        self.publisher = Publisher(channel_name=channel)
+        self.subscriber = Subscriber(channel_name=channel)
 
     # -----------------
     # Publish helpers

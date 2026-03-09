@@ -25,6 +25,12 @@ def convert_str_to_decimal(str_value: str) -> Decimal:
 def add_numbers(x: float, y: float) -> float:
     return float(convert_float_to_decimal(x) + convert_float_to_decimal(y))
 
+def subtract_numbers(x: float, y: float) -> float:
+    return float(convert_float_to_decimal(x) - convert_float_to_decimal(y))
+
+def divide_numbers(x: float, y: float) -> float:
+    return float(convert_float_to_decimal(x) / convert_float_to_decimal(y))
+
 
 def round_up_decimal(value:float, step:float)->Decimal:
     value = convert_float_to_decimal(value)
