@@ -1,0 +1,150 @@
+{
+    "default_settings": {
+        "module": "builtins",
+        "class": "dict",
+        "params": {
+            "margin_limit": 0.8,
+            "selected_symbol": "ETHUSDT",
+            "trading_symbols": [
+                "BTCUSDT",
+                "ETHUSDT"
+            ],
+            "executor_order_type": "@common.interface_order.OrderType.Market",
+            "remote_market_data_connection_port": 8080,
+            "remote_market_data_connection_name": "Remote Market Data Connection",
+            "remote_order_connection_port": 8081,
+            "remote_order_connection_name": "Remote Order Connection",
+            "database_path": "trading.db"
+        }
+    },
+    "database_manager": {
+        "module": "engine.database.database_manager",
+        "class": "DatabaseManager",
+        "params": {
+            "database_path": "@default_settings.database_path",
+            "max_connections": 10
+        }
+    },
+    "position": {
+        "module": "engine.position.position",
+        "class": "Position",
+        "params": {
+            "symbol": "@default_settings.selected_symbol"
+        }
+    },
+    "risk_manager": {
+        "module": "engine.risk.risk_manager",
+        "class": "RiskManager",
+        "params": {
+            "position": "@position"
+        }
+    },
+    "margin_manager": {
+        "module": "engine.margin.margin_info_manager",
+        "class": "MarginInfoManager"
+    },
+    "trading_cost_manager": {
+        "module": "engine.trading_cost.trading_cost_manager",
+        "class": "TradingCostManager"
+    },
+    "sharpe_calculator": {
+        "module": "common.metrics.sharpe_calculator",
+        "class": "BinanceFuturesSharpeCalculator"
+    },
+    "trade_manager": {
+        "module": "engine.trades.trades_manager",
+        "class": "TradesManager",
+        "params": {
+            "sharpe_calculator": "@sharpe_calculator",
+            "database_manager": "@database_manager"
+        }
+    },
+    "reference_price_manager": {
+        "module": "engine.reference_data.reference_price_manager",
+        "class": "ReferencePriceManager"
+    },
+    "position_manager": {
+        "module": "engine.position.position_manager",
+        "class": "PositionManager",
+        "params": {
+            "margin_manager": "@margin_manager",
+            "trading_cost_manager": "@trading_cost_manager",
+            "reference_price_manager": "@reference_price_manager",
+            "database_manager": "@database_manager"
+        }
+    },
+    "account": {
+        "module": "engine.account.account",
+        "class": "Account",
+        "params": {
+            "margin_limit": "@default_settings.margin_limit"
+        }
+    },
+    "remote_market_data_client": {
+        "module": "engine.remote.remote_market_data_client",
+        "class": "RemoteMarketDataClient",
+        "params": {
+            "port": "@default_settings.remote_market_data_connection_port",
+            "name": "@default_settings.remote_market_data_connection_name"
+        }
+    },
+    "reference_data_manager": {
+        "module": "engine.reference_data.reference_data_manager",
+        "class": "ReferenceDataManager",
+        "params": {
+            "reference_price_manager": "@reference_price_manager"
+        }
+    },
+    "remote_order_client": {
+        "module": "engine.remote.remote_order_service_client",
+        "class": "RemoteOrderClient",
+        "params": {
+            "port": "@default_settings.remote_order_connection_port",
+            "name": "@default_settings.remote_order_connection_name",
+            "margin_manager": "@margin_manager",
+            "position_manager": "@position_manager",
+            "account": "@account",
+            "trading_cost_manager": "@trading_cost_manager",
+            "trade_manager": "@trade_manager",
+            "reference_data_manager": "@reference_data_manager"
+        }
+    },
+    "executor": {
+        "module": "engine.execution.executor",
+        "class": "Executor",
+        "params": {
+            "order_type": "@default_settings.executor_order_type",
+            "remote_order_client": "@remote_order_client"
+        }
+    },
+    "order_manager": {
+        "module": "engine.management.order_management_system",
+        "class": "FCFSOrderManager",
+        "params": {
+            "executor": "@executor",
+            "risk_manager": "@risk_manager",
+            "reference_data_manager": "@reference_data_manager",
+            "position_manager": "@position_manager",
+            "database_manager": "@database_manager"
+        }
+    },
+    "simple_order_test_strategy_config": {
+        "module": "engine.strategies.simple_order_test_strategy",
+        "class": "SimpleOrderTestStrategyConfig",
+        "params": {
+            "instrument_id": "@default_settings.selected_symbol",
+            "bar_type": "ETHUSDT-1h",
+            "bars_per_trade": 20,
+            "notional_amount": 500.0
+        }
+    },
+    "strategy_map": {
+        "simple_order_test_strategy": {
+            "module": "engine.strategies.simple_order_test_strategy",
+            "class": "SimpleOrderTestStrategy",
+            "params": {
+                "config": "@simple_order_test_strategy_config"
+            }
+        }
+    }
+}

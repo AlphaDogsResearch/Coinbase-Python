@@ -1,0 +1,40 @@
+{
+  "data_source": {
+    "type": "csv",
+    "csv_path": "engine/synthetic_sma_dataset.csv",
+    "symbol": "ETHUSDT",
+    "interval": "1m",
+    "timestamp_column": "timestamp",
+    "price_column": "price",
+    "volume_column": "volume"
+  },
+  "strategy": {
+    "strategy_id": "simple_order_csv_backtest",
+    "symbol": "ETHUSDT",
+    "module": "engine.strategies.simple_order_test_strategy",
+    "class": "SimpleOrderTestStrategy",
+    "config": {
+      "module": "engine.strategies.simple_order_test_strategy",
+      "class": "SimpleOrderTestStrategyConfig",
+      "params": {
+        "instrument_id": "ETHUSDT",
+        "bar_type": "ETHUSDT-1m",
+        "bars_per_trade": 20,
+        "notional_amount": 500.0
+      }
+    }
+  },
+  "engine": {
+    "initial_capital": 100000.0,
+    "commission_rate": 0.0005,
+    "close_open_position_at_end": true
+  },
+  "output": {
+    "dir": "reports",
+    "prefix": "simple_order_csv",
+    "export_signals": true,
+    "export_trades": true,
+    "export_equity": true,
+    "export_summary": true
+  }
+}

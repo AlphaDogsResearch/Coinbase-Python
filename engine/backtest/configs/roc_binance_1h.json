@@ -1,0 +1,42 @@
+{
+  "data_source": {
+    "type": "binance_futures",
+    "symbol": "ETHUSDT",
+    "interval": "1h",
+    "days": 8
+  },
+  "strategy": {
+    "strategy_id": "roc_mean_reversion_backtest",
+    "symbol": "ETHUSDT",
+    "module": "engine.strategies.roc_mean_reversion_strategy",
+    "class": "ROCMeanReversionStrategy",
+    "config": {
+      "module": "engine.strategies.roc_mean_reversion_strategy",
+      "class": "ROCMeanReversionStrategyConfig",
+      "params": {
+        "instrument_id": "ETHUSDT",
+        "bar_type": "ETHUSDT-1h",
+        "roc_period": 10,
+        "roc_upper": 1.0,
+        "roc_lower": -1.0,
+        "roc_mid": 0.0,
+        "notional_amount": 500.0,
+        "stop_loss_percent": 0.5,
+        "max_holding_bars": 100
+      }
+    }
+  },
+  "engine": {
+    "initial_capital": 100000.0,
+    "commission_rate": 0.0005,
+    "close_open_position_at_end": true
+  },
+  "output": {
+    "dir": "reports",
+    "prefix": "roc_binance_1h",
+    "export_signals": true,
+    "export_trades": true,
+    "export_equity": true,
+    "export_summary": true
+  }
+}
