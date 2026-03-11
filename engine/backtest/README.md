@@ -4,11 +4,40 @@
 
 - `engine.py`: reusable backtest engine + simulated order manager
 - `data_sources.py`: Binance Futures and CSV loaders
+- `download_binance_klines.py`: download ETHUSDT.P OHLCV from Binance to CSV
 - `backtest_runner.py`: configurable runner (`--config <json>`)
 - `backtest_historical.py`: convenience historical wrapper and default example
 - `validate_runner.py`: compare Python backtest trades vs Pine CSV reference trades
 - `reporting.py`: exports signals/trades/equity/summary files
 - `configs/`: example runner configs
+
+## Download Binance OHLCV Data
+
+Download ETHUSDT.P (Binance USD-M perpetual futures) historical klines as far back as the API allows (~2019-11-17):
+
+```bash
+python -m engine.backtest.download_binance_klines \
+  --symbol ETHUSDT \
+  --interval 1h \
+  --output data/ETHUSDT_1h.csv
+```
+
+With custom date range:
+
+```bash
+python -m engine.backtest.download_binance_klines \
+  --symbol ETHUSDT \
+  --interval 1h \
+  --start 2019-11-17 \
+  --end 2026-03-09 \
+  --output data/ETHUSDT_1h.csv
+```
+
+Defaults: `--start` 2019-11-17 (earliest), `--end` yesterday 23:59:59 UTC, `--interval` 1h. Supported intervals: 1m, 5m, 15m, 1h, 1d. Output CSV is compatible with `load_csv_dataset` (columns: timestamp, open, high, low, close, volume).
+
+### BBO (Best Bid/Offer) – Order Book Data
+
+Historical BBO (tick-level order book) from Binance requires **VIP API access** via `/sapi/v1/futures/histDataLink` (max 7-day span per request, data before Nov 1, 2024 only). Non-VIP alternatives: record BBO in real time via WebSocket `@depth` stream, or use third-party providers (e.g. Tardis.dev).
 
 ## Run Examples
 

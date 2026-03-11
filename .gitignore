@@ -196,3 +196,6 @@ binance_keys
 
 # ignore db
 *.db
+
+# ignore pine reference trade CSVs (regenerated from TradingView)
+engine/backtest/pine_reference_list_of_trades/

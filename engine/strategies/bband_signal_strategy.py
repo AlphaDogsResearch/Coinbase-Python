@@ -20,21 +20,21 @@ class BBANDSignalStrategyConfig:
     bar_type: str
 
     # Bollinger Bands Parameters (from Results summary)
-    bband_period: int = 16
-    nbdevup: float = 1.41
-    nbdevdn: float = 2.15
-    matype: int = 3  # TA-Lib: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA
+    bband_period: int = 20
+    nbdevup: float = 1.09
+    nbdevdn: float = 1.10
+    matype: int = 0  # TA-Lib: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA
 
     # Signal Behavior
     signal_mode: str = "momentum"  # mean_reversion | momentum
-    exit_mode: str = "breakout"  # midpoint | breakout
+    exit_mode: str = "midpoint"  # midpoint | breakout
 
     # Position Management
     quantity: float = 1.0
     notional_amount: float = 500.0
-    stop_loss_percent: float = 0.12
+    stop_loss_percent: float = 0.06
     take_profit_percent: float = 0.05
-    max_holding_bars: int = 61
+    max_holding_bars: int = 21
     cooldown_bars: int = 0
 
     # Risk Management

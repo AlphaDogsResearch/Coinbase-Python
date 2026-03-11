@@ -646,7 +646,7 @@ class BollingerBands(Indicator):
 
     Computes upper, middle, and lower bands using a configurable moving average type.
     MAType follows TA-Lib convention (ta_defs.h):
-      0 = SMA, 1 = EMA, 2 = WMA, 3 = DEMA (default for BBAND), 4 = TEMA
+      0 = SMA (default), 1 = EMA, 2 = WMA, 3 = DEMA, 4 = TEMA
 
     upper  = middle + nbdevup  * std_dev
     middle = MA(close, period)
@@ -655,10 +655,10 @@ class BollingerBands(Indicator):
 
     def __init__(
         self,
-        period: int = 16,
-        nbdevup: float = 1.41,
-        nbdevdn: float = 2.15,
-        matype: int = 3,
+        period: int = 20,
+        nbdevup: float = 1.09,
+        nbdevdn: float = 1.10,
+        matype: int = 0,
     ):
         super().__init__([period, nbdevup, nbdevdn, matype])
         self.period = period

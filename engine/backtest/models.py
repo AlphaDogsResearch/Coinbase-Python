@@ -131,6 +131,7 @@ class DataSourceSpec:
     days: int = 8
     start_time: Optional[str] = None
     end_time: Optional[str] = None
+    rate_limit_seconds: float = 0  # sleep between API batches when > 0
     csv_path: Optional[str] = None
     timestamp_column: str = "timestamp"
     open_column: Optional[str] = "open"

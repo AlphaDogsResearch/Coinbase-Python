@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Tuple
 
@@ -92,6 +93,9 @@ def load_binance_futures_dataset(spec: DataSourceSpec) -> HistoricalDataset:
         if next_cursor <= cursor:
             break
         cursor = next_cursor
+
+        if getattr(spec, "rate_limit_seconds", 0) > 0:
+            time.sleep(spec.rate_limit_seconds)
 
         # If Binance returned fewer than max rows, we've likely reached the end.
         if len(batch) < 1500:
