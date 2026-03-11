@@ -14,7 +14,9 @@
             "remote_market_data_connection_name": "Remote Market Data Connection",
             "remote_order_connection_port": 8081,
             "remote_order_connection_name": "Remote Order Connection",
-            "database_path": "trading.db"
+            "database_path": "trading.db",
+            "endpoint_host": "0.0.0.0",
+            "endpoint_port": 8888
         }
     },
     "database_manager": {
