@@ -3,6 +3,8 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 
+from pythonjsonlogger.json import JsonFormatter
+
 from common.json_model import JsonModel
 from common.subscription.external_transport.base_message_formatter import BaseMessageFormatter
 from common.subscription.external_transport.event_driven_producer import EventDrivenProducer
@@ -10,6 +12,7 @@ from common.subscription.external_transport.sse_event_emitter import MultiChanne
 from common.subscription.external_transport.websocket import MultiChannelWebSocket
 from common.subscription.messaging.event_bus.event_bus import EventBus
 from common.subscription.messaging.event_bus.event_publisher import EventPublisher
+from engine.external.message_model.json_data_model import JsonDataModel
 
 
 class ExternalPublisher:
@@ -30,6 +33,23 @@ class ExternalPublisher:
         producer = EventDrivenProducer(name=key, event_bus=self.event_bus,
                             event_type=key, formatter=formatter)
         self.websocket.add_channel(key, producer)
+
+    def register_channel_with_json_formatter(self,key:str):
+        self.register_channel(key,JsonDataModel())
+
+    def register_channel(self,key:str,formatter:BaseMessageFormatter):
+        self.publisher_map[key] = EventPublisher(key, self.event_bus)
+        producer = EventDrivenProducer(name=key, event_bus=self.event_bus,
+                                       event_type=key, formatter=formatter)
+        self.websocket.add_channel(key, producer)
+
+    def publish_data(self,key:str,data:JsonModel,reason:str):
+        publisher = self.publisher_map.get(key,None)
+        if publisher is not None:
+            logging.debug(f"Publishing event {key} -> {data} | reason {reason}")
+            publisher.publish_event(key, data)
+        else:
+            logging.error(f"publisher not registered : {key}")
 
     def publish_periodic_data(self):
         while True:

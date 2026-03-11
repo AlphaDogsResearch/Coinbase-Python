@@ -10,5 +10,5 @@ class EventPublisher:
 
     def publish_event(self, event_type, data=None):
         """Publish an event"""
-        logging.debug(f"[{self.name}] Publishing event: {event_type}")
+        logging.debug(f"[{self.name}] Publishing event: {event_type} -> {data}")
         self.event_bus.publish(event_type, data)

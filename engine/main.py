@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 
 from param.ipython import message
+from xarray.tutorial import external_urls
 
 from common.subscription.external_transport.websocket import MultiChannelWebSocket
 from common.subscription.messaging.event_bus.event_bus import EventBus
@@ -163,10 +164,9 @@ def main():
     account.add_wallet_balance_listener(risk_manager.on_wallet_balance_update)
 
     websocket = components["websocket"]
-    message_event_bus = components["message_event_bus"]
 
-    publisher = ExternalPublisher(message_event_bus,websocket)
-    publisher.register_publish_interval(key=Channel.ACCOUNT.value, data=account.account_state,formatter=JsonDataModel())
+    external_publisher = components["external_publisher"]
+    external_publisher.register_publish_interval(key=Channel.ACCOUNT.value, data=account.account_state,formatter=JsonDataModel())
 
     if isinstance(websocket, MultiChannelWebSocket):
         websocket.run()

@@ -1,8 +1,6 @@
 from dataclasses import dataclass
 
 from common.json_model import JsonModel
-from common.seriallization import Serializable
-from common.time_utils import current_milli_time
 
 
 @dataclass

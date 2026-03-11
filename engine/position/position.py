@@ -1,11 +1,14 @@
 import logging
 import json
+import time
+from dataclasses import dataclass
 from typing import Callable, Optional
 
+from common.json_model import JsonModel
 from engine.trading_cost.trading_cost import TradingCost
 
-
-class Position:
+@dataclass
+class Position(JsonModel):
     """
     Manages a single trading position, open orders, PnL, and persistence for each symbol.
     Combines position logic and persistence for institutional trading systems.
@@ -186,8 +189,9 @@ class Position:
             f"Open Orders={self.open_orders}"
         )
 
-    def to_dict(self):
-        return {
+    def to_dict(self, include_timestamp: bool = False):
+
+        data =  {
             "symbol": self.symbol,
             "strategy_id": self.strategy_id,
             "position_amount": self.position_amount,
@@ -199,28 +203,57 @@ class Position:
             "maker_fee": self.maker_fee,
             "total_trading_cost": self.total_trading_cost,
             "open_orders": self.open_orders,
-            "position_pnl": self.position_pnl,
+            "position_pnl": self.position_pnl
         }
 
-    @classmethod
-    def from_dict(cls, d):
-        dummy_listener = lambda symbol, pnl: None
-        dummy_trading_cost = TradingCost(
-            maker_fee=d.get("maker_fee", 0.0), taker_fee=d.get("taker_fee", 0.0)
-        )
-        pos = cls(
-            symbol=d["symbol"],
-            strategy_id=d.get("strategy_id", None),
-            position_amount=d.get("position_amount", 0.0),
-            entry_price=d.get("entry_price", 0.0),
-            unrealised_pnl=d.get("unrealised_pnl", 0.0),
-            maint_margin=d.get("maint_margin", 0.0),
-            trading_cost=dummy_trading_cost,
-            realized_pnl_listener=dummy_listener,
-            storage_path="position_state.json",
-        )
-        pos.net_cumulative_realized_pnl = d.get("net_realized_pnl", 0.0)
-        pos.total_trading_cost = d.get("total_trading_cost", 0.0)
-        pos.open_orders = d.get("open_orders", 0)
-        pos.position_pnl = d.get("position_pnl", 0.0)
-        return pos
+        if include_timestamp:
+            data["timestamp"] = int(time.time() * 1000)
+
+        return data
+
+    # def to_dict(self):
+    #     return {
+    #         "symbol": self.symbol,
+    #         "strategy_id": self.strategy_id,
+    #         "position_amount": self.position_amount,
+    #         "entry_price": self.entry_price,
+    #         "unrealised_pnl": self.unrealised_pnl,
+    #         "maint_margin": self.maint_margin,
+    #         "net_realized_pnl": self.net_cumulative_realized_pnl,
+    #         "taker_fee": self.taker_fee,
+    #         "maker_fee": self.maker_fee,
+    #         "total_trading_cost": self.total_trading_cost,
+    #         "open_orders": self.open_orders,
+    #         "position_pnl": self.position_pnl,
+    #     }
+
+    # @classmethod
+    # def from_dict(cls, d):
+    #     dummy_listener = lambda symbol, pnl: None
+    #     dummy_trading_cost = TradingCost(
+    #         maker_fee=d.get("maker_fee", 0.0), taker_fee=d.get("taker_fee", 0.0)
+    #     )
+    #     pos = cls(
+    #         symbol=d["symbol"],
+    #         strategy_id=d.get("strategy_id", None),
+    #         position_amount=d.get("position_amount", 0.0),
+    #         entry_price=d.get("entry_price", 0.0),
+    #         unrealised_pnl=d.get("unrealised_pnl", 0.0),
+    #         maint_margin=d.get("maint_margin", 0.0),
+    #         trading_cost=dummy_trading_cost,
+    #         realized_pnl_listener=dummy_listener,
+    #         storage_path="position_state.json",
+    #     )
+    #     pos.net_cumulative_realized_pnl = d.get("net_realized_pnl", 0.0)
+    #     pos.total_trading_cost = d.get("total_trading_cost", 0.0)
+    #     pos.open_orders = d.get("open_orders", 0)
+    #     pos.position_pnl = d.get("position_pnl", 0.0)
+    #     return pos
+
+if __name__ == "__main__":
+
+    position = Position("ETHUSDT","ABC",123,123,456,789,TradingCost("ETHUSDT",123,444),None,"json.path")
+    print(position.to_dict())
+
+
+

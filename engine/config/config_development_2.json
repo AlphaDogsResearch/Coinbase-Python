@@ -65,6 +65,26 @@
         "module": "engine.reference_data.reference_price_manager",
         "class": "ReferencePriceManager"
     },
+    "websocket": {
+      "module": "common.subscription.external_transport.websocket",
+      "class": "MultiChannelWebSocket",
+      "params": {
+        "host": "@default_settings.endpoint_host",
+        "port": "@default_settings.endpoint_port"
+      }
+    },
+    "message_event_bus": {
+      "module": "common.subscription.messaging.event_bus.event_bus",
+      "class": "EventBus"
+    },
+    "external_publisher": {
+      "module": "engine.external.external_publisher",
+      "class": "ExternalPublisher",
+      "params": {
+        "event_bus": "@message_event_bus",
+        "websocket": "@websocket"
+      }
+    },
     "position_manager": {
         "module": "engine.position.position_manager",
         "class": "PositionManager",
@@ -72,20 +92,9 @@
             "margin_manager": "@margin_manager",
             "trading_cost_manager": "@trading_cost_manager",
             "reference_price_manager": "@reference_price_manager",
-            "database_manager": "@database_manager"
+            "database_manager": "@database_manager",
+            "external_publisher": "@external_publisher"
         }
-    },
-      "websocket": {
-        "module": "common.subscription.external_transport.websocket",
-        "class": "MultiChannelWebSocket",
-      "params": {
-            "host": "@default_settings.endpoint_host",
-            "port": "@default_settings.endpoint_port"
-      }
-    },
-    "message_event_bus": {
-        "module": "common.subscription.messaging.event_bus.event_bus",
-        "class": "EventBus"
     },
     "account": {
         "module": "engine.account.account",
