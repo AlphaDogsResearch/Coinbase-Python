@@ -385,7 +385,7 @@ class ROCMeanReversionStrategy(Strategy):
             self._position_side == PositionSide.LONG
             and low_price <= self._stop_loss_price
         ):
-            self._close_position(candle, f"Stop loss triggered at {low_price:.4f}")
+            self._close_position(candle, f"Close Long Position, Stop loss triggered at {low_price:.4f}")
             self._position_side = None
 
         # Check stop loss for short position (Pine uses high >= short_stop)
@@ -393,5 +393,5 @@ class ROCMeanReversionStrategy(Strategy):
             self._position_side == PositionSide.SHORT
             and high_price >= self._stop_loss_price
         ):
-            self._close_position(candle, f"Stop loss triggered at {high_price:.4f}")
+            self._close_position(candle, f"Close Short Position, Stop loss triggered at {high_price:.4f}")
             self._position_side = None

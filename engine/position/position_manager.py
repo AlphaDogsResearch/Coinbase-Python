@@ -6,6 +6,10 @@ from typing import Callable, List, Dict, Set, Optional, Tuple, TYPE_CHECKING
 from common.interface_order import OrderEvent, OrderStatus, OrderType
 from common.interface_reference_point import MarkPrice
 from common.interface_req_res import PositionResponse
+from common.json_model import JsonModel
+from engine.external.channel import Channel
+from engine.external.external_publisher import ExternalPublisher
+from engine.external.message_model.json_data_model import JsonDataModel
 from engine.margin.margin_info_manager import MarginInfoManager
 from engine.position.position import Position
 from engine.reference_data.reference_price_manager import ReferencePriceManager
@@ -23,6 +27,7 @@ class PositionManager:
         trading_cost_manager: TradingCostManager,
         reference_price_manager: ReferencePriceManager,
         database_manager: "DatabaseManager" = None,
+        external_publisher: ExternalPublisher = None,
     ):
         self.name = "Position Manager"
         # Aggregate positions by symbol (backward compatible)
@@ -45,8 +50,12 @@ class PositionManager:
         self.executor = ThreadPoolExecutor(max_workers=10, thread_name_prefix="POS")
         # Optional order lookup to resolve strategy_id from order_id/client_id
         self._order_lookup: Optional[Callable[[str], Optional[object]]] = None
+        self.default_agg_strategy_id = "AGGREGATED_POSITION"
         # Database manager for persistence (optional)
-        self.database_manager = database_manager
+        self.database_manager = database_manager,
+        self.external_publisher = external_publisher
+        if external_publisher is not None:
+            external_publisher.register_channel_with_json_formatter(Channel.POSITION.value)
 
     def set_order_lookup(self, lookup_fn: Callable[[str], Optional[object]]):
         """
@@ -72,7 +81,7 @@ class PositionManager:
 
             self.positions[symbol] = Position(
                 symbol,
-                "none",
+                self.default_agg_strategy_id,
                 position_amt,
                 entry_price,
                 unrealized_pnl,
@@ -94,6 +103,11 @@ class PositionManager:
 
         for symbol, pos in self.positions.items():
             logging.info("[%s] Current Position %s", symbol, pos)
+            self.publish_data(pos,"initial position")
+
+    def publish_data(self,data:JsonModel,reason:str):
+        if self.external_publisher is not None:
+            self.external_publisher.publish_data(Channel.POSITION.value,data,reason)
 
     def on_mark_price_event(self, mark_price: MarkPrice):
         symbol = mark_price.symbol
@@ -102,6 +116,7 @@ class PositionManager:
         pos = self.positions.get(symbol)
         if pos is not None:
             self.update_maint_margin(pos)
+            self.publish_data(pos,"Mark Price Changed")
 
     def on_order_event(self, order_event: OrderEvent,strategy_id:str):
         logging.info(f"[{self.name}] Order event: {order_event}")
@@ -207,7 +222,7 @@ class PositionManager:
 
         position = self.positions_by_key[key]
         logging.info(f"[{self.name}][{key}] - Current Strategy Position {position}")
-
+        self.publish_data(position,"Position Changed")
 
         #Aggregated Position
         agg_position  = self.positions.get(symbol)
@@ -215,11 +230,12 @@ class PositionManager:
             self.update_internal_position(agg_position,side,size,is_taker,price)
             logging.info(f"{self.name} - Updating Aggregated Position {position.symbol}")
         else:
-            agg_position = self.create_position(symbol,symbol,side,size,price,"",self.positions)
+            agg_position = self.create_position(symbol,symbol,side,size,price,self.default_agg_strategy_id,self.positions)
 
         logging.info(f"[{self.name}][{symbol}] - Current Aggregated Position {position}")
         # update_maint_margin on aggregated position
         self.update_maint_margin(agg_position)
+        self.publish_data(agg_position,"Aggregated Position Changed")
         #
         # # Maintain aggregate position by symbol for backward compatibility
         # self._update_aggregate_position(symbol)
@@ -241,7 +257,7 @@ class PositionManager:
                     "entry_price": position.entry_price,
                     "mark_price": self.mark_price_dict.get(symbol, 0),
                     "unrealized_pnl": position.unrealised_pnl,
-                    "realized_pnl": position.net_realized_pnl,
+                    "realized_pnl": position.net_cumulative_realized_pnl,
                     "total_commission": position.total_trading_cost,
                 })
             except Exception as e:
@@ -277,44 +293,44 @@ class PositionManager:
         """Return aggregate position for symbol (alias of get_position without strategy)."""
         return self.get_position(symbol)
 
-    def _update_aggregate_position(self, symbol: str):
-        """
-        Compute aggregate position for a symbol across all strategies and update self.positions[symbol].
-        """
-        total_qty = 0.0
-        entry_price = 0.0
-        realized_pnl = 0.0
-        total_trading_cost = 0.0
-
-        # Simple weighted average entry price and sum quantities across all keys for symbol
-        for (sid, sym), pos in self.positions_by_key.items():
-            if sym != symbol:
-                continue
-            total_qty += pos.position_amount
-            realized_pnl += pos.net_cumulative_realized_pnl
-            total_trading_cost += pos.total_trading_cost
-
-        # Compute aggregate entry price: if net qty non-zero, use mark price from reference or last known
-        if abs(total_qty) > 0:
-            mark_price = self.mark_price_dict.get(symbol)
-            entry_price = mark_price if mark_price else 0.0
-
-        existing = self.positions.get(symbol)
-        if existing is None:
-            try:
-                trading_cost = self.trading_cost_manager.get_trading_cost(symbol)
-            except Exception:
-                trading_cost = TradingCost(symbol, 0.0, 0.0)
-            self.positions[symbol] = Position(
-                symbol=symbol, strategy_id=None, trading_cost=trading_cost
-            )
-            existing = self.positions[symbol]
-        existing.position_amount = round(total_qty, 7)
-        existing.entry_price = entry_price
-        existing.net_cumulative_realized_pnl = realized_pnl
-        existing.total_trading_cost = total_trading_cost
-
-        logging.info(f"{self.name} - Updating Aggregated Position {symbol} {existing}")
+    # def _update_aggregate_position(self, symbol: str):
+    #     """
+    #     Compute aggregate position for a symbol across all strategies and update self.positions[symbol].
+    #     """
+    #     total_qty = 0.0
+    #     entry_price = 0.0
+    #     realized_pnl = 0.0
+    #     total_trading_cost = 0.0
+    #
+    #     # Simple weighted average entry price and sum quantities across all keys for symbol
+    #     for (sid, sym), pos in self.positions_by_key.items():
+    #         if sym != symbol:
+    #             continue
+    #         total_qty += pos.position_amount
+    #         realized_pnl += pos.net_cumulative_realized_pnl
+    #         total_trading_cost += pos.total_trading_cost
+    #
+    #     # Compute aggregate entry price: if net qty non-zero, use mark price from reference or last known
+    #     if abs(total_qty) > 0:
+    #         mark_price = self.mark_price_dict.get(symbol)
+    #         entry_price = mark_price if mark_price else 0.0
+    #
+    #     existing = self.positions.get(symbol)
+    #     if existing is None:
+    #         try:
+    #             trading_cost = self.trading_cost_manager.get_trading_cost(symbol)
+    #         except Exception:
+    #             trading_cost = TradingCost(symbol, 0.0, 0.0)
+    #         self.positions[symbol] = Position(
+    #             symbol=symbol, strategy_id=None, trading_cost=trading_cost
+    #         )
+    #         existing = self.positions[symbol]
+    #     existing.position_amount = round(total_qty, 7)
+    #     existing.entry_price = entry_price
+    #     existing.net_cumulative_realized_pnl = realized_pnl
+    #     existing.total_trading_cost = total_trading_cost
+    #
+    #     logging.info(f"{self.name} - Updating Aggregated Position {symbol} {existing}")
 
     """
     update when mark price or position amount change 
