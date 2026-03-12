@@ -70,16 +70,12 @@ class TRIXSignalStrategy(Strategy):
         # Signal behavior
         self.signal_mode = config.signal_mode
         if self.signal_mode not in self.VALID_SIGNAL_MODES:
-            logging.warning(
-                f"Invalid signal_mode={self.signal_mode}, defaulting to momentum"
-            )
+            logging.warning(f"Invalid signal_mode={self.signal_mode}, defaulting to momentum")
             self.signal_mode = "momentum"
 
         self.exit_mode = config.exit_mode
         if self.exit_mode not in self.VALID_EXIT_MODES:
-            logging.warning(
-                f"Invalid exit_mode={self.exit_mode}, defaulting to breakout"
-            )
+            logging.warning(f"Invalid exit_mode={self.exit_mode}, defaulting to breakout")
             self.exit_mode = "breakout"
 
         # Position Management
@@ -183,19 +179,11 @@ class TRIXSignalStrategy(Strategy):
         self._bars_processed += 1
 
     def _compute_signals(self, current_trix: float):
-        mr_long_signal = (
-            self._previous_trix < self.trix_lower and current_trix >= self.trix_lower
-        )
-        mr_short_signal = (
-            self._previous_trix > self.trix_upper and current_trix <= self.trix_upper
-        )
+        mr_long_signal = self._previous_trix < self.trix_lower and current_trix >= self.trix_lower
+        mr_short_signal = self._previous_trix > self.trix_upper and current_trix <= self.trix_upper
 
-        mom_long_signal = (
-            self._previous_trix < self.trix_upper and current_trix >= self.trix_upper
-        )
-        mom_short_signal = (
-            self._previous_trix > self.trix_lower and current_trix <= self.trix_lower
-        )
+        mom_long_signal = self._previous_trix < self.trix_upper and current_trix >= self.trix_upper
+        mom_short_signal = self._previous_trix > self.trix_lower and current_trix <= self.trix_lower
 
         if self.signal_mode == "mean_reversion":
             long_entry_signal = mr_long_signal
@@ -204,19 +192,11 @@ class TRIXSignalStrategy(Strategy):
             long_entry_signal = mom_long_signal
             short_entry_signal = mom_short_signal
 
-        mr_long_mid_exit = (
-            self._previous_trix < self.trix_mid and current_trix >= self.trix_mid
-        )
-        mr_short_mid_exit = (
-            self._previous_trix > self.trix_mid and current_trix <= self.trix_mid
-        )
+        mr_long_mid_exit = self._previous_trix < self.trix_mid and current_trix >= self.trix_mid
+        mr_short_mid_exit = self._previous_trix > self.trix_mid and current_trix <= self.trix_mid
 
-        mom_long_mid_exit = (
-            self._previous_trix > self.trix_mid and current_trix <= self.trix_mid
-        )
-        mom_short_mid_exit = (
-            self._previous_trix < self.trix_mid and current_trix >= self.trix_mid
-        )
+        mom_long_mid_exit = self._previous_trix > self.trix_mid and current_trix <= self.trix_mid
+        mom_short_mid_exit = self._previous_trix < self.trix_mid and current_trix >= self.trix_mid
 
         if self.exit_mode == "midpoint":
             if self.signal_mode == "mean_reversion":
@@ -465,13 +445,9 @@ class TRIXSignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(
-                    f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}"
-                )
+                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
             else:
-                self.log.info(
-                    f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
-                )
+                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit close order")
 

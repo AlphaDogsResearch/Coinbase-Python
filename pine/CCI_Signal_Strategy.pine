@@ -28,7 +28,7 @@ exit_mode = input.string("midpoint", "Exit Mode", options=["midpoint", "breakout
 
 // Position Management
 stop_loss_percent = input.float(7.4, "Stop Loss %", minval=0, maxval=100)
-take_profit_percent = input.float(5.0, "Take Profit %", minval=0.1, maxval=50)
+take_profit_percent = input.float(50.0, "Take Profit %", minval=0.1, maxval=50)
 max_holding_bars = input.int(25, "Max Holding Bars", minval=1)
 cooldown_bars = input.int(0, "Cooldown Bars", minval=0)
 

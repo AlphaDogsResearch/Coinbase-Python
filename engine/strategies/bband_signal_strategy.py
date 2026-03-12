@@ -72,16 +72,12 @@ class BBANDSignalStrategy(Strategy):
         # Signal behavior
         self.signal_mode = config.signal_mode
         if self.signal_mode not in self.VALID_SIGNAL_MODES:
-            logging.warning(
-                f"Invalid signal_mode={self.signal_mode}, defaulting to momentum"
-            )
+            logging.warning(f"Invalid signal_mode={self.signal_mode}, defaulting to momentum")
             self.signal_mode = "momentum"
 
         self.exit_mode = config.exit_mode
         if self.exit_mode not in self.VALID_EXIT_MODES:
-            logging.warning(
-                f"Invalid exit_mode={self.exit_mode}, defaulting to breakout"
-            )
+            logging.warning(f"Invalid exit_mode={self.exit_mode}, defaulting to breakout")
             self.exit_mode = "breakout"
 
         # Position Management
@@ -480,13 +476,9 @@ class BBANDSignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(
-                    f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}"
-                )
+                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
             else:
-                self.log.info(
-                    f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
-                )
+                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit close order")
 
