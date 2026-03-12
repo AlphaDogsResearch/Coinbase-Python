@@ -34,6 +34,21 @@ class _OpenPosition:
     entry_commission: float
 
 
+@dataclass
+class _PendingOrder:
+    """An order queued for deferred fill at the next bar's open (next_bar_open mode only)."""
+
+    order_type: str  # "signal" or "close"
+    signal: int  # 1 (long), -1 (short), 0 (close)
+    strategy_actions: StrategyAction
+    strategy_order_mode: Optional[StrategyOrderMode]
+    tags: Optional[List[str]]
+    signal_context: Any
+    side_before: str  # position side at signal time, for signal record
+    signal_candle: Optional[MidPriceCandle]  # candle at signal time, for signal record
+    signal_volume: float
+
+
 def _safe_candle_value(value: Optional[float], fallback: float = 0.0) -> float:
     if value is None:
         return fallback
@@ -91,6 +106,8 @@ class SimulatedOrderManager:
         self._current_volume: float = 0.0
         self._current_bar_index: int = -1
         self._current_close_time: datetime = datetime.now(timezone.utc)
+
+        self._pending_orders: List[_PendingOrder] = []
 
     @property
     def cash(self) -> float:
@@ -348,6 +365,23 @@ class SimulatedOrderManager:
         if signal not in (1, -1):
             return False
 
+        # In next_bar_open mode, queue the order for deferred fill at the next bar's open.
+        if self._use_next_bar_open_execution():
+            self._pending_orders.append(
+                _PendingOrder(
+                    order_type="signal",
+                    signal=signal,
+                    strategy_actions=strategy_actions,
+                    strategy_order_mode=strategy_order_mode,
+                    tags=tags,
+                    signal_context=signal_context,
+                    side_before=self._position_side_text(),
+                    signal_candle=self._current_candle,
+                    signal_volume=self._current_volume,
+                )
+            )
+            return True
+
         execution_price, execution_time, execution_bar_index = self._resolve_execution(
             price
         )
@@ -449,6 +483,25 @@ class SimulatedOrderManager:
                 f"expected=({self.strategy_id},{self.symbol}) got=({strategy_id},{symbol})"
             )
 
+        # In next_bar_open mode, queue the close for deferred fill at the next bar's open.
+        if self._use_next_bar_open_execution():
+            if self._position is None:
+                return True
+            self._pending_orders.append(
+                _PendingOrder(
+                    order_type="close",
+                    signal=0,
+                    strategy_actions=StrategyAction.OPEN_CLOSE_POSITION,
+                    strategy_order_mode=None,
+                    tags=tags,
+                    signal_context=None,
+                    side_before=self._position_side_text(),
+                    signal_candle=self._current_candle,
+                    signal_volume=self._current_volume,
+                )
+            )
+            return True
+
         execution_price, execution_time, execution_bar_index = self._resolve_execution(
             price
         )
@@ -484,6 +537,198 @@ class SimulatedOrderManager:
             signal_context=None,
         )
         return True
+
+    def fill_pending_orders(self, candle: MidPriceCandle) -> None:
+        """Fill all queued orders at the open price of `candle` (next_bar_open deferred fill)."""
+        if not self._pending_orders:
+            return
+
+        fill_price = _safe_candle_value(
+            candle.open,
+            _safe_candle_value(candle.close, 0.0),
+        )
+        fill_time = candle.start_time
+        fill_bar_index = self._current_bar_index
+
+        pending = list(self._pending_orders)
+        self._pending_orders.clear()
+
+        for order in pending:
+            if order.order_type == "close":
+                self._fill_pending_close(order, fill_price, fill_time, fill_bar_index)
+            else:
+                self._fill_pending_signal(order, fill_price, fill_time, fill_bar_index)
+
+    def _fill_pending_close(
+        self,
+        order: _PendingOrder,
+        fill_price: float,
+        fill_time: datetime,
+        fill_bar_index: int,
+    ) -> None:
+        reason = self._extract_reason(
+            tags=order.tags, signal_context=None, fallback="CLOSE"
+        )
+        if fill_price <= 0:
+            logging.error("Cannot fill pending close: invalid price")
+            return
+        if self._position is None:
+            return
+
+        quantity = self._close_position(fill_price, reason, fill_time, fill_bar_index)
+        side_after = self._position_side_text()
+        self._record_signal_with_candle(
+            signal=0,
+            action="CLOSE",
+            reason=reason,
+            price=fill_price,
+            quantity=quantity,
+            side_before=order.side_before,
+            side_after=side_after,
+            execution_time=fill_time,
+            execution_bar_index=fill_bar_index,
+            tags=order.tags,
+            signal_context=None,
+            candle=order.signal_candle,
+            volume=order.signal_volume,
+        )
+
+    def _fill_pending_signal(
+        self,
+        order: _PendingOrder,
+        fill_price: float,
+        fill_time: datetime,
+        fill_bar_index: int,
+    ) -> None:
+        signal = order.signal
+        strategy_actions = order.strategy_actions
+        strategy_order_mode = order.strategy_order_mode
+        tags = order.tags
+        signal_context = order.signal_context
+
+        if fill_price <= 0:
+            logging.error("Cannot fill pending signal: invalid price")
+            return
+        if strategy_order_mode is None:
+            logging.error("Cannot fill pending signal: missing order mode")
+            return
+
+        quantity = self._calculate_order_quantity(strategy_order_mode, fill_price)
+        if quantity <= 0:
+            logging.error("Calculated order quantity <= 0, pending signal ignored")
+            return
+
+        target_side = PositionSide.LONG if signal == 1 else PositionSide.SHORT
+        reason = self._extract_reason(
+            tags=tags,
+            signal_context=signal_context,
+            fallback="ENTRY" if signal == 1 else "SHORT_ENTRY",
+        )
+
+        action_label = "ENTRY"
+        executed_quantity = 0.0
+
+        if self._position is None:
+            self._open_position(
+                target_side, quantity, fill_price, reason, fill_time, fill_bar_index
+            )
+            executed_quantity = quantity
+            action_label = "ENTRY"
+        elif self._position.side == target_side:
+            action_label = "IGNORED_SAME_SIDE"
+        else:
+            if strategy_actions == StrategyAction.POSITION_REVERSAL:
+                self._close_position(
+                    fill_price,
+                    f"REVERSAL_CLOSE: {reason}",
+                    fill_time,
+                    fill_bar_index,
+                )
+                self._open_position(
+                    target_side, quantity, fill_price, reason, fill_time, fill_bar_index
+                )
+                action_label = "REVERSAL"
+                executed_quantity = quantity
+            else:
+                self._close_position(
+                    fill_price,
+                    f"OPPOSITE_SIGNAL_CLOSE: {reason}",
+                    fill_time,
+                    fill_bar_index,
+                )
+                self._open_position(
+                    target_side, quantity, fill_price, reason, fill_time, fill_bar_index
+                )
+                action_label = "OPPOSITE_REENTRY"
+                executed_quantity = quantity
+
+        side_after = self._position_side_text()
+        self._record_signal_with_candle(
+            signal=signal,
+            action=action_label,
+            reason=reason,
+            price=fill_price,
+            quantity=executed_quantity,
+            side_before=order.side_before,
+            side_after=side_after,
+            execution_time=fill_time,
+            execution_bar_index=fill_bar_index,
+            tags=tags,
+            signal_context=signal_context,
+            candle=order.signal_candle,
+            volume=order.signal_volume,
+        )
+
+    def _record_signal_with_candle(
+        self,
+        signal: int,
+        action: str,
+        reason: str,
+        price: float,
+        quantity: float,
+        side_before: str,
+        side_after: str,
+        execution_time: datetime,
+        execution_bar_index: int,
+        tags: Optional[List[str]],
+        signal_context: Any,
+        candle: Optional[MidPriceCandle],
+        volume: float,
+    ) -> None:
+        candle_open = 0.0
+        candle_high = 0.0
+        candle_low = 0.0
+        candle_close = 0.0
+        if candle is not None:
+            candle_open = _safe_candle_value(candle.open, 0.0)
+            candle_high = _safe_candle_value(candle.high, candle_open)
+            candle_low = _safe_candle_value(candle.low, candle_open)
+            candle_close = _safe_candle_value(candle.close, candle_open)
+
+        self.signals.append(
+            BacktestSignalRecord(
+                timestamp=execution_time,
+                bar_index=execution_bar_index,
+                strategy_id=self.strategy_id,
+                symbol=self.symbol,
+                signal=signal,
+                action=action,
+                reason=reason,
+                side_before=side_before,
+                side_after=side_after,
+                price=price,
+                quantity=quantity,
+                notional=quantity * price,
+                tags=list(tags or []),
+                indicators=self._extract_context_dict(signal_context, "indicators"),
+                config=self._extract_context_dict(signal_context, "config"),
+                candle_open=candle_open,
+                candle_high=candle_high,
+                candle_low=candle_low,
+                candle_close=candle_close,
+                volume=volume,
+            )
+        )
 
     def force_close_open_position(self, reason: str = "END_OF_BACKTEST") -> bool:
         if self._position is None:
@@ -611,6 +856,7 @@ class GenericBacktestEngine:
                 volume=volume,
                 interval_seconds=self.dataset.interval_seconds,
             )
+            order_manager.fill_pending_orders(candle)
             strategy.on_candle_created(candle)
             order_manager.mark_to_market()
 

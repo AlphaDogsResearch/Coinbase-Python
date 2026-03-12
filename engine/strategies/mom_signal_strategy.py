@@ -136,6 +136,19 @@ class MOMSignalStrategy(Strategy):
         if self._cooldown_left > 0 and self.cache.is_flat(self.instrument_id):
             self._cooldown_left -= 1
 
+        if not self.cache.is_flat(self.instrument_id):
+            current_side = (
+                PositionSide.LONG
+                if self.cache.is_net_long(self.instrument_id)
+                else PositionSide.SHORT
+            )
+            if self._entry_bar is None or self._position_side != current_side:
+                self._entry_bar = self._bars_processed
+                self._position_side = current_side
+        else:
+            self._entry_bar = None
+            self._position_side = None
+
         (
             long_entry_signal,
             short_entry_signal,
@@ -150,8 +163,6 @@ class MOMSignalStrategy(Strategy):
                 elif short_entry_signal:
                     self._enter_short(candle, current_mom, reason="MOM short entry")
         else:
-            self._sync_position_state()
-
             if self.cache.is_net_long(self.instrument_id):
                 self._handle_long_position(
                     candle=candle,
@@ -350,9 +361,6 @@ class MOMSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.LONG
-            self._entry_bar = self._entry_bar_for_new_position()
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit long entry order")
@@ -391,9 +399,6 @@ class MOMSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.SHORT
-            self._entry_bar = self._entry_bar_for_new_position()
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit short entry order")
@@ -430,11 +435,6 @@ class MOMSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = (
-                PositionSide.LONG if signal == 1 else PositionSide.SHORT
-            )
-            self._entry_bar = self._entry_bar_for_new_position()
-            self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
                 f"[SIGNAL] REVERSAL TO {side_label} | {reason} | Price: {close_price:.4f}"
@@ -473,9 +473,6 @@ class MOMSignalStrategy(Strategy):
                 self.log.info(
                     f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
                 )
-            self._position_side = None
-            self._entry_bar = None
-            self._entry_price = None
         else:
             self.log.error("Failed to submit close order")
 
@@ -541,19 +538,6 @@ class MOMSignalStrategy(Strategy):
         if self._entry_bar is None:
             return 0
         return self._bars_processed - self._entry_bar
-
-    def _entry_bar_for_new_position(self) -> int:
-        """
-        Pine parity for next-bar-open fills:
-        when orders execute on the next bar open, hold counting must start on
-        that fill bar (not the signal bar) to avoid one-bar-early max-hold exits.
-        """
-        order_manager = self._order_manager
-        config = getattr(order_manager, "config", None) if order_manager else None
-        execution_timing = str(getattr(config, "execution_timing", "")).lower()
-        if execution_timing == "next_bar_open":
-            return self._bars_processed + 2
-        return self._bars_processed
 
     def _candle_close(self, candle: MidPriceCandle) -> float:
         return candle.close if candle.close is not None else 0.0

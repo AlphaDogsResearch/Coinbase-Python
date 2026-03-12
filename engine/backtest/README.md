@@ -79,7 +79,7 @@ python -m engine.backtest.validate_runner \
   --reference-file engine/backtest/pine_reference_list_of_trades/TEMA_Crossover_Strategy_BINANCE_ETHUSDT.P_2026-02-13.csv
 ```
 
-Strict parity gate (recommended). The `validate_pine_parity.json` config includes per-strategy `reference_utc_offset_hours` (8 for most, 0 for TRIX) since TradingView exports in chart timezone (typically UTC+8):
+Strict parity gate (recommended). The `validate_pine_parity.json` config includes per-strategy `reference_utc_offset_hours` (all 0 for UTC reference exports):
 
 ```bash
 python -m engine.backtest.validate_runner \
@@ -111,13 +111,12 @@ python -m engine.backtest.validate_runner \
 
 **CMO re-export required:** Pine was updated to use TA-Lib-style CMO (Wilder smoothing) to align with research. If you changed the Pine script, export a fresh trade CSV from TradingView and replace the file in `engine/backtest/pine_reference_list_of_trades/` before validating.
 
-Strict parity gate (CCI ETHUSDT reference exported in UTC+8):
+Strict parity gate (CCI ETHUSDT reference exported in UTC):
 
 ```bash
 python -m engine.backtest.validate_runner \
-  --reference-file engine/backtest/pine_reference_list_of_trades/CCI_Signal_Strategy_BINANCE_ETHUSDT.P_2026-02-26.csv \
+  --reference-file engine/backtest/pine_reference_list_of_trades/CCI_Signal_Strategy_BINANCE_ETHUSDT.P_2026-03-11.csv \
   --execution-timing next_bar_open \
-  --reference-utc-offset-hours 8 \
   --strategy-config engine/backtest/configs/validate_pine_parity.json \
   --output-dir reports/validation
 ```
@@ -126,9 +125,8 @@ Strict parity gate (MOM ETHUSDT reference):
 
 ```bash
 python -m engine.backtest.validate_runner \
-  --reference-file engine/backtest/pine_reference_list_of_trades/MOM_Signal_Strategy_BINANCE_ETHUSDT.P_2026-02-26.csv \
+  --reference-file engine/backtest/pine_reference_list_of_trades/MOM_Signal_Strategy_BINANCE_ETHUSDT.P_2026-03-11.csv \
   --execution-timing next_bar_open \
-  --reference-utc-offset-hours 8 \
   --strategy-config engine/backtest/configs/validate_pine_parity.json \
   --output-dir reports/validation
 ```
@@ -141,7 +139,6 @@ Per-strategy UTC offset is read from `validate_pine_parity.json`. Single command
 python -m engine.backtest.validate_runner \
   --reference-dir engine/backtest/pine_reference_list_of_trades \
   --execution-timing next_bar_open \
-  --reference-utc-offset-hours 8 \
   --strategy-config engine/backtest/configs/validate_pine_parity.json \
   --output-dir reports/validation
 ```
@@ -150,8 +147,7 @@ Per-strategy UTC offset (in `validate_pine_parity.json`):
 
 | Strategy | Offset | Notes |
 |----------|--------|-------|
-| BBAND, CMO, TRIX | 0 (UTC) | 2026-03-07 exports in UTC |
-| CCI, MOM, PPO, ROC, RSI, ULTOSC | 8 (UTC+8) | TradingView chart timezone |
+| All strategies | 0 (UTC) | Reference exports in UTC |
 
 Parity status (with `validate_pine_parity.json`):
 
@@ -162,7 +158,7 @@ Parity status (with `validate_pine_parity.json`):
 | CCI, TRIX | 100% match | Per-strategy UTC offset (TRIX=0) in config |
 | ROC | 390/391 matched | 1 remaining |
 | RSI | 214/218 matched | Trade count diff (226 gen vs 218 ref) |
-| MOM | 180/183 matched | 3 exit-time mismatches (1h diff) |
+| MOM | 360/365 matched | 5 max-hold exit-time mismatches (1h diff); 365/365 with 60min tolerance |
 | PPO | 59/87 matched | Trade count diff (83 gen vs 87 ref); signal/exit logic |
 | ULTOSC | 255/290 matched | Trade count diff |
 

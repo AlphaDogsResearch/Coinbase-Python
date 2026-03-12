@@ -272,13 +272,13 @@
   },
   "reference_utc_offset_hours_by_strategy": {
     "bband_signal_strategy": 0,
-    "cci_signal_strategy": 8,
+    "cci_signal_strategy": 0,
     "cmo_signal_strategy": 0,
-    "mom_signal_strategy": 8,
-    "ppo_signal_strategy": 8,
-    "roc": 8,
-    "rsi": 8,
+    "mom_signal_strategy": 0,
+    "ppo_signal_strategy": 0,
+    "roc": 0,
+    "rsi": 0,
     "trix_signal_strategy": 0,
-    "ultosc_signal_strategy": 8
+    "ultosc_signal_strategy": 0
   }
 }

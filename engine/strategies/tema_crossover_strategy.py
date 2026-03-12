@@ -108,6 +108,19 @@ class TEMACrossoverStrategy(Strategy):
         if self._cooldown_left > 0 and self.cache.is_flat(self.instrument_id):
             self._cooldown_left -= 1
 
+        if not self.cache.is_flat(self.instrument_id):
+            current_side = (
+                PositionSide.LONG
+                if self.cache.is_net_long(self.instrument_id)
+                else PositionSide.SHORT
+            )
+            self._position_side = current_side
+            if self._entry_bar is None:
+                self._entry_bar = self._bars_processed
+        else:
+            self._entry_bar = None
+            self._position_side = None
+
         long_entry_signal = self._previous_tema_diff < 0 and current_tema_diff > 0
         short_entry_signal = self._previous_tema_diff > 0 and current_tema_diff < 0
 
@@ -133,8 +146,6 @@ class TEMACrossoverStrategy(Strategy):
                         reason="TEMA short crossover",
                     )
         else:
-            self._sync_position_state()
-
             if self.cache.is_net_long(self.instrument_id):
                 self._handle_long_position(
                     candle=candle,
@@ -287,9 +298,6 @@ class TEMACrossoverStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.LONG
-            self._entry_bar = self._bars_processed
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit long entry order")
@@ -332,9 +340,6 @@ class TEMACrossoverStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.SHORT
-            self._entry_bar = self._bars_processed
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit short entry order")
@@ -375,11 +380,6 @@ class TEMACrossoverStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = (
-                PositionSide.LONG if signal == 1 else PositionSide.SHORT
-            )
-            self._entry_bar = self._bars_processed
-            self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
                 f"[SIGNAL] REVERSAL TO {side_label} | {reason} | Price: {close_price:.4f}"
@@ -414,9 +414,6 @@ class TEMACrossoverStrategy(Strategy):
                 self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
             else:
                 self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
-            self._position_side = None
-            self._entry_bar = None
-            self._entry_price = None
         else:
             self.log.error("Failed to submit close order")
 
