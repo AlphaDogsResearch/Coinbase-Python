@@ -102,27 +102,19 @@ def build_roc_signal_context(
     roc_mid: float,
     roc_period: int,
     stop_loss_percent: float,
-    max_holding_bars: int,
-    notional_amount: float,
+    take_profit_percent: float = 0.05,
+    max_holding_bars: int = 20,
+    cooldown_bars: int = 0,
+    notional_amount: float = 500.0,
+    use_stop_loss: bool = True,
+    use_take_profit: bool = False,
+    use_max_holding: bool = True,
+    allow_flip: bool = True,
     candle: Optional[Dict[str, float]] = None,
     action: str = None,
 ) -> SignalContext:
     """
     Build SignalContext for ROC Mean Reversion strategy.
-
-    Args:
-        reason: Why the signal was generated
-        current_roc: Current ROC value (as percentage, e.g., 1.23)
-        previous_roc: Previous bar's ROC value
-        roc_upper: Upper threshold
-        roc_lower: Lower threshold
-        roc_mid: Midpoint threshold
-        roc_period: ROC calculation period
-        stop_loss_percent: Stop loss percentage
-        max_holding_bars: Maximum holding period
-        notional_amount: Order notional value
-        candle: OHLC data
-        action: Action type (ENTRY, CLOSE, etc.)
     """
     return SignalContext(
         reason=reason,
@@ -136,8 +128,14 @@ def build_roc_signal_context(
         config={
             "roc_period": roc_period,
             "stop_loss_percent": stop_loss_percent,
+            "take_profit_percent": take_profit_percent,
             "max_holding_bars": max_holding_bars,
+            "cooldown_bars": cooldown_bars,
             "notional_amount": notional_amount,
+            "use_stop_loss": use_stop_loss,
+            "use_take_profit": use_take_profit,
+            "use_max_holding": use_max_holding,
+            "allow_flip": allow_flip,
         },
         candle=candle,
         action=action,

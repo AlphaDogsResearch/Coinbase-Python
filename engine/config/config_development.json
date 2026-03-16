@@ -163,7 +163,13 @@
       "exit_mode": "midpoint",
       "notional_amount": 500.0,
       "stop_loss_percent": 0.047,
-      "max_holding_bars": 20
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 20,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
     }
   },
   "rsi_strategy_config": {
