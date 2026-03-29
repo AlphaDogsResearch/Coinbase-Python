@@ -15,20 +15,20 @@ strategy("BBAND Signal Strategy",
 // ============================================================================
 
 // Bollinger Bands Settings
-bband_period = input.int(16, "BBAND Period", minval=1)
-nbdevup = input.float(1.41, "Std Dev Up Multiplier", minval=0.1)
-nbdevdn = input.float(2.15, "Std Dev Down Multiplier", minval=0.1)
+bband_period = input.int(20, "BBAND Period", minval=1)
+nbdevup = input.float(1.09, "Std Dev Up Multiplier", minval=0.1)
+nbdevdn = input.float(1.10, "Std Dev Down Multiplier", minval=0.1)
 // matype: 0=SMA, 1=EMA, 2=DEMA (Pine BBAND simplified; Python uses TA-Lib 3=DEMA)
-matype = input.int(2, "MA Type (0=SMA,1=EMA,2=DEMA)", minval=0, maxval=2)
+matype = input.int(0, "MA Type (0=SMA,1=EMA,2=DEMA)", minval=0, maxval=2)
 
 // Signal Behavior
 signal_mode = input.string("momentum", "Signal Mode", options=["mean_reversion", "momentum"])
-exit_mode = input.string("breakout", "Exit Mode", options=["midpoint", "breakout"])
+exit_mode = input.string("midpoint", "Exit Mode", options=["midpoint", "breakout"])
 
 // Position Management
-stop_loss_percent = input.float(12.0, "Stop Loss %", minval=0, maxval=100)
+stop_loss_percent = input.float(6.0, "Stop Loss %", minval=0, maxval=100)
 take_profit_percent = input.float(5.0, "Take Profit %", minval=0.1, maxval=50)
-max_holding_bars = input.int(61, "Max Holding Bars", minval=1)
+max_holding_bars = input.int(21, "Max Holding Bars", minval=1)
 cooldown_bars = input.int(0, "Cooldown Bars", minval=0)
 
 // Risk Management
@@ -137,7 +137,7 @@ if is_long and not na(entry_price)
         strategy.close("Long", comment="Flip")
         if cooldown_left == 0
             strategy.entry("Short", strategy.short, comment="Flip to Short")
-            entry_bar := bar_index
+            entry_bar := na
         stopped_out_count := 0
     else if use_max_holding and bars_held >= max_holding_bars
         strategy.close("Long", comment="Max Hold")
@@ -163,7 +163,7 @@ if is_short and not na(entry_price)
         strategy.close("Short", comment="Flip")
         if cooldown_left == 0
             strategy.entry("Long", strategy.long, comment="Flip to Long")
-            entry_bar := bar_index
+            entry_bar := na
         stopped_out_count := 0
     else if use_max_holding and bars_held >= max_holding_bars
         strategy.close("Short", comment="Max Hold")

@@ -91,9 +91,10 @@ else if not na(pending_entry_bar)
     // Bind hold counting to the expected next-bar-open fill bar.
     entry_bar := pending_entry_bar
     pending_entry_bar := na
-else if na(entry_bar) or ta.change(strategy.position_size) != 0
-    // Reset hold counting on every fresh fill, including flip fills,
-    // to match research max-holding semantics (run length by side).
+else if na(entry_bar)
+    // Only set when na; pending_entry_bar handles fresh fills and flips.
+    // Avoid ta.change(strategy.position_size) — causes spurious reset on fill_bar+1
+    // due to Pine floating-point quirk, making max-hold exit 1 bar late vs Python.
     entry_bar := bar_index
 
 bars_held = not na(entry_bar) ? bar_index - entry_bar : 0

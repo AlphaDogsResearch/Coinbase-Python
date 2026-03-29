@@ -6,7 +6,10 @@ from engine.database.models import build_cmo_signal_context
 
 from ..market_data.candle import MidPriceCandle
 from .base import Strategy
-from .indicators import ChandeMomentumOscillator
+from .indicators import (
+    ChandeMomentumOscillator,
+    ChandeMomentumOscillatorWilder,
+)
 from .models import Instrument, PositionSide
 from .strategy_action import StrategyAction
 from .strategy_order_mode import StrategyOrderMode
@@ -24,6 +27,9 @@ class CMOSignalStrategyConfig:
     cmo_upper: float = 39.0
     cmo_lower: float = -33.0
     cmo_mid: float = -10.0
+
+    # CMO style: "talib" = Wilder smoothing (research/TA-Lib), "chande" = simple sum (legacy)
+    cmo_style: str = "talib"
 
     # Signal Behavior
     signal_mode: str = "momentum"  # mean_reversion | momentum
@@ -66,6 +72,12 @@ class CMOSignalStrategy(Strategy):
         self.cmo_upper = config.cmo_upper
         self.cmo_lower = config.cmo_lower
         self.cmo_mid = config.cmo_mid
+        self.cmo_style = config.cmo_style
+        if self.cmo_style not in ("chande", "talib"):
+            logging.warning(
+                f"Invalid cmo_style={self.cmo_style}, defaulting to talib"
+            )
+            self.cmo_style = "talib"
 
         # Signal behavior
         self.signal_mode = config.signal_mode
@@ -97,7 +109,10 @@ class CMOSignalStrategy(Strategy):
         self.allow_flip = config.allow_flip
 
         # Initialize CMO indicator
-        self.cmo = ChandeMomentumOscillator(period=self.cmo_period)
+        if self.cmo_style == "talib":
+            self.cmo = ChandeMomentumOscillatorWilder(period=self.cmo_period)
+        else:
+            self.cmo = ChandeMomentumOscillator(period=self.cmo_period)
 
         # State tracking
         self._previous_cmo = 0.0
@@ -137,6 +152,19 @@ class CMOSignalStrategy(Strategy):
         if self._cooldown_left > 0 and self.cache.is_flat(self.instrument_id):
             self._cooldown_left -= 1
 
+        if not self.cache.is_flat(self.instrument_id):
+            current_side = (
+                PositionSide.LONG
+                if self.cache.is_net_long(self.instrument_id)
+                else PositionSide.SHORT
+            )
+            if self._entry_bar is None or self._position_side != current_side:
+                self._entry_bar = self._bars_processed
+                self._position_side = current_side
+        else:
+            self._entry_bar = None
+            self._position_side = None
+
         (
             long_entry_signal,
             short_entry_signal,
@@ -151,8 +179,6 @@ class CMOSignalStrategy(Strategy):
                 elif short_entry_signal:
                     self._enter_short(candle, current_cmo, reason="CMO short entry")
         else:
-            self._sync_position_state()
-
             if self.cache.is_net_long(self.instrument_id):
                 self._handle_long_position(
                     candle=candle,
@@ -349,9 +375,6 @@ class CMOSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.LONG
-            self._entry_bar = self._entry_bar_for_new_position()
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit long entry order")
@@ -390,9 +413,6 @@ class CMOSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.SHORT
-            self._entry_bar = self._entry_bar_for_new_position()
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit short entry order")
@@ -429,13 +449,6 @@ class CMOSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = (
-                PositionSide.LONG if signal == 1 else PositionSide.SHORT
-            )
-            # Pine sets entry_bar := bar_index on the signal bar for flips.
-            # Use _bars_processed (signal bar) to match.
-            self._entry_bar = self._bars_processed
-            self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
                 f"[SIGNAL] REVERSAL TO {side_label} | {reason} | Price: {close_price:.4f}"
@@ -474,9 +487,6 @@ class CMOSignalStrategy(Strategy):
                 self.log.info(
                     f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
                 )
-            self._position_side = None
-            self._entry_bar = None
-            self._entry_price = None
         else:
             self.log.error("Failed to submit close order")
 
@@ -499,6 +509,7 @@ class CMOSignalStrategy(Strategy):
             signal_mode=self.signal_mode,
             exit_mode=self.exit_mode,
             cmo_period=self.cmo_period,
+            cmo_style=self.cmo_style,
             stop_loss_percent=self.stop_loss_percent,
             take_profit_percent=self.take_profit_percent,
             max_holding_bars=self.max_holding_bars,
@@ -542,17 +553,6 @@ class CMOSignalStrategy(Strategy):
         if self._entry_bar is None:
             return 0
         return self._bars_processed - self._entry_bar
-
-    def _entry_bar_for_new_position(self) -> int:
-        order_manager = getattr(self, "_order_manager", None)
-        engine_config = getattr(order_manager, "config", None)
-        execution_timing = str(
-            getattr(engine_config, "execution_timing", "bar_close")
-        ).lower()
-
-        if execution_timing == "next_bar_open":
-            return self._bars_processed + 1
-        return self._bars_processed
 
     def _candle_close(self, candle: MidPriceCandle) -> float:
         return candle.close if candle.close is not None else 0.0

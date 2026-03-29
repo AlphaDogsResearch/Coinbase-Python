@@ -15,23 +15,23 @@ strategy("ULTOSC Signal Strategy",
 // ============================================================================
 
 // ULTOSC Settings
-timeperiod1 = input.int(14, "ULTOSC Timeperiod 1", minval=1)
+timeperiod1 = input.int(11, "ULTOSC Timeperiod 1", minval=1)
 timeperiod2 = input.int(28, "ULTOSC Timeperiod 2", minval=2)
-timeperiod3 = input.int(36, "ULTOSC Timeperiod 3", minval=3)
+timeperiod3 = input.int(45, "ULTOSC Timeperiod 3", minval=3)
 
 // ULTOSC Thresholds
-ultosc_upper = input.float(60.0, "ULTOSC Upper Threshold", minval=0, maxval=100)
-ultosc_lower = input.float(40.0, "ULTOSC Lower Threshold", minval=0, maxval=100)
-ultosc_mid = input.float(50.0, "ULTOSC Midpoint", minval=0, maxval=100)
+ultosc_upper = input.float(65.0, "ULTOSC Upper Threshold", minval=0, maxval=100)
+ultosc_lower = input.float(42.8641, "ULTOSC Lower Threshold", minval=0, maxval=100)
+ultosc_mid = input.float(46.8076, "ULTOSC Midpoint", minval=0, maxval=100)
 
 // Signal Behavior
 signal_mode = input.string("momentum", "Signal Mode", options=["mean_reversion", "momentum"])
 exit_mode = input.string("breakout", "Exit Mode", options=["midpoint", "breakout"])
 
 // Position Management
-stop_loss_percent = input.float(3.0, "Stop Loss %", minval=0, maxval=100)
+stop_loss_percent = input.float(10.0, "Stop Loss %", minval=0, maxval=100)
 take_profit_percent = input.float(5.0, "Take Profit %", minval=0.1, maxval=50)
-max_holding_bars = input.int(100, "Max Holding Bars", minval=1)
+max_holding_bars = input.int(125, "Max Holding Bars", minval=1)
 cooldown_bars = input.int(0, "Cooldown Bars", minval=0)
 
 // Risk Management

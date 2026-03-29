@@ -84,8 +84,9 @@ class ROCMeanReversionStrategy(Strategy):
         self._previous_roc = 0.0
         self._bars_processed = 0
         self._position_side = None
-        self._position_entry_bar = 0
+        self._entry_bar = None
         self._stop_loss_price = None  # Stop loss price for current position
+        self._close_queued_this_bar = False
 
         self.instrument_id = config.instrument_id
         instrument = Instrument(id=self.instrument_id, symbol=self.instrument_id)
@@ -110,14 +111,25 @@ class ROCMeanReversionStrategy(Strategy):
         # """Handle incoming candle data."""
         # self._bar_counter += 1
 
-        # Log every bar
         self.roc.handle_bar(candle)
 
         if not self.roc.initialized:
-            logging.info(
-                f"RoCMeanReversionStrategy not started for {self.instrument_id}"
-            )
             return
+
+        self._close_queued_this_bar = False
+
+        if not self.cache.is_flat(self.instrument_id):
+            current_side = (
+                PositionSide.LONG
+                if self.cache.is_net_long(self.instrument_id)
+                else PositionSide.SHORT
+            )
+            self._position_side = current_side
+            if self._entry_bar is None:
+                self._entry_bar = self._bars_processed
+        else:
+            self._entry_bar = None
+            self._position_side = None
 
         # Check stop loss first
         self._check_stop_loss(candle)
@@ -190,7 +202,7 @@ class ROCMeanReversionStrategy(Strategy):
             self._close_position(candle, "ROC midpoint exit")
         elif short_exit_signal and self.cache.is_net_short(self.instrument_id):
             self._close_position(candle, "ROC midpoint exit")
-        elif self._bars_processed - self._position_entry_bar >= self.max_holding_bars:
+        elif self._bars_held() >= self.max_holding_bars:
             self._close_position(candle, "Max holding period reached")
 
     def _enter_long(
@@ -243,13 +255,10 @@ class ROCMeanReversionStrategy(Strategy):
         )
 
         if ok:
-            # Store stop loss price for checking at each bar
             self._stop_loss_price = stop_price
             self.log.info(
                 f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
             )
-            self._position_side = PositionSide.LONG
-            self._position_entry_bar = self._entry_bar_for_new_position()
         else:
             self.log.error("Failed to submit long entry order")
 
@@ -303,18 +312,20 @@ class ROCMeanReversionStrategy(Strategy):
         )
 
         if ok:
-            # Store stop loss price for checking at each bar
             self._stop_loss_price = stop_price
             self.log.info(
                 f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f} | SL: {stop_price:.4f}"
             )
-            self._position_side = PositionSide.SHORT
-            self._position_entry_bar = self._entry_bar_for_new_position()
         else:
             self.log.error("Failed to submit short entry order")
 
+    def _bars_held(self) -> int:
+        if self._entry_bar is None:
+            return 0
+        return self._bars_processed - self._entry_bar
+
     def _close_position(self, candle: MidPriceCandle, reason: str) -> None:
-        if self.cache.is_flat(self.instrument_id):
+        if self.cache.is_flat(self.instrument_id) or self._close_queued_this_bar:
             return
 
         close_price = candle.close if candle.close is not None else 0.0
@@ -336,7 +347,7 @@ class ROCMeanReversionStrategy(Strategy):
         )
 
         if ok:
-            # Clear stop loss tracking
+            self._close_queued_this_bar = True
             self._stop_loss_price = None
             if position.is_long:
                 self.log.info(
@@ -359,16 +370,6 @@ class ROCMeanReversionStrategy(Strategy):
             return candle.close if candle.close is not None else 0.0
         return candle.high
 
-    def _entry_bar_for_new_position(self) -> int:
-        order_manager = getattr(self, "_order_manager", None)
-        engine_config = getattr(order_manager, "config", None)
-        execution_timing = str(
-            getattr(engine_config, "execution_timing", "bar_close")
-        ).lower()
-        if execution_timing == "next_bar_open":
-            return self._bars_processed + 1
-        return self._bars_processed
-
     def _check_stop_loss(self, candle: MidPriceCandle) -> None:
         """Check if stop loss should be triggered at current bar price (intrabar low/high)."""
         if self._stop_loss_price is None or self.cache.is_flat(self.instrument_id):
@@ -380,18 +381,14 @@ class ROCMeanReversionStrategy(Strategy):
         if close_price == 0.0:
             return
 
-        # Check stop loss for long position (Pine uses low <= long_stop)
         if (
             self._position_side == PositionSide.LONG
             and low_price <= self._stop_loss_price
         ):
             self._close_position(candle, f"Close Long Position, Stop loss triggered at {low_price:.4f}")
-            self._position_side = None
 
-        # Check stop loss for short position (Pine uses high >= short_stop)
         elif (
             self._position_side == PositionSide.SHORT
             and high_price >= self._stop_loss_price
         ):
             self._close_position(candle, f"Close Short Position, Stop loss triggered at {high_price:.4f}")
-            self._position_side = None

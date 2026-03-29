@@ -508,6 +508,7 @@ def build_cmo_signal_context(
     allow_flip: bool,
     candle: Optional[Dict[str, float]] = None,
     action: str = None,
+    cmo_style: str = "talib",
 ) -> SignalContext:
     """Build SignalContext for CMO Signal strategy."""
     return SignalContext(
@@ -523,6 +524,7 @@ def build_cmo_signal_context(
         },
         config={
             "cmo_period": cmo_period,
+            "cmo_style": cmo_style,
             "stop_loss_percent": stop_loss_percent,
             "take_profit_percent": take_profit_percent,
             "max_holding_bars": max_holding_bars,

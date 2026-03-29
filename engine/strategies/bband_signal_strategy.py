@@ -20,21 +20,21 @@ class BBANDSignalStrategyConfig:
     bar_type: str
 
     # Bollinger Bands Parameters (from Results summary)
-    bband_period: int = 16
-    nbdevup: float = 1.41
-    nbdevdn: float = 2.15
-    matype: int = 3  # TA-Lib: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA
+    bband_period: int = 20
+    nbdevup: float = 1.09
+    nbdevdn: float = 1.10
+    matype: int = 0  # TA-Lib: 0=SMA, 1=EMA, 2=WMA, 3=DEMA, 4=TEMA
 
     # Signal Behavior
     signal_mode: str = "momentum"  # mean_reversion | momentum
-    exit_mode: str = "breakout"  # midpoint | breakout
+    exit_mode: str = "midpoint"  # midpoint | breakout
 
     # Position Management
     quantity: float = 1.0
     notional_amount: float = 500.0
-    stop_loss_percent: float = 0.12
+    stop_loss_percent: float = 0.06
     take_profit_percent: float = 0.05
-    max_holding_bars: int = 61
+    max_holding_bars: int = 21
     cooldown_bars: int = 0
 
     # Risk Management
@@ -72,16 +72,12 @@ class BBANDSignalStrategy(Strategy):
         # Signal behavior
         self.signal_mode = config.signal_mode
         if self.signal_mode not in self.VALID_SIGNAL_MODES:
-            logging.warning(
-                f"Invalid signal_mode={self.signal_mode}, defaulting to momentum"
-            )
+            logging.warning(f"Invalid signal_mode={self.signal_mode}, defaulting to momentum")
             self.signal_mode = "momentum"
 
         self.exit_mode = config.exit_mode
         if self.exit_mode not in self.VALID_EXIT_MODES:
-            logging.warning(
-                f"Invalid exit_mode={self.exit_mode}, defaulting to breakout"
-            )
+            logging.warning(f"Invalid exit_mode={self.exit_mode}, defaulting to breakout")
             self.exit_mode = "breakout"
 
         # Position Management
@@ -148,6 +144,19 @@ class BBANDSignalStrategy(Strategy):
         if self._cooldown_left > 0 and self.cache.is_flat(self.instrument_id):
             self._cooldown_left -= 1
 
+        if not self.cache.is_flat(self.instrument_id):
+            current_side = (
+                PositionSide.LONG
+                if self.cache.is_net_long(self.instrument_id)
+                else PositionSide.SHORT
+            )
+            if self._entry_bar is None or self._position_side != current_side:
+                self._entry_bar = self._bars_processed
+                self._position_side = current_side
+        else:
+            self._entry_bar = None
+            self._position_side = None
+
         (
             long_entry_signal,
             short_entry_signal,
@@ -162,8 +171,6 @@ class BBANDSignalStrategy(Strategy):
                 elif short_entry_signal:
                     self._enter_short(candle, current_close, reason="BBAND short entry")
         else:
-            self._sync_position_state()
-
             if self.cache.is_net_long(self.instrument_id):
                 self._handle_long_position(
                     candle=candle,
@@ -364,9 +371,6 @@ class BBANDSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.LONG
-            self._entry_bar = self._entry_bar_for_new_position()
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit long entry order")
@@ -405,9 +409,6 @@ class BBANDSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = PositionSide.SHORT
-            self._entry_bar = self._entry_bar_for_new_position()
-            self._entry_price = close_price
             self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit short entry order")
@@ -444,13 +445,6 @@ class BBANDSignalStrategy(Strategy):
         )
 
         if ok:
-            self._position_side = (
-                PositionSide.LONG if signal == 1 else PositionSide.SHORT
-            )
-            # Pine sets entry_bar := bar_index on the signal bar for flips,
-            # not the fill bar. Use _bars_processed (signal bar) to match.
-            self._entry_bar = self._bars_processed
-            self._entry_price = close_price
             side_label = "LONG" if signal == 1 else "SHORT"
             self.log.info(
                 f"[SIGNAL] REVERSAL TO {side_label} | {reason} | Price: {close_price:.4f}"
@@ -482,16 +476,9 @@ class BBANDSignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(
-                    f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}"
-                )
+                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
             else:
-                self.log.info(
-                    f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}"
-                )
-            self._position_side = None
-            self._entry_bar = None
-            self._entry_price = None
+                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
         else:
             self.log.error("Failed to submit close order")
 
@@ -559,17 +546,6 @@ class BBANDSignalStrategy(Strategy):
         if self._entry_bar is None:
             return 0
         return self._bars_processed - self._entry_bar
-
-    def _entry_bar_for_new_position(self) -> int:
-        order_manager = getattr(self, "_order_manager", None)
-        engine_config = getattr(order_manager, "config", None)
-        execution_timing = str(
-            getattr(engine_config, "execution_timing", "bar_close")
-        ).lower()
-
-        if execution_timing == "next_bar_open":
-            return self._bars_processed + 1
-        return self._bars_processed
 
     def _candle_close(self, candle: MidPriceCandle) -> float:
         return candle.close if candle.close is not None else 0.0

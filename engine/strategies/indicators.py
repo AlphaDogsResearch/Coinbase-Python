@@ -646,7 +646,7 @@ class BollingerBands(Indicator):
 
     Computes upper, middle, and lower bands using a configurable moving average type.
     MAType follows TA-Lib convention (ta_defs.h):
-      0 = SMA, 1 = EMA, 2 = WMA, 3 = DEMA (default for BBAND), 4 = TEMA
+      0 = SMA (default), 1 = EMA, 2 = WMA, 3 = DEMA, 4 = TEMA
 
     upper  = middle + nbdevup  * std_dev
     middle = MA(close, period)
@@ -655,10 +655,10 @@ class BollingerBands(Indicator):
 
     def __init__(
         self,
-        period: int = 16,
-        nbdevup: float = 1.41,
-        nbdevdn: float = 2.15,
-        matype: int = 3,
+        period: int = 20,
+        nbdevup: float = 1.09,
+        nbdevdn: float = 1.10,
+        matype: int = 0,
     ):
         super().__init__([period, nbdevup, nbdevdn, matype])
         self.period = period
@@ -776,6 +776,78 @@ class ChandeMomentumOscillator(Indicator):
     def reset(self) -> None:
         self._prev_close = None
         self._changes.clear()
+        self.value = 0.0
+        self._initialized = False
+
+
+class ChandeMomentumOscillatorWilder(Indicator):
+    """
+    CMO with Wilder's smoothing (TA-Lib style).
+
+    Matches research/ETHSignal CMO v4.ipynb which uses ta.CMO().
+    Uses Wilder's smoothing for gains/losses (same as RSI), then
+    CMO = 100 * (avg_gain - avg_loss) / (avg_gain + avg_loss).
+    """
+
+    def __init__(self, period: int = 14):
+        super().__init__([period])
+        self.period = period
+        self._prev_close = None
+        self._gains: deque = deque(maxlen=period)
+        self._losses: deque = deque(maxlen=period)
+        self._avg_gain = 0.0
+        self._avg_loss = 0.0
+        self.value = 0.0
+
+    def _compute_cmo(self) -> float:
+        total = self._avg_gain + self._avg_loss
+        if total == 0.0:
+            return 0.0
+        return 100.0 * (self._avg_gain - self._avg_loss) / total
+
+    def handle_bar(self, candle: MidPriceCandle) -> None:
+        close_price = candle.close if candle.close is not None else 0.0
+
+        if self._prev_close is None:
+            self._prev_close = close_price
+            self._initialized = False
+            return
+
+        change = close_price - self._prev_close
+        gain = max(change, 0.0)
+        loss = max(-change, 0.0)
+
+        if not self._initialized:
+            self._gains.append(gain)
+            self._losses.append(loss)
+
+            if len(self._gains) == self.period:
+                self._avg_gain = sum(self._gains) / self.period
+                self._avg_loss = sum(self._losses) / self.period
+                self.value = self._compute_cmo()
+                self._initialized = True
+                logging.debug(
+                    f"ChandeMomentumOscillatorWilder initialized {self.value}"
+                )
+            else:
+                self.value = 0.0
+        else:
+            self._avg_gain = (
+                (self._avg_gain * (self.period - 1) + gain) / self.period
+            )
+            self._avg_loss = (
+                (self._avg_loss * (self.period - 1) + loss) / self.period
+            )
+            self.value = self._compute_cmo()
+
+        self._prev_close = close_price
+
+    def reset(self) -> None:
+        self._prev_close = None
+        self._gains.clear()
+        self._losses.clear()
+        self._avg_gain = 0.0
+        self._avg_loss = 0.0
         self.value = 0.0
         self._initialized = False
 

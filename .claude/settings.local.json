@@ -8,7 +8,10 @@
       "Bash(pip install:*)",
       "Bash(pip3.13 install:*)",
       "Bash(python3.13:*)",
-      "Bash(python -c:*)"
+      "Bash(python -c:*)",
+      "Bash(ln:*)",
+      "Bash(python -m engine.backtest.validate_runner:*)",
+      "WebFetch(domain:www.tradingview.com)"
     ]
   }
 }
