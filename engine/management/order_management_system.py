@@ -10,9 +10,12 @@ from typing import Dict, Optional, List, TYPE_CHECKING
 from common.decimal_utils import convert_to_decimal, add_numbers
 from common.identifier import IdGenerator
 from common.interface_order import Order, Side, OrderEvent, OrderStatus, OrderSizeMode, OrderType
+from common.json_model import JsonModel
 from common.time_utils import current_milli_time
 from engine.core.order_manager import OrderManager
 from engine.execution.executor import Executor
+from engine.external.channel import Channel
+from engine.external.external_publisher import ExternalPublisher
 from engine.pool.object_pool import ObjectPool
 from engine.position.position_manager import PositionManager
 from engine.reference_data.reference_data_manager import ReferenceDataManager
@@ -33,6 +36,7 @@ class FCFSOrderManager(OrderManager, ABC):
         reference_data_manager: ReferenceDataManager,
         position_manager: PositionManager,
         database_manager: "DatabaseManager" = None,
+        external_publisher: ExternalPublisher = None,
     ):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
@@ -50,7 +54,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.reference_data_manager = reference_data_manager
         self.position_manager = position_manager
 
-        self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(""), size=100)
+        self.order_pool = ObjectPool(create_func=lambda: Order.create_base_order(""), size=64)
 
         # Statistics
         self.stats = {"total_orders": 0, "by_strategy": {}}
@@ -65,6 +69,10 @@ class FCFSOrderManager(OrderManager, ABC):
         self._pending_stop_by_signal: Dict[tuple, dict] = {}
         # Database manager for persistence (optional)
         self.database_manager = database_manager
+        self.order_channel = Channel.ORDER.value
+        self.external_publisher = external_publisher
+        if external_publisher is not None:
+            external_publisher.register_channel_with_json_formatter(self.order_channel)
 
     # def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
     #     logging.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
@@ -396,18 +404,29 @@ class FCFSOrderManager(OrderManager, ABC):
         }
         return self.submit_order_internal(order)
 
+    def publish_data_external(self,data:JsonModel,reason:str):
+        if self.external_publisher is not None:
+            self.external_publisher.publish_data(self.order_channel,data,reason)
+
     def submit_order_internal(self, order: Order) -> bool:
         """Submit order - true FCFS across all strategies"""
         # Immediate queue insertion - no per-strategy queues
 
         if not order.is_id_init:
             logging.error(f"Order id not initialized ,unable to submit {order}")
+            order.comment = "Order Not Initialized"
+            self.publish_data_external(order, "Order Not Initialized")
+            self.order_pool.release(order)
             return False
 
         if self.risk_manager and not self.risk_manager.validate_order(order):
             logging.info(f"Order blocked by risk manager: {order}")
+            order.comment = "Order blocked by risk manager"
+            self.publish_data_external(order, "Order Blocked by Risk Manager")
+            self.order_pool.release(order)
             return False
 
+        self.publish_data_external(order, "New Order")
         self.order_queue.put(order)
 
         with self.lock:
@@ -566,6 +585,7 @@ class FCFSOrderManager(OrderManager, ABC):
                     f"Unknown order status: {order_event.status} {type(order_event.status)}"
                 )
 
+        self.publish_data_external(order, "Order Status Update")
         if order.is_in_order_done_state:
             order = self.orders.pop(order_event.client_order_id, None)
             logging.info(f"Order is done: {order}")

@@ -189,7 +189,7 @@ class Position(JsonModel):
             f"Open Orders={self.open_orders}"
         )
 
-    def to_dict(self, include_timestamp: bool = False):
+    def to_external_json(self, include_timestamp: bool = False):
 
         data =  {
             "symbol": self.symbol,
@@ -253,7 +253,7 @@ class Position(JsonModel):
 if __name__ == "__main__":
 
     position = Position("ETHUSDT","ABC",123,123,456,789,TradingCost("ETHUSDT",123,444),None,"json.path")
-    print(position.to_dict())
+    print(position.to_external_json())
 
 
 

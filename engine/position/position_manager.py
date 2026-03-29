@@ -54,8 +54,9 @@ class PositionManager:
         # Database manager for persistence (optional)
         self.database_manager = database_manager,
         self.external_publisher = external_publisher
+        self.position_channel = Channel.POSITION.value
         if external_publisher is not None:
-            external_publisher.register_channel_with_json_formatter(Channel.POSITION.value)
+            external_publisher.register_channel_with_json_formatter(self.position_channel)
 
     def set_order_lookup(self, lookup_fn: Callable[[str], Optional[object]]):
         """
@@ -103,11 +104,11 @@ class PositionManager:
 
         for symbol, pos in self.positions.items():
             logging.info("[%s] Current Position %s", symbol, pos)
-            self.publish_data(pos,"initial position")
+            self.publish_data_external(pos, "initial position")
 
-    def publish_data(self,data:JsonModel,reason:str):
+    def publish_data_external(self, data:JsonModel, reason:str):
         if self.external_publisher is not None:
-            self.external_publisher.publish_data(Channel.POSITION.value,data,reason)
+            self.external_publisher.publish_data(self.position_channel, data, reason)
 
     def on_mark_price_event(self, mark_price: MarkPrice):
         symbol = mark_price.symbol
@@ -116,7 +117,7 @@ class PositionManager:
         pos = self.positions.get(symbol)
         if pos is not None:
             self.update_maint_margin(pos)
-            self.publish_data(pos,"Mark Price Changed")
+            self.publish_data_external(pos, "Mark Price Changed")
 
     def on_order_event(self, order_event: OrderEvent,strategy_id:str):
         logging.info(f"[{self.name}] Order event: {order_event}")
@@ -222,7 +223,7 @@ class PositionManager:
 
         position = self.positions_by_key[key]
         logging.info(f"[{self.name}][{key}] - Current Strategy Position {position}")
-        self.publish_data(position,"Position Changed")
+        self.publish_data_external(position, "Position Changed")
 
         #Aggregated Position
         agg_position  = self.positions.get(symbol)
@@ -235,7 +236,7 @@ class PositionManager:
         logging.info(f"[{self.name}][{symbol}] - Current Aggregated Position {position}")
         # update_maint_margin on aggregated position
         self.update_maint_margin(agg_position)
-        self.publish_data(agg_position,"Aggregated Position Changed")
+        self.publish_data_external(agg_position, "Aggregated Position Changed")
         #
         # # Maintain aggregate position by symbol for backward compatibility
         # self._update_aggregate_position(symbol)
