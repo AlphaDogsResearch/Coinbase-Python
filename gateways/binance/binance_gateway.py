@@ -68,7 +68,7 @@ def log_session_header(url):
 
 
 class BinanceGateway(GatewayInterface):
-    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=True):
+    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=False):
         """
         symbols: list of trading pairs (e.g. ["BTCUSDT", "ETHUSDT"])
         """
