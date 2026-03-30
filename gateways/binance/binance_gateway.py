@@ -30,34 +30,45 @@ class ProductType(Enum):
 
 
 def log_session_header(url):
-    # Detect Environment
+    # 1. Configuration
     is_prod = "testnet" not in url.lower() and "uat" not in url.lower()
+    BOX_WIDTH = 65  # Total characters wide
 
-    # Theme Settings
-    theme_color = '\033[91m' if is_prod else '\033[96m'  # Red for Prod, Cyan for UAT
-    env_label = "PRODUCTION (LIVE)" if is_prod else "UAT (TESTNET)"
-    status_msg = "LIVE EXECUTION ENABLED" if is_prod else "PAPER TRADING MODE"
-
-    # ANSI Styles
+    # 2. Colors
+    CLR = '\033[91m' if is_prod else '\033[94m'  # Red for Prod, Blue for UAT
     BOLD = '\033[1m'
     END = '\033[0m'
 
-    # Header Construction
-    border = f"{theme_color}--------------------------------------------------{END}"
+    # 3. Data
+    env_text = "PRODUCTION" if is_prod else "UAT (TESTNET)"
+    status_msg = "LIVE EXECUTION" if is_prod else "SIMULATED TRADING"
+    timestamp = time.strftime('%H:%M:%S')
+
+    def print_line(label, value, value_color=""):
+        # The 'padding' calculates exactly how many spaces are needed
+        # to reach the end of the box regardless of string length.
+        label_full = f"  {BOLD}{label:<12}{END} "
+        val_full = f"{value_color}{value}{END}"
+
+        # visible_length = 2 (start spaces) + 12 (label) + 1 (middle space) + len(value)
+        visible_len = 2 + 12 + 1 + len(str(value))
+        spaces_needed = BOX_WIDTH - visible_len - 2  # -2 for the two pipes
+
+        print(f"{CLR}|{END}{label_full}{val_full}{' ' * spaces_needed}{CLR}|{END}")
+
+    # 4. Rendering
+    border = f"{CLR}" + "-" * BOX_WIDTH + f"{END}"
 
     print(border)
-    print(f"{theme_color}|{END}  {BOLD}ENVIRONMENT:{END}  {theme_color}{env_label}{END}".ljust(
-        64) + f"{theme_color}|{END}")
-    print(f"{theme_color}|{END}  {BOLD}ENDPOINT:{END}     {url}".ljust(58) + f"{theme_color}|{END}")
-    print(
-        f"{theme_color}|{END}  {BOLD}TIME:{END}         {time.strftime('%H:%M:%S')}".ljust(58) + f"{theme_color}|{END}")
-    print(f"{theme_color}|{END}  {BOLD}STATUS:{END}       {status_msg}".ljust(58) + f"{theme_color}|{END}")
+    print_line("ENVIRONMENT:", env_text, CLR)
+    print_line("ENDPOINT:", url)
+    print_line("TIME:", timestamp)
+    print_line("STATUS:", status_msg, CLR)
     print(border)
-    print("")
 
 
 class BinanceGateway(GatewayInterface):
-    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=False):
+    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=True):
         """
         symbols: list of trading pairs (e.g. ["BTCUSDT", "ETHUSDT"])
         """
