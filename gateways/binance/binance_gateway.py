@@ -68,7 +68,7 @@ def log_session_header(url):
 
 
 class BinanceGateway(GatewayInterface):
-    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=False):
+    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=False,price_depth:int=5):
         """
         symbols: list of trading pairs (e.g. ["BTCUSDT", "ETHUSDT"])
         """
@@ -78,7 +78,7 @@ class BinanceGateway(GatewayInterface):
         self._symbols = symbols if isinstance(symbols, list) else [symbols]
         self._product_type = product_type
         self.BASE_URL = 'https://testnet.binancefuture.com'
-
+        self.price_depth = price_depth
         self.api_client = Client(self._api_key, self._api_secret)
         if not is_production:
             self.api_client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'
@@ -244,8 +244,8 @@ class BinanceGateway(GatewayInterface):
                     return None
 
             # is DepthCache Object
-            bids = [PriceLevel(price=p, size=s) for (p, s) in cache.get_bids()[:5]]
-            asks = [PriceLevel(price=p, size=s) for (p, s) in cache.get_asks()[:5]]
+            bids = [PriceLevel(price=p, size=s) for (p, s) in cache.get_bids()[:self.price_depth]]
+            asks = [PriceLevel(price=p, size=s) for (p, s) in cache.get_asks()[:self.price_depth]]
             return OrderBook(timestamp=cache.update_time, contract_name=symbol, bids=bids,
                              asks=asks)
         except Exception as e:
