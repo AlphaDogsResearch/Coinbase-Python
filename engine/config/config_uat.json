@@ -150,21 +150,6 @@
       "database_manager": "@database_manager"
     }
   },
-  "roc_strategy_config": {
-    "module": "engine.strategies.roc_mean_reversion_strategy",
-    "class": "ROCMeanReversionStrategyConfig",
-    "params": {
-      "instrument_id": "@default_settings.selected_symbol",
-      "bar_type": "ETHUSDT-1h",
-      "roc_period": 10,
-      "roc_upper": 1,
-      "roc_lower": -1,
-      "roc_mid": 0,
-      "notional_amount": 500.0,
-      "stop_loss_percent": 0.5,
-      "max_holding_bars": 100
-    }
-  },
   "simple_order_test_strategy_config": {
     "module": "engine.strategies.simple_order_test_strategy",
     "class": "SimpleOrderTestStrategyConfig",
@@ -175,13 +160,112 @@
       "notional_amount": 500.0
     }
   },
+  "rsi_strategy_config": {
+    "module": "engine.strategies.rsi_signal_strategy",
+    "class": "RSISignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "rsi_period": 30,
+      "rsi_upper": 67.0,
+      "rsi_lower": 33.0,
+      "rsi_mid": 45.0,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.106,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 15,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "cci_strategy_config": {
+    "module": "engine.strategies.cci_signal_strategy",
+    "class": "CCISignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "cci_period": 14,
+      "cci_upper": 205.0,
+      "cci_lower": -101.0,
+      "cci_mid": 12.0,
+      "signal_mode": "momentum",
+      "exit_mode": "midpoint",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.074,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 25,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
+  "cmo_strategy_config": {
+    "module": "engine.strategies.cmo_signal_strategy",
+    "class": "CMOSignalStrategyConfig",
+    "params": {
+      "instrument_id": "@default_settings.selected_symbol",
+      "bar_type": "ETHUSDT-1h",
+      "cmo_period": 24,
+      "cmo_upper": 39.0,
+      "cmo_lower": -33.0,
+      "cmo_mid": -10.0,
+      "signal_mode": "momentum",
+      "exit_mode": "breakout",
+      "notional_amount": 500.0,
+      "stop_loss_percent": 0.04,
+      "take_profit_percent": 0.05,
+      "max_holding_bars": 10,
+      "cooldown_bars": 0,
+      "use_stop_loss": true,
+      "use_take_profit": false,
+      "use_max_holding": true,
+      "allow_flip": true
+    }
+  },
   "strategy_map": {
-    "roc_mean_reversion_strategy": {
-      "module": "engine.strategies.roc_mean_reversion_strategy",
-      "class": "ROCMeanReversionStrategy",
+    "rsi_signal_strategy": {
+      "module": "engine.strategies.rsi_signal_strategy",
+      "class": "RSISignalStrategy",
       "params": {
-        "config": "@roc_strategy_config"
+        "config": "@rsi_strategy_config"
+      }
+    },
+    "cci_signal_strategy": {
+      "module": "engine.strategies.cci_signal_strategy",
+      "class": "CCISignalStrategy",
+      "params": {
+        "config": "@cci_strategy_config"
+      }
+    },
+    "cmo_signal_strategy": {
+      "module": "engine.strategies.cmo_signal_strategy",
+      "class": "CMOSignalStrategy",
+      "params": {
+        "config": "@cmo_strategy_config"
       }
     }
   }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 }
