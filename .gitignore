@@ -199,3 +199,10 @@ binance_keys
 
 # ignore pine reference trade CSVs (regenerated from TradingView)
 engine/backtest/pine_reference_list_of_trades/
+
+# Scheduled backtest secrets (SMTP creds, recipients)
+engine/backtest/scheduled/smtp_config.json
+engine/backtest/scheduled/recipients.json
+
+# Position state files
+state/

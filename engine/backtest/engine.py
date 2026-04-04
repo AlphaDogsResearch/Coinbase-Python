@@ -87,6 +87,7 @@ class SimulatedOrderManager:
         strategy_id: str,
         symbol: str,
         config: BacktestEngineConfig,
+        initial_position: Optional[_OpenPosition] = None,
     ):
         self.strategy = strategy
         self.strategy_id = strategy_id
@@ -97,9 +98,14 @@ class SimulatedOrderManager:
         self.trades: List[BacktestTradeRecord] = []
         self.equity_curve: List[BacktestEquityPoint] = []
 
-        self._position: Optional[_OpenPosition] = None
+        self._position: Optional[_OpenPosition] = initial_position
         self._cash = float(config.initial_capital)
         self._total_commission = 0.0
+
+        # If initial position provided, account for entry commission
+        if initial_position is not None:
+            self._cash -= initial_position.entry_commission
+            self._total_commission = initial_position.entry_commission
 
         self._current_candle: Optional[MidPriceCandle] = None
         self._next_candle: Optional[MidPriceCandle] = None
@@ -116,6 +122,10 @@ class SimulatedOrderManager:
     @property
     def total_commission(self) -> float:
         return self._total_commission
+
+    def get_open_position(self) -> Optional[_OpenPosition]:
+        """Get the current open position, if any."""
+        return self._position
 
     def set_market_context(
         self,

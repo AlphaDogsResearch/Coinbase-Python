@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Strategy Backtest Report</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.5;
+            color: #1a1a1a;
+            background-color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #ffffff;
+        }
+
+        .header {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            padding: 24px 32px;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
+        .header .subtitle {
+            font-size: 14px;
+            color: #a0a0a0;
+        }
+
+        .summary {
+            display: table;
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fafafa;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .summary-row {
+            display: table-row;
+        }
+
+        .summary-cell {
+            display: table-cell;
+            padding: 20px 16px;
+            text-align: center;
+            border-right: 1px solid #e0e0e0;
+            width: 25%;
+        }
+
+        .summary-cell:last-child {
+            border-right: none;
+        }
+
+        .summary-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #666666;
+            margin-bottom: 4px;
+        }
+
+        .summary-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #1a1a1a;
+        }
+
+        .summary-value.positive {
+            color: #16a34a;
+        }
+
+        .summary-value.negative {
+            color: #dc2626;
+        }
+
+        .strategy-section {
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .strategy-header {
+            display: table;
+            width: 100%;
+            padding: 16px 32px;
+            background-color: #ffffff;
+        }
+
+        .strategy-name {
+            display: table-cell;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1a1a1a;
+            vertical-align: middle;
+        }
+
+        .strategy-pnl {
+            display: table-cell;
+            text-align: right;
+            font-size: 16px;
+            font-weight: 600;
+            vertical-align: middle;
+        }
+
+        .strategy-pnl.positive {
+            color: #16a34a;
+        }
+
+        .strategy-pnl.negative {
+            color: #dc2626;
+        }
+
+        /* Trade card */
+        .trade-card {
+            margin: 0 16px 16px 16px;
+            border: 1px solid #e0e0e0;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+
+        .trade-header {
+            display: table;
+            width: 100%;
+            padding: 12px 16px;
+            background-color: #f8f8f8;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .trade-header-left {
+            display: table-cell;
+            vertical-align: middle;
+        }
+
+        .trade-header-right {
+            display: table-cell;
+            text-align: right;
+            vertical-align: middle;
+        }
+
+        .trade-side {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .trade-side.long {
+            background-color: #dcfce7;
+            color: #16a34a;
+        }
+
+        .trade-side.short {
+            background-color: #fee2e2;
+            color: #dc2626;
+        }
+
+        .trade-pnl {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .trade-pnl.positive {
+            color: #16a34a;
+        }
+
+        .trade-pnl.negative {
+            color: #dc2626;
+        }
+
+        /* Trade body with two columns */
+        .trade-body {
+            display: table;
+            width: 100%;
+        }
+
+        .trade-section {
+            display: table-cell;
+            width: 50%;
+            padding: 12px 16px;
+            vertical-align: top;
+        }
+
+        .trade-section.entry {
+            border-right: 1px solid #e0e0e0;
+        }
+
+        .trade-section-header {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #888;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .trade-section-header.entry {
+            color: #16a34a;
+        }
+
+        .trade-section-header.exit {
+            color: #dc2626;
+        }
+
+        .trade-row {
+            margin-bottom: 6px;
+        }
+
+        .trade-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .trade-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: #888888;
+            margin-bottom: 2px;
+        }
+
+        .trade-value {
+            font-size: 13px;
+            color: #333333;
+        }
+
+        .trade-value.mono {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', monospace;
+        }
+
+        .trade-value.positive {
+            color: #16a34a;
+        }
+
+        .trade-value.negative {
+            color: #dc2626;
+        }
+
+        .trade-reason {
+            font-size: 12px;
+            color: #555;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed #e0e0e0;
+        }
+
+        /* Trade metrics */
+        .trade-metrics {
+            display: table;
+            width: 100%;
+            padding: 12px 16px;
+            background-color: #fafafa;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .trade-metric {
+            display: table-cell;
+            text-align: center;
+        }
+
+        .trade-metric-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+            color: #888888;
+            margin-bottom: 2px;
+        }
+
+        .trade-metric-value {
+            font-size: 13px;
+            font-weight: 500;
+            color: #333333;
+        }
+
+        .trade-metric-value.positive {
+            color: #16a34a;
+        }
+
+        .trade-metric-value.negative {
+            color: #dc2626;
+        }
+
+        /* Position indicator */
+        .position-indicator {
+            padding: 12px 32px;
+            background-color: #fafafa;
+            font-size: 12px;
+            color: #666666;
+        }
+
+        .position-indicator .label {
+            font-weight: 500;
+        }
+
+        .position-indicator .long {
+            color: #16a34a;
+            font-weight: 600;
+        }
+
+        .position-indicator .short {
+            color: #dc2626;
+            font-weight: 600;
+        }
+
+        .no-trades {
+            padding: 24px 32px;
+            text-align: center;
+            color: #666666;
+            font-size: 13px;
+            font-style: italic;
+        }
+
+        .footer {
+            padding: 20px 32px;
+            background-color: #fafafa;
+            border-top: 1px solid #e0e0e0;
+            font-size: 11px;
+            color: #888888;
+        }
+
+        .footer-row {
+            display: table;
+            width: 100%;
+        }
+
+        .footer-left {
+            display: table-cell;
+            text-align: left;
+        }
+
+        .footer-right {
+            display: table-cell;
+            text-align: right;
+        }
+
+        .mono {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', monospace;
+        }
+
+        /* Dark mode */
+        @media (prefers-color-scheme: dark) {
+            body { background-color: #1a1a1a; }
+            .container { background-color: #262626; }
+            .header { background-color: #0a0a0a; }
+            .summary { background-color: #1f1f1f; }
+            .summary-cell { border-color: #333333; }
+            .summary-label { color: #999999; }
+            .summary-value { color: #ffffff; }
+            .strategy-header { background-color: #262626; }
+            .strategy-name { color: #ffffff; }
+            .trade-card { border-color: #444444; }
+            .trade-header { background-color: #1f1f1f; border-color: #444444; }
+            .trade-section { background-color: #262626; }
+            .trade-section.entry { border-color: #444444; }
+            .trade-label { color: #888888; }
+            .trade-value { color: #cccccc; }
+            .trade-reason { color: #aaa; border-color: #444; }
+            .trade-metrics { background-color: #1f1f1f; border-color: #444444; }
+            .trade-metric-label { color: #888888; }
+            .trade-metric-value { color: #cccccc; }
+            .position-indicator { background-color: #1f1f1f; }
+            .footer { background-color: #1f1f1f; border-color: #333333; }
+            .strategy-section { border-color: #333333; }
+            .trade-side.long { background-color: #14532d; color: #4ade80; }
+            .trade-side.short { background-color: #7f1d1d; color: #fca5a5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>STRATEGY BACKTEST REPORT</h1>
+            <div class="subtitle">
+                {{ period_label }} | {{ period_date_range }} | {{ report.symbol }} {{ report.interval }} | {{ report.data_source | title }}
+            </div>
+        </div>
+
+        <div class="summary">
+            <div class="summary-row">
+                <div class="summary-cell">
+                    <div class="summary-label">Net P&L</div>
+                    <div class="summary-value {% if report.total_net_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                        {{ report.total_net_pnl | format_currency }}
+                    </div>
+                </div>
+                <div class="summary-cell">
+                    <div class="summary-label">Trades</div>
+                    <div class="summary-value">{{ report.total_trades }}</div>
+                </div>
+                <div class="summary-cell">
+                    <div class="summary-label">Win Rate</div>
+                    <div class="summary-value">{{ report.aggregate_win_rate_pct | format_pct }}</div>
+                </div>
+                <div class="summary-cell">
+                    <div class="summary-label">Commission</div>
+                    <div class="summary-value">${{ report.total_commission | format_number }}</div>
+                </div>
+            </div>
+        </div>
+
+        {% for strategy in report.strategy_reports %}
+        <div class="strategy-section">
+            <div class="strategy-header">
+                <div class="strategy-name">{{ strategy.strategy_id | replace("_", " ") | title }}</div>
+                <div class="strategy-pnl {% if strategy.net_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                    {{ strategy.net_pnl | format_currency }}
+                </div>
+            </div>
+
+            {% if strategy.trades %}
+            {% for trade in strategy.trades %}
+            <div class="trade-card">
+                <div class="trade-header">
+                    <div class="trade-header-left">
+                        <span class="trade-side {% if trade.side == 'LONG' %}long{% else %}short{% endif %}">
+                            {{ trade.side }}
+                        </span>
+                        <span style="margin-left: 8px; font-size: 12px; color: #666;">
+                            {{ trade.quantity | format_number(4) }} {{ report.symbol }}
+                        </span>
+                    </div>
+                    <div class="trade-header-right">
+                        <span class="trade-pnl {% if trade.pnl_net >= 0 %}positive{% else %}negative{% endif %}">
+                            {{ trade.pnl_net | format_currency }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="trade-body">
+                    <!-- Entry Section -->
+                    <div class="trade-section entry">
+                        <div class="trade-section-header entry">ENTRY</div>
+                        <div class="trade-row">
+                            <div class="trade-label">Time</div>
+                            <div class="trade-value mono">{{ trade.entry_time | format_datetime_full }}</div>
+                        </div>
+                        <div class="trade-row">
+                            <div class="trade-label">Price</div>
+                            <div class="trade-value mono">${{ trade.entry_price | format_number }}</div>
+                        </div>
+                        <div class="trade-row">
+                            <div class="trade-label">Notional</div>
+                            <div class="trade-value mono">${{ (trade.quantity * trade.entry_price) | format_number }}</div>
+                        </div>
+                        <div class="trade-reason">{{ trade.entry_reason or '-' }}</div>
+                    </div>
+
+                    <!-- Exit Section -->
+                    <div class="trade-section exit">
+                        <div class="trade-section-header exit">EXIT</div>
+                        <div class="trade-row">
+                            <div class="trade-label">Time</div>
+                            <div class="trade-value mono">{{ trade.exit_time | format_datetime_full }}</div>
+                        </div>
+                        <div class="trade-row">
+                            <div class="trade-label">Price</div>
+                            <div class="trade-value mono">${{ trade.exit_price | format_number }}</div>
+                        </div>
+                        <div class="trade-row">
+                            <div class="trade-label">Bars Held</div>
+                            <div class="trade-value mono">{{ trade.bars_held }}</div>
+                        </div>
+                        <div class="trade-reason">{{ trade.exit_reason or '-' }}</div>
+                    </div>
+                </div>
+
+                <div class="trade-metrics">
+                    <div class="trade-metric">
+                        <div class="trade-metric-label">Gross P&L</div>
+                        <div class="trade-metric-value {% if trade.pnl_gross >= 0 %}positive{% else %}negative{% endif %}">
+                            {{ trade.pnl_gross | format_currency }}
+                        </div>
+                    </div>
+                    <div class="trade-metric">
+                        <div class="trade-metric-label">Commission</div>
+                        <div class="trade-metric-value">${{ trade.commission_total | format_number }}</div>
+                    </div>
+                    <div class="trade-metric">
+                        <div class="trade-metric-label">Net P&L</div>
+                        <div class="trade-metric-value {% if trade.pnl_net >= 0 %}positive{% else %}negative{% endif %}">
+                            {{ trade.pnl_net | format_currency }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="no-trades">No closed trades during this period</div>
+            {% endif %}
+
+            {% if strategy.has_open_position and strategy.open_position %}
+            <div class="trade-card" style="border-left: 3px solid {% if strategy.open_position.side == 'LONG' %}#16a34a{% else %}#dc2626{% endif %};">
+                <div class="trade-header">
+                    <div class="trade-header-left">
+                        <span class="trade-side {% if strategy.open_position.side == 'LONG' %}long{% else %}short{% endif %}">
+                            {{ strategy.open_position.side }}
+                        </span>
+                        <span style="margin-left: 8px; font-size: 12px; color: #666;">
+                            {{ strategy.open_position.quantity | format_number(4) }} {{ report.symbol }}
+                        </span>
+                        <span style="margin-left: 8px; font-size: 11px; padding: 2px 6px; background: #fef3c7; color: #92400e; border-radius: 3px;">
+                            OPEN
+                        </span>
+                    </div>
+                    <div class="trade-header-right">
+                        <span class="trade-pnl {% if strategy.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                            {{ strategy.unrealized_pnl | format_currency }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="trade-body">
+                    <!-- Entry Section -->
+                    <div class="trade-section entry">
+                        <div class="trade-section-header entry">ENTRY</div>
+                        <div class="trade-row">
+                            <div class="trade-label">Time</div>
+                            <div class="trade-value mono">{{ strategy.open_position.entry_time | format_datetime_full }}</div>
+                        </div>
+                        <div class="trade-row">
+                            <div class="trade-label">Price</div>
+                            <div class="trade-value mono">${{ strategy.open_position.entry_price | format_number }}</div>
+                        </div>
+                        <div class="trade-row">
+                            <div class="trade-label">Notional</div>
+                            <div class="trade-value mono">${{ (strategy.open_position.quantity * strategy.open_position.entry_price) | format_number }}</div>
+                        </div>
+                        {% if strategy.open_position.entry_reason %}
+                        <div class="trade-reason">{{ strategy.open_position.entry_reason }}</div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Current Section -->
+                    <div class="trade-section exit">
+                        <div class="trade-section-header" style="color: #f59e0b;">CURRENT</div>
+                        <div class="trade-row">
+                            <div class="trade-label">Mark Price</div>
+                            <div class="trade-value mono">${{ strategy.last_price | format_number }}</div>
+                        </div>
+                        <div class="trade-row">
+                            <div class="trade-label">Unrealized</div>
+                            <div class="trade-value mono {% if strategy.unrealized_pnl >= 0 %}positive{% else %}negative{% endif %}">
+                                {{ strategy.unrealized_pnl | format_currency }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <div class="footer">
+            <div class="footer-row">
+                <div class="footer-left">Generated: {{ generated_at }}</div>
+                <div class="footer-right">AlphaDogs Research | {{ report.bars_processed }} bars processed</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

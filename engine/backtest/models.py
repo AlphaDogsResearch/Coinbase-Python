@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from engine.market_data.candle import MidPriceCandle
@@ -224,4 +224,68 @@ class BacktestRunnerConfig:
             strategy=StrategySpec.from_dict(payload["strategy"]),
             engine=BacktestEngineConfig(**engine_payload),
             output=OutputSpec.from_dict(output_payload),
+        )
+
+
+@dataclass
+class PositionStateRecord:
+    """Serializable position state for persistence between scheduled runs."""
+
+    strategy_id: str
+    symbol: str
+    side: str  # "LONG", "SHORT", or "FLAT"
+    quantity: float
+    entry_price: float
+    entry_time: datetime
+    entry_bar_index: int
+    entry_reason: str
+    entry_commission: float
+    last_updated: datetime
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize to dictionary for JSON persistence."""
+        return {
+            "strategy_id": self.strategy_id,
+            "symbol": self.symbol,
+            "side": self.side,
+            "quantity": self.quantity,
+            "entry_price": self.entry_price,
+            "entry_time": self.entry_time.isoformat(),
+            "entry_bar_index": self.entry_bar_index,
+            "entry_reason": self.entry_reason,
+            "entry_commission": self.entry_commission,
+            "last_updated": self.last_updated.isoformat(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PositionStateRecord":
+        """Deserialize from dictionary."""
+        return cls(
+            strategy_id=data["strategy_id"],
+            symbol=data["symbol"],
+            side=data["side"],
+            quantity=data["quantity"],
+            entry_price=data["entry_price"],
+            entry_time=datetime.fromisoformat(data["entry_time"]),
+            entry_bar_index=data["entry_bar_index"],
+            entry_reason=data["entry_reason"],
+            entry_commission=data["entry_commission"],
+            last_updated=datetime.fromisoformat(data["last_updated"]),
+        )
+
+    @classmethod
+    def flat(cls, strategy_id: str, symbol: str) -> "PositionStateRecord":
+        """Create a flat (no position) state."""
+        now = datetime.now(timezone.utc)
+        return cls(
+            strategy_id=strategy_id,
+            symbol=symbol,
+            side="FLAT",
+            quantity=0.0,
+            entry_price=0.0,
+            entry_time=now,
+            entry_bar_index=0,
+            entry_reason="",
+            entry_commission=0.0,
+            last_updated=now,
         )
