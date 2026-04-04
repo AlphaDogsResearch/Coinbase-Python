@@ -5,3 +5,4 @@ from enum import Enum
 class Channel(Enum):
     ACCOUNT = "account"
     POSITION = "position"
+    ORDER = "order"

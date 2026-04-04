@@ -8,7 +8,8 @@
         "ETHUSDT"
       ],
       "market_data_connection_port": 8080,
-      "order_connection_port": 8081
+      "order_connection_port": 8081,
+      "enable_questdb_tick": false
     }
   }
 }

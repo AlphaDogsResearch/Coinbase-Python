@@ -5,6 +5,7 @@ from typing import Type
 from common.interface_book import VenueOrderBook, OrderBook
 from common.interface_reference_point import MarkPrice
 from common.processor.sequential_queue_processor import SelfMonitoringQueueProcessor
+from common.questdb_writer import QuestDbWriter
 from common.seriallization import Serializable
 from common.subscription.messaging.gateway_server_handler import EventHandlerImpl
 from common.subscription.messaging.router import RouterServer
@@ -13,13 +14,9 @@ from gateways.gateway_interface import GatewayInterface
 
 
 class MarketDataConnection:
-    def __init__(self,name:str, port: int, gateway: GatewayInterface):
+    def __init__(self,name:str, port: int, gateway: GatewayInterface,is_quest_db_enabled=False):
         self.name = name + " Market Data Connection"
-        # self.market_data_server = PairConnection(port, True, self.name)
-        # self.market_data_server.start_receiving(self.on_event)
-        MESSAGE_TYPES: tuple[Type[Serializable], ...] = (
-
-        )
+        MESSAGE_TYPES: tuple[Type[Serializable], ...] = ()
 
         server_handler = EventHandlerImpl(self.name,self.on_event, *MESSAGE_TYPES)
 
@@ -39,10 +36,14 @@ class MarketDataConnection:
         self.tick_queue_processor.start()
 
         self.tick_executor = ThreadPoolExecutor(max_workers=1)
+        self.quest_db_executor = ThreadPoolExecutor(max_workers=1)
 
         self.gateway = gateway
         self.gateway.register_depth_callback(self.publish_order_book)
         self.gateway.register_mark_price_callback(self.publish_mark_price)
+        self.is_quest_db_enabled = is_quest_db_enabled
+        if self.is_quest_db_enabled:
+            self.questdb_writer = QuestDbWriter()
 
     def on_event(self,ident:str,obj:object):
         logging.info(f"Received event: {ident} {type(obj)}")
@@ -51,7 +52,13 @@ class MarketDataConnection:
     def publish_order_book(self, exchange: str, venue_order_book: VenueOrderBook):
         # logging.info("Exchange %s " % exchange)
         order_book = venue_order_book.get_book()
+        logging.debug(f"Order Book {order_book}")
+
         self.tick_queue_processor.submit(order_book)
+        if self.is_quest_db_enabled:
+            # write to quest db in another thread
+            self.quest_db_executor.submit(self.questdb_writer.write_order_book,exchange, order_book.contract_name, order_book.asks, order_book.bids,
+                                                 order_book.timestamp)
 
 
     def publish_mark_price(self, symbol: str, price: float):

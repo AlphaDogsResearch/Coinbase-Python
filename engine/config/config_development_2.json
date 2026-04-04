@@ -148,7 +148,8 @@
             "risk_manager": "@risk_manager",
             "reference_data_manager": "@reference_data_manager",
             "position_manager": "@position_manager",
-            "database_manager": "@database_manager"
+            "database_manager": "@database_manager",
+            "external_publisher": "@external_publisher"
         }
     },
     "roc_strategy_config": {

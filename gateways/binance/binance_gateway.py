@@ -2,8 +2,7 @@
 Binance gateway implementation using library https://github.com/sammchardy/python-binance
 """
 import asyncio
-import hashlib
-import hmac
+import csv
 import json
 import logging
 import sys
@@ -11,24 +10,17 @@ import threading
 import time
 from enum import Enum
 from threading import Thread
-from urllib.parse import urlencode
 
-import pandas as pd
-import numpy as np
-import csv
-
-import requests
 import websocket
 from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
 from binance import FuturesDepthCacheManager
 from binance.client import Client
 from binance.enums import FuturesType
-from binance.ws.depthcache import DepthCache
 
 from common.callback_utils import assert_param_counts
 from common.file.file_utils import save_dict_to_file
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
-from common.interface_order import Trade, Side, NewOrderSingle, OrderType, OrderEvent, ExecutionType
+from common.interface_order import Trade, Side, NewOrderSingle, OrderType
 from gateways.gateway_interface import GatewayInterface, ReadyCheck
 
 
@@ -37,18 +29,46 @@ class ProductType(Enum):
     FUTURE = 1  # USD_M, settle in USDT or BUSD
 
 
-def sign_url(secret: str, api_url, params: {}):
-    # create query string
-    query_string = urlencode(params)
-    # signature
-    signature = hmac.new(secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha256).hexdigest()
+def log_session_header(url):
+    # 1. Configuration
+    is_prod = "testnet" not in url.lower() and "uat" not in url.lower()
+    BOX_WIDTH = 65  # Total characters wide
 
-    # url
-    return 'https://testnet.binancefuture.com' + api_url + "?" + query_string + "&signature=" + signature
+    # 2. Colors
+    CLR = '\033[91m' if is_prod else '\033[94m'  # Red for Prod, Blue for UAT
+    BOLD = '\033[1m'
+    END = '\033[0m'
+
+    # 3. Data
+    env_text = "PRODUCTION" if is_prod else "UAT (TESTNET)"
+    status_msg = "LIVE EXECUTION" if is_prod else "SIMULATED TRADING"
+    timestamp = time.strftime('%H:%M:%S')
+
+    def print_line(label, value, value_color=""):
+        # The 'padding' calculates exactly how many spaces are needed
+        # to reach the end of the box regardless of string length.
+        label_full = f"  {BOLD}{label:<12}{END} "
+        val_full = f"{value_color}{value}{END}"
+
+        # visible_length = 2 (start spaces) + 12 (label) + 1 (middle space) + len(value)
+        visible_len = 2 + 12 + 1 + len(str(value))
+        spaces_needed = BOX_WIDTH - visible_len - 2  # -2 for the two pipes
+
+        print(f"{CLR}|{END}{label_full}{val_full}{' ' * spaces_needed}{CLR}|{END}")
+
+    # 4. Rendering
+    border = f"{CLR}" + "-" * BOX_WIDTH + f"{END}"
+
+    print(border)
+    print_line("ENVIRONMENT:", env_text, CLR)
+    print_line("ENDPOINT:", url)
+    print_line("TIME:", timestamp)
+    print_line("STATUS:", status_msg, CLR)
+    print(border)
 
 
 class BinanceGateway(GatewayInterface):
-    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance'):
+    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=False,price_depth:int=5):
         """
         symbols: list of trading pairs (e.g. ["BTCUSDT", "ETHUSDT"])
         """
@@ -58,15 +78,18 @@ class BinanceGateway(GatewayInterface):
         self._symbols = symbols if isinstance(symbols, list) else [symbols]
         self._product_type = product_type
         self.BASE_URL = 'https://testnet.binancefuture.com'
-
+        self.price_depth = price_depth
         self.api_client = Client(self._api_key, self._api_secret)
-        self.api_client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'
+        if not is_production:
+            self.api_client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'
+
+        log_session_header(self.api_client.FUTURES_URL)
 
         self._client = None
         self._bm = None
         self._dcm = {}  # symbol -> DepthCacheManager
         self._dws = {}  # symbol -> depth ws
-        self._ts = {}   # symbol -> trade socket
+        self._ts = {}  # symbol -> trade socket
         self._tws = {}  # symbol -> trade ws
         self._depth_cache = {}  # symbol -> cache
 
@@ -121,7 +144,6 @@ class BinanceGateway(GatewayInterface):
             for symbol in self._symbols:
                 self.get_user_trades(symbol)
                 self.get_commission_rate(symbol)
-                self._calculate_hourly_sharpe_ratio()
         self._ready_check.snapshot_ready = True
 
     async def _connect_authenticate_ws(self):
@@ -216,22 +238,19 @@ class BinanceGateway(GatewayInterface):
                 logging.warning(f'depth socket not found for {symbol}')
                 return None
 
-
             if type(cache) is dict:
                 if cache['e'] == 'error':
                     logging.error(f"Error while fetching depth for {symbol} probably due to disconnection")
                     return None
 
             # is DepthCache Object
-            bids = [PriceLevel(price=p, size=s) for (p, s) in cache.get_bids()[:5]]
-            asks = [PriceLevel(price=p, size=s) for (p, s) in cache.get_asks()[:5]]
+            bids = [PriceLevel(price=p, size=s) for (p, s) in cache.get_bids()[:self.price_depth]]
+            asks = [PriceLevel(price=p, size=s) for (p, s) in cache.get_asks()[:self.price_depth]]
             return OrderBook(timestamp=cache.update_time, contract_name=symbol, bids=bids,
                              asks=asks)
         except Exception as e:
             logging.error(f'Failed to get order book for {symbol} cache: {self._depth_cache} error: {e.with_traceback}')
             return None
-
-
 
     """ ----------------------------------- """
     """             REST API                """
@@ -256,7 +275,7 @@ class BinanceGateway(GatewayInterface):
 
         return positions
 
-    def _get_all_trades(self,symbol:str):
+    def _get_all_trades(self, symbol: str):
         try:
             trades = self.api_client.futures_account_trades(symbol=symbol)
             return trades
@@ -264,60 +283,7 @@ class BinanceGateway(GatewayInterface):
             print("Error fetching trades:", e)
             return None
 
-    def _calculate_hourly_sharpe_ratio(self):
-        """
-        Calculates the hourly and annualized Sharpe ratio based on realized PnL from futures trades.
-
-        Returns:
-        - sharpe (float): Hourly Sharpe ratio
-        - annualized_sharpe (float): Annualized Sharpe ratio (hourly basis)
-        """
-        try:
-            trades = self.api_client.futures_account_trades(symbol=self._symbols)
-        except Exception as e:
-            print("Error fetching trades:", e)
-            return None, None
-
-        pnl_data = []
-        for trade in trades:
-            pnl = float(trade['realizedPnl'])
-            timestamp = pd.to_datetime(trade['time'], unit='ms')
-            pnl_data.append({'timestamp': timestamp, 'realized_pnl': pnl})
-
-        df = pd.DataFrame(pnl_data)
-
-        if df.empty:
-            print(f"No trades found for symbol: {self._symbols}")
-            return 0.0, 0.0
-
-        # Group by hourly bins
-        df.set_index('timestamp', inplace=True)
-        hourly = df.groupby(pd.Grouper(freq='H'))['realized_pnl'].sum().reset_index()
-
-        # Calculate returns as pnl / account balance at calculation time
-        hourly['return'] = hourly['realized_pnl'] / self.get_futures_usdt_balance()
-
-        # Remove hours with no trades (optional, to avoid zero returns)
-        # hourly = hourly[hourly['return'] != 0]
-
-        if len(hourly) < 2:
-            print("Not enough data points to calculate hourly Sharpe ratio.")
-            return 0.0, 0.0
-
-        mean_return = hourly['return'].mean()
-        std_return = hourly['return'].std(ddof=1)
-        sharpe = mean_return / std_return if std_return != 0 else 0
-
-        # Annualize Sharpe ratio assuming ~8760 trading hours per year (crypto market doesn't close)
-        # Total trading hours per year=24×365=8,760 hours/year
-        annualized_sharpe = sharpe * np.sqrt(8760)
-
-        print("Hourly Sharpe Ratio:", round(sharpe, 4))
-        print("Annualized Hourly Sharpe Ratio:", round(annualized_sharpe, 4))
-
-        return sharpe, annualized_sharpe
-
-    def save_trades_to_csv(self,trades, filename='futures_trades.csv'):
+    def save_trades_to_csv(self, trades, filename='futures_trades.csv'):
         """
         Save futures trades data to CSV.
 
@@ -343,123 +309,75 @@ class BinanceGateway(GatewayInterface):
 
         return margin_data
 
-    def get_commission_rate(self,symbol:str):
-        endpoint = "/fapi/v1/commissionRate"
-        url = self.BASE_URL + endpoint
+    def get_commission_rate(self, symbol: str):
+        try:
+            if self._product_type == ProductType.FUTURE:
+                data = self.api_client.futures_commission_rate(symbol=symbol)
+            else:
+                fees = self.api_client.get_trade_fee(symbol=symbol)
+                # python-binance spot fee response can be dict or list depending on version
+                if isinstance(fees, list):
+                    data = fees[0] if fees else {}
+                else:
+                    trade_fee = fees.get("tradeFee", [])
+                    data = trade_fee[0] if trade_fee else fees
 
-        timestamp = int(time.time() * 1000)
-        params = {
-            "symbol": symbol,
-            "timestamp": timestamp
-        }
+            if not data:
+                logging.warning(f"No commission data returned for {symbol}")
+                return None
 
-        query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
-        signature = hmac.new(
-            self._api_secret.encode(),
-            query_string.encode(),
-            hashlib.sha256
-        ).hexdigest()
-
-        params['signature'] = signature
-
-        headers = {
-            "X-MBX-APIKEY": self._api_key
-        }
-
-        # TODO change to this
-        # response = self.api_client.futures_commission_rate(symbol=symbol)
-        response = requests.get(url, headers=headers, params=params)
-
-        if response.status_code == 200:
-            data = response.json()
             logging.info(f"Info {symbol}: {data}")
-            logging.info(f"Commission info for {data['symbol']}:")
-            #limit order
-            logging.info(f"  Maker fee rate: {data['makerCommissionRate']}")
-            #market order
-            logging.info(f"  Taker fee rate: {data['takerCommissionRate']}")
-
+            target_symbol = data.get('symbol', symbol)
+            logging.info(f"Commission info for {target_symbol}:")
+            logging.info(f"  Maker fee rate: {data.get('makerCommissionRate', data.get('makerCommission'))}")
+            logging.info(f"  Taker fee rate: {data.get('takerCommissionRate', data.get('takerCommission'))}")
             return data
-        else:
-            logging.error("Error:", response.status_code, response.text)
-
+        except Exception as e:
+            logging.exception(f"Error fetching commission rate for {symbol}: {e}")
             return None
 
-    def get_trades_by_order_id(self, order_id,symbol:str):
-        endpoint = "/fapi/v1/userTrades"
-        url = self.BASE_URL + endpoint
+    def get_trades_by_order_id(self, order_id, symbol: str):
+        try:
+            if self._product_type == ProductType.FUTURE:
+                trades = self.api_client.futures_account_trades(symbol=symbol, orderId=order_id)
+            else:
+                # Spot does not accept orderId filter directly in get_my_trades
+                all_trades = self.api_client.get_my_trades(symbol=symbol)
+                trades = [t for t in all_trades if str(t.get("orderId")) == str(order_id)]
 
-        timestamp = int(time.time() * 1000)
-        params = {
-            "symbol": symbol,
-            "orderId": order_id,
-            "timestamp": timestamp
-        }
-
-        query_string = '&'.join([f"{key}={params[key]}" for key in params])
-        signature = hmac.new(
-            self._api_secret.encode('utf-8'),
-            query_string.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-
-        params['signature'] = signature
-        headers = {
-            "X-MBX-APIKEY": self._api_key
-        }
-
-        response = requests.get(url, headers=headers, params=params)
-
-        if response.status_code == 200:
-            trades = response.json()
             for t in trades:
-                print(f"Trade ID: {t['id']}, Order ID: {t['orderId']}, Price: {t['price']}, Qty: {t['qty']}")
+                qty = t.get('qty', t.get('origQty', t.get('quoteQty', '')))
+                print(f"Trade ID: {t.get('id')}, Order ID: {t.get('orderId')}, Price: {t.get('price')}, Qty: {qty}")
             return trades
-        else:
-            print("Error:", response.status_code, response.text)
+        except Exception as e:
+            logging.exception(f"Error fetching trades by order id {order_id} for {symbol}: {e}")
             return None
 
-    def get_user_trades(self,symbol, limit=10):
+    def get_user_trades(self, symbol, limit=10):
         logging.info(f"Getting All Trades limit: {limit}")
-        endpoint = "/fapi/v1/userTrades"
-        url = self.BASE_URL + endpoint
+        try:
+            if self._product_type == ProductType.FUTURE:
+                trades = self.api_client.futures_account_trades(symbol=symbol, limit=limit)
+            else:
+                trades = self.api_client.get_my_trades(symbol=symbol, limit=limit)
 
-        timestamp = int(time.time() * 1000)
-        params = {
-            "symbol": symbol,
-            "limit": limit,
-            "timestamp": timestamp
-        }
-
-        query_string = '&'.join([f"{key}={params[key]}" for key in params])
-        signature = hmac.new(
-            self._api_secret.encode('utf-8'),
-            query_string.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-
-        params['signature'] = signature
-
-        headers = {
-            "X-MBX-APIKEY": self._api_key
-        }
-
-        response = requests.get(url, headers=headers, params=params)
-
-        if response.status_code == 200:
-            trades = response.json()
             for t in trades:
-                print(f"\nTrade ID: {t['id']}")
-                print(f"  Symbol: {t['symbol']}")
-                print(f"  Side: {t['side']}")
-                print(f"  Price: {t['price']}")
-                print(f"  Qty: {t['qty']}")
-                print(f"  Realized PnL: {t['realizedPnl']}")
-                print(f"  Commission: {t['commission']} {t['commissionAsset']}")
-                net_pnl = float(t['realizedPnl']) - float(t['commission'])
-                print(f"  Net PnL: {net_pnl:.4f} {t['commissionAsset']}")
-        else:
-            print("Error:", response.status_code, response.text)
+                print(f"\nTrade ID: {t.get('id')}")
+                print(f"  Symbol: {t.get('symbol')}")
+                print(f"  Side: {t.get('side')}")
+                print(f"  Price: {t.get('price')}")
+                print(f"  Qty: {t.get('qty', t.get('origQty', t.get('quoteQty', '')))}")
+
+                # Futures-specific fields
+                if 'realizedPnl' in t and 'commission' in t:
+                    print(f"  Realized PnL: {t['realizedPnl']}")
+                    print(f"  Commission: {t['commission']} {t.get('commissionAsset', '')}")
+                    net_pnl = float(t['realizedPnl']) - float(t['commission'])
+                    print(f"  Net PnL: {net_pnl:.4f} {t.get('commissionAsset', '')}")
+            return trades
+        except Exception as e:
+            logging.exception(f"Error fetching user trades for {symbol}: {e}")
+            return None
 
     def _start_websocket(self):
 
@@ -501,7 +419,6 @@ class BinanceGateway(GatewayInterface):
             thread = threading.Thread(target=ws.run_forever, daemon=True)
             thread.start()
 
-
     def _get_account_info(self):
         logging.info('REST - Getting account info')
         account_info = self.api_client.futures_account()
@@ -514,9 +431,9 @@ class BinanceGateway(GatewayInterface):
 
     def get_reference_data(self):
         if self._product_type == ProductType.SPOT:
-           return self._get_exchange_info()
+            return self._get_exchange_info()
         elif self._product_type == ProductType.FUTURE:
-           return self._get_futures_exchange_info()
+            return self._get_futures_exchange_info()
         return None
 
     def _get_futures_exchange_info(self):
@@ -598,7 +515,7 @@ class BinanceGateway(GatewayInterface):
         assert_param_counts(callback, 2)
         self._depth_callbacks.append(callback)
 
-    def register_mark_price_callback(self,callback):
+    def register_mark_price_callback(self, callback):
         """ a depth callback function takes two argument: (symbol:str, price: float) """
         assert_param_counts(callback, 2)
         self._mark_price_callbacks.append(callback)
@@ -638,110 +555,50 @@ class BinanceGateway(GatewayInterface):
         order_type = new_order.type
         price = new_order.price
         client_id = new_order.client_id
-        return self.send_order(self._api_key, self._api_secret,client_id, symbol, quantity, side, order_type, price)
+        return self.send_order(self._api_key, self._api_secret, client_id, symbol, quantity, side, order_type, price)
 
-    def send_order(self, key: str, secret: str,client_id:str, symbol: str, quantity: float, side: bool, order_type: OrderType,
+    def send_order(self, key: str, secret: str, client_id: str, symbol: str, quantity: float, side: bool,
+                   order_type: OrderType,
                    price: float):
-        # order parameters
-        timestamp = int(time.time() * 1000)
-
-        params = {
-            "newClientOrderId":client_id,
+        side_text = "BUY" if side else "SELL"
+        order_params = {
+            "newClientOrderId": client_id,
             "symbol": symbol,
-            "side": "BUY" if side else "SELL",
-            "type": "MARKET",
+            "side": side_text,
             "quantity": quantity,
-            'timestamp': timestamp,
             "newOrderRespType": "RESULT"
         }
 
         if order_type == OrderType.Limit:
-            params = {
-                "newClientOrderId": client_id,
-                "symbol": symbol,  # e.g. "BTCUSDT"
-                "side": "BUY" if side else "SELL",  # BUY or SELL
-                "type": "LIMIT",  # Order type
-                "timeInForce": "FOK",  # Time in Force (required for LIMIT) IOC/FOK/GTC
-                "quantity": quantity,  # Order quantity
-                "price": price,  # Limit price (must be string or float)
-                "timestamp": timestamp, # Current timestamp in ms
-                "newOrderRespType":"RESULT"
-            }
+            order_params["type"] = "LIMIT"
+            order_params["timeInForce"] = "FOK"
+            order_params["price"] = price
+        else:
+            order_params["type"] = "MARKET"
 
-        # create query string
-        query_string = urlencode(params)
-        logging.info('Query string: {}'.format(query_string))
+        logging.info(f"Submitting order with params: {order_params}")
+        try:
+            if self._product_type == ProductType.FUTURE:
+                return self.api_client.futures_create_order(**order_params)
+            return self.api_client.create_order(**order_params)
+        except Exception as e:
+            logging.exception(f"Failed to send order: {e}")
+            return {"error": str(e), "symbol": symbol, "clientOrderId": client_id}
 
-        # signature
-        signature = hmac.new(secret.encode("utf-8"), query_string.encode("utf-8"), hashlib.sha256).hexdigest()
-
-        # url
-        url = self.BASE_URL + '/fapi/v1/order' + "?" + query_string + "&signature=" + signature
-
-        # post request
-        session = requests.Session()
-        session.headers.update(
-            {"Content-Type": "application/json;charset=utf-8", "X-MBX-APIKEY": key}
-        )
-        response = session.post(url=url, params={})
-
-        response_map = response.json()
-
-        return response_map
-
+    ### not in use
     # external_order_id is binance order_id
-    def get_filled_price(self, post_response_data:dict):
-        # GET filled price
-        timestamp = int(time.time() * 1000)
+    def get_filled_price(self, post_response_data: dict):
         symbol = post_response_data['symbol']
         order_id = post_response_data['orderId']
 
-        session = requests.Session()
-        session.headers.update(
-            {"Content-Type": "application/json;charset=utf-8", "X-MBX-APIKEY": self._api_key}
-        )
-
-        query_params = {
-            "symbol": symbol,
-            "orderId": order_id,
-            "timestamp": timestamp
-        }
-        url = sign_url(self._api_secret, '/fapi/v1/order', query_params)
-        get_response = session.get(url=url, params={})
-        get_response_data = get_response.json()
-
-        return get_response_data
-
-    def place_orders(self, order: dict):
-        """
-        Place orders using the specified execution strategy.
-
-        :param order: A dictionary of order to be executed.
-        """
-
-        # order parameters
-        timestamp = int(time.time() * 1000)
-        self._signature = hmac.new(self._api_secret.encode("utf-8"), urlencode(order).encode("utf-8"),
-                                   hashlib.sha256).hexdigest()
-
-        logging.info(
-            'Sending market order: Symbol: {}, Side: {}, Quantity: {}'.
-            format(order['symbol'], order['side'], order['quantity'])
-        )
-
-        # new order url
-        url = sign_url(self._api_secret, '/fapi/v1/order', order)
-
-        # POST order request
-        session = requests.Session()
-        session.headers.update(
-            {"Content-Type": "application/json;charset=utf-8", "X-MBX-APIKEY": self._api_key}
-        )
-        post_response = session.post(url=url, params={})
-        post_response_data = post_response.json()
-        logging.info(post_response_data)
-
-        return post_response_data
+        logging.info(f"Fetching filled price for order {order_id} on {symbol} ")
+        try:
+            if self._product_type == ProductType.FUTURE:
+                return self.api_client.futures_get_order(symbol=symbol, orderId=order_id)
+            return self.api_client.get_order(symbol=symbol, orderId=order_id)
+        except Exception as e:
+            logging.exception(f"Failed to fetch filled price for order {order_id}: {e}")
+            return {"error": str(e), "symbol": symbol, "orderId": order_id}
 
     def query_order(self, symbol: str, order_id: str):
         """
@@ -750,19 +607,19 @@ class BinanceGateway(GatewayInterface):
         :param symbol: The trading pair symbol to query.
         :return: A list of open orders.
         """
-        timestamp = int(time.time() * 1000)
         if not self._has_keys():
             logging.error("Cannot query orders without API keys.")
             return []
 
-        params = {
-            "symbol": symbol,
-            "orderId": order_id,
-            "timestamp": timestamp
-        }
-        url = sign_url(self._api_secret, '/fapi/v1/openOrders', params)
+        logging.info(f"Querying order {order_id} for {symbol} ")
+        try:
+            if self._product_type == ProductType.FUTURE:
+                # Futures endpoint supports filtering open orders by orderId
+                return self.api_client.futures_get_open_orders(symbol=symbol, orderId=order_id)
 
-        session = requests.Session()
-        session.headers.update({"X-MBX-APIKEY": self._api_key})
-        response = session.get(url=url)
-        return response.json() if response.status_code == 200 else []
+            # Spot: get all open orders for symbol and filter client-side if needed
+            open_orders = self.api_client.get_open_orders(symbol=symbol)
+            return [o for o in open_orders if str(o.get("orderId")) == str(order_id)]
+        except Exception as e:
+            logging.exception(f"Failed to query order {order_id} on {symbol}: {e}")
+            return []

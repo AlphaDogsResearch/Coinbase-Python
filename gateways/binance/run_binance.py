@@ -57,12 +57,13 @@ if __name__ == '__main__':
     trading_symbols= default_settings_parameters['trading_symbols']
     market_data_connection_port= default_settings_parameters['market_data_connection_port']
     order_connection_port= default_settings_parameters['order_connection_port']
+    is_quest_db_enabled = default_settings_parameters.get('enable_questdb_tick', False)
 
     # Use global config for trading symbols
     binance = BinanceGateway(symbols=trading_symbols, api_key=API_KEY, api_secret=API_SECRET, product_type=ProductType.FUTURE)
     binance.connect()
 
-    market_data_connection = MarketDataConnection(gateway_name,market_data_connection_port, binance)
+    market_data_connection = MarketDataConnection(gateway_name,market_data_connection_port, binance,is_quest_db_enabled)
 
     order_connection = OrderConnection(gateway_name,order_connection_port, binance)
 
