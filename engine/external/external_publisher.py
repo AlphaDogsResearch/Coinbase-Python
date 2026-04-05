@@ -3,12 +3,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Dict
 
-from pythonjsonlogger.json import JsonFormatter
-
 from common.json_model import JsonModel
 from common.subscription.external_transport.base_message_formatter import BaseMessageFormatter
 from common.subscription.external_transport.event_driven_producer import EventDrivenProducer
-from common.subscription.external_transport.sse_event_emitter import MultiChannelSSE
 from common.subscription.external_transport.websocket import MultiChannelWebSocket
 from common.subscription.messaging.event_bus.event_bus import EventBus
 from common.subscription.messaging.event_bus.event_publisher import EventPublisher
