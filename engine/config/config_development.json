@@ -13,7 +13,8 @@
       "remote_order_connection_name": "Remote Order Connection",
       "database_path": "trading.db",
       "endpoint_host": "0.0.0.0",
-      "endpoint_port": 8888
+      "endpoint_port": 8888,
+      "remote_db_api_port": 8889
 
     }
   },
@@ -23,6 +24,15 @@
     "params": {
       "database_path": "@default_settings.database_path",
       "max_connections": 10
+    }
+  },
+  "remote_database_client": {
+    "module": "engine.remote.remote_database_client",
+    "class": "RemoteDatabaseClient",
+    "params": {
+      "database_path": "@default_settings.database_path",
+      "host": "@default_settings.endpoint_host",
+      "port": "@default_settings.remote_db_api_port"
     }
   },
   "position": {
