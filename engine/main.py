@@ -15,6 +15,7 @@ from common.subscription.external_transport.websocket import MultiChannelWebSock
 from common.subscription.messaging.event_bus.event_bus import EventBus
 from common.subscription.external_transport.event_driven_producer import EventDrivenProducer
 from common.subscription.external_transport.sse_event_emitter import MultiChannelSSE
+from engine.remote.remote_database_client import RemoteDatabaseClient
 from engine.external.channel import Channel
 from engine.external.external_publisher import ExternalPublisher
 from engine.external.message_model.json_data_model import JsonDataModel
@@ -170,6 +171,10 @@ def main():
 
     if isinstance(websocket, MultiChannelWebSocket):
         websocket.run()
+
+    remote_database_client = components.get("remote_database_client")
+    if isinstance(remote_database_client, RemoteDatabaseClient):
+        remote_database_client.run()
 
     position_manager.add_maint_margin_listener(account.on_maint_margin_update)
     position_manager.add_unrealized_pnl_listener(account.on_unrealised_pnl_update)
