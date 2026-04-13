@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Optional, List
+from typing import Optional, List, Set
 from common.interface_book import OrderBook
 from typing import Callable
 import logging
@@ -50,7 +50,8 @@ class CandleAggregator:
         else:
             raise ValueError("Must provide either interval_seconds or interval_milliseconds")
         self.current_candle: Optional[MidPriceCandle] = None
-        self.candle_callback: Optional[Callable[[MidPriceCandle], None]] = None
+        # Initialize as an empty set
+        self.candle_callbacks: Set[Callable[[MidPriceCandle], None]] = set()
 
         self.tick_candle_listener: List[Callable[[datetime, float, float, float, float], None]] = []
 
@@ -90,12 +91,12 @@ class CandleAggregator:
             return None
 
     def add_candle_created_listener(self, callback: Callable[[MidPriceCandle], None]):
-        self.candle_callback = callback
+        self.candle_callbacks.add(callback)
+        logging.info("Number of candle callbacks added: %d", len(self.candle_callbacks))
 
     def _notify_candle_created(self, completed_candle: MidPriceCandle):
-        if self.candle_callback:
-            self.candle_callback(completed_candle)
-            self.on_candle_update(completed_candle)
+        for callback in self.candle_callbacks:
+            callback(completed_candle)
 
     def add_tick_candle_listener(
         self, callback: Callable[[datetime, float, float, float, float], None]

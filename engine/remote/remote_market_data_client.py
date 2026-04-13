@@ -1,7 +1,7 @@
 import datetime
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, List, Dict, Type
+from typing import Callable, List, Dict, Type, Set
 
 from common.interface_book import OrderBook, PriceLevel
 from common.interface_reference_point import MarkPrice
@@ -18,7 +18,7 @@ class RemoteMarketDataClient(MarketDataClient):
         self.port = port
         self.name = name
         logging.info(f"[{name}] connecting to port {port}")
-        self.order_book_listeners: Dict[str, List[Callable[[OrderBook], None]]] = {}  # list of callbacks
+        self.order_book_listeners: Dict[str, Set[Callable[[OrderBook], None]]] = {}  # list of callbacks
         self.mark_price_listener: List[Callable[[MarkPrice], None]] = []
 
         self.tick_price_listener: List[Callable[[datetime.datetime,float], None]] = (
@@ -69,8 +69,8 @@ class RemoteMarketDataClient(MarketDataClient):
     def add_order_book_listener(self,symbol:str, callback: Callable[[OrderBook], None]):
         """Register a callback to receive OrderBook updates"""
         if symbol not in self.order_book_listeners:
-            self.order_book_listeners[symbol] = []
-        self.order_book_listeners[symbol].append(callback)
+            self.order_book_listeners[symbol] = set()
+        self.order_book_listeners[symbol].add(callback)
 
     def add_tick_price(self, callback: Callable[[datetime.datetime,float], None]):
         """Register a callback to receive OrderBook updates"""
