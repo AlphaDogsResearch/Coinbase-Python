@@ -43,5 +43,14 @@ numpy>=1.24.0
 
 # Visualization
 matplotlib>=3.7.0
-#pyqtgraph>=0.13.0
-#PyQt5>=5.15.0
+pyqtgraph>=0.13.0
+PyQt5>=5.15.0
+
+cdp-sdk
+coinbase-advanced-py
+uvicorn
+Jinja2
+google-api-python-client
+google-auth-oauthlib
+xarray
+param
