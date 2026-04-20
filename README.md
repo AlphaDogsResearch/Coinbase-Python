@@ -23,8 +23,8 @@ Run the `run_binance.py`
 ### Engine
 Add the telegram keys in `engine/vault/telegram_keys`
 Run the `main.py`
-### Run in Windows
-Execute the `run.bat`
+### Run in Ubuntu / Linux / macOS
+Execute the `./run.sh`
 
 ---
 
