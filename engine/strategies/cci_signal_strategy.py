@@ -133,9 +133,15 @@ class CCISignalStrategy(Strategy):
             f"(mode={self.signal_mode}, exit={self.exit_mode})"
         )
 
+        super().on_start()
+
     def on_candle_created(self, candle: MidPriceCandle):
         """Handle incoming candle data."""
         self.cci.handle_bar(candle)
+
+        if not self.is_started():
+            return
+
         if not self.cci.initialized:
             return
 

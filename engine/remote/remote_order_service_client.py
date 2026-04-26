@@ -8,12 +8,14 @@ from common.interface_order import Order, OrderEvent, Trade
 from common.interface_reference_data import ReferenceData
 from common.interface_req_res import WalletResponse, AccountResponse, AccountRequest, PositionResponse, \
     PositionRequest, MarginInfoRequest, MarginInfoResponse, CommissionRateRequest, CommissionRateResponse, \
-    TradesRequest, TradesResponse, ReferenceDataRequest, ReferenceDataResponse
+    TradesRequest, TradesResponse, ReferenceDataRequest, ReferenceDataResponse, AccountBalanceRequest, \
+    AccountBalanceResponse
 from common.seriallization import Serializable
 from common.subscription.messaging.dealer import DealerClient
 from common.subscription.messaging.gateway_server_handler import EventHandlerImpl
 from engine.account.account import Account
 from engine.margin.margin_info_manager import MarginInfoManager
+from engine.market_data.candle import MidPriceCandle
 from engine.position.position_manager import PositionManager
 from engine.reference_data.reference_data_manager import ReferenceDataManager
 from engine.trades.trades_manager import TradesManager
@@ -42,6 +44,7 @@ class RemoteOrderClient:
             OrderEvent,
             WalletResponse,
             AccountResponse,
+            AccountBalanceResponse,
             PositionResponse,
             MarginInfoResponse,
             CommissionRateResponse,
@@ -101,6 +104,8 @@ class RemoteOrderClient:
                 time.sleep(1)
                 # request for account
                 self.request_for_account()
+                # request for USDT/USDC account balances
+                self.request_for_account_balance()
                 # request for margin info
                 self.request_for_margin()
                 # request for reference data
@@ -127,6 +132,9 @@ class RemoteOrderClient:
 
     def request_for_account(self):
         self.remote_order_client.send(AccountRequest())
+
+    def request_for_account_balance(self):
+        self.remote_order_client.send(AccountBalanceRequest())
 
     def request_for_position(self):
         self.remote_order_client.send(PositionRequest())
@@ -168,6 +176,8 @@ class RemoteOrderClient:
             self.received_wallet_response(obj)
         elif isinstance(obj, AccountResponse):
             self.received_account_response(obj)
+        elif isinstance(obj, AccountBalanceResponse):
+            self.received_account_balance_response(obj)
         elif isinstance(obj, PositionResponse):
             self.received_position_response(obj)
         elif isinstance(obj, MarginInfoResponse):
@@ -190,6 +200,9 @@ class RemoteOrderClient:
     def received_account_response(self, account_response: AccountResponse):
         logging.info("Received Account Response %s" % account_response)
         self.account.init_account(account_response)
+
+    def received_account_balance_response(self, account_balance_response: AccountBalanceResponse):
+        logging.info("Received Account Balance Response %s" % account_balance_response)
 
     def received_position_response(self, position_response: PositionResponse):
         logging.info("Received Position Response %s" % position_response)

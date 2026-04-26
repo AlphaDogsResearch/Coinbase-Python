@@ -192,7 +192,7 @@ research/notebooks/__pycache__/
 research/**/*.ipynb_checkpoints
 
 
-binance_keys
+gateways/binance/vault/binance_keys
 
 # ignore db
 *.db

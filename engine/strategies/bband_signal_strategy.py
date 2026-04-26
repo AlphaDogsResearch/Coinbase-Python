@@ -131,10 +131,15 @@ class BBANDSignalStrategy(Strategy):
             f"[SIGNAL] BBANDSignalStrategy started for {self.instrument_id} "
             f"(mode={self.signal_mode}, exit={self.exit_mode})"
         )
+        super().on_start()
 
     def on_candle_created(self, candle: MidPriceCandle):
         """Handle incoming candle data."""
         self.bband.handle_bar(candle)
+
+        if not self.is_started():
+            return
+
         if not self.bband.initialized:
             self._previous_close = self._candle_close(candle)
             return

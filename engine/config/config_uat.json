@@ -14,8 +14,12 @@
       "remote_order_connection_name": "Remote Order Connection",
       "database_path": "trading.db",
       "endpoint_host": "0.0.0.0",
-      "endpoint_port": 8888
-
+      "endpoint_port": 8888,
+      "preload_candles": {
+        "ETHUSDT": {
+          "1h": 10
+        }
+      }
     }
   },
   "database_manager": {

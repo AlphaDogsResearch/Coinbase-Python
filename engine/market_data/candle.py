@@ -4,7 +4,19 @@ from common.interface_book import OrderBook
 from typing import Callable
 import logging
 
+from common.seriallization import Serializable
 from common.time_utils import current_milli_time, convert_epoch_time_to_datetime_millis
+
+
+class HistoricalMidPriceCandle(Serializable):
+    def __init__(self, start_time: int,open,high,low,close):
+        self.start_time = start_time
+        self.open = open
+        self.high = high
+        self.low = low
+        self.close = close
+
+
 
 
 class MidPriceCandle:
@@ -40,9 +52,17 @@ class MidPriceCandle:
             f"O:{fmt(self.open)} H:{fmt(self.high)} L:{fmt(self.low)} C:{fmt(self.close)})"
         )
 
+def convert_historical_candle_to_mid_candle(historical_candle:HistoricalMidPriceCandle)->MidPriceCandle:
+    candle = MidPriceCandle(convert_epoch_time_to_datetime_millis(historical_candle.start_time))
+    candle.open = historical_candle.open
+    candle.high = historical_candle.high
+    candle.low = historical_candle.low
+    candle.close = historical_candle.close
+
+    return candle
 
 class CandleAggregator:
-    def __init__(self, *, interval_seconds: float = None, interval_milliseconds: int = None):
+    def __init__(self, symbol:str="TEST_SYMBOL", interval_seconds: float = None, interval_milliseconds: int = None):
         if interval_milliseconds is not None:
             self.interval = timedelta(milliseconds=interval_milliseconds)
         elif interval_seconds is not None:
@@ -54,6 +74,7 @@ class CandleAggregator:
         self.candle_callbacks: Set[Callable[[MidPriceCandle], None]] = set()
 
         self.tick_candle_listener: List[Callable[[datetime, float, float, float, float], None]] = []
+        self.symbol = symbol
 
     def on_order_book(self, order_book: OrderBook):
         mid_price = (order_book.get_best_bid() + order_book.get_best_ask()) / 2
@@ -84,15 +105,25 @@ class CandleAggregator:
             self.current_candle = MidPriceCandle(start_time=candle_start)
             self.current_candle.add_tick(mid_price)
             if finished:
-                logging.info(f"🕯️ [CandleAggregator] Completed candle: {finished}")
+                logging.info(f"🕯️ [CandleAggregator] [{self.symbol}] Completed candle: {finished}")
             return finished
         else:
             self.current_candle.add_tick(mid_price)
             return None
 
+    def pre_load_current_candle(self,current_candle:HistoricalMidPriceCandle):
+        converted_candle = convert_historical_candle_to_mid_candle(current_candle)
+        logging.info(f"Preload current candle [CandleAggregator] [{self.symbol}] candle: {converted_candle}")
+        self.current_candle = converted_candle
+
     def add_candle_created_listener(self, callback: Callable[[MidPriceCandle], None]):
         self.candle_callbacks.add(callback)
         logging.info("Number of candle callbacks added: %d", len(self.candle_callbacks))
+
+    def replay_candles(self,completed_candle: HistoricalMidPriceCandle):
+        converted_candle = convert_historical_candle_to_mid_candle(completed_candle)
+        logging.info(f"Replaying candle [CandleAggregator] [{self.symbol}] Completed candle: {converted_candle}")
+        self._notify_candle_created(converted_candle)
 
     def _notify_candle_created(self, completed_candle: MidPriceCandle):
         for callback in self.candle_callbacks:

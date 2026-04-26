@@ -4,6 +4,7 @@ from typing import Type
 
 from common.interface_book import VenueOrderBook, OrderBook
 from common.interface_reference_point import MarkPrice
+from common.interface_req_res import HistoricalCandleRequest
 from common.processor.sequential_queue_processor import SelfMonitoringQueueProcessor
 from common.questdb_writer import QuestDbWriter
 from common.seriallization import Serializable
@@ -15,8 +16,12 @@ from gateways.gateway_interface import GatewayInterface
 
 class MarketDataConnection:
     def __init__(self,name:str, port: int, gateway: GatewayInterface,is_quest_db_enabled=False):
+        self.logger = logging.getLogger(self.__class__.__name__)
+
         self.name = name + " Market Data Connection"
-        MESSAGE_TYPES: tuple[Type[Serializable], ...] = ()
+        MESSAGE_TYPES: tuple[Type[Serializable], ...] = (
+            HistoricalCandleRequest,
+        )
 
         server_handler = EventHandlerImpl(self.name,self.on_event, *MESSAGE_TYPES)
 
@@ -46,13 +51,14 @@ class MarketDataConnection:
             self.questdb_writer = QuestDbWriter()
 
     def on_event(self,ident:str,obj:object):
-        logging.info(f"Received event: {ident} {type(obj)}")
-
+        self.logger.info(f"Received event: {ident} {type(obj)}")
+        if isinstance(obj, HistoricalCandleRequest):
+            self.get_historical_candle(ident,obj)
 
     def publish_order_book(self, exchange: str, venue_order_book: VenueOrderBook):
         # logging.info("Exchange %s " % exchange)
         order_book = venue_order_book.get_book()
-        logging.debug(f"Order Book {order_book}")
+        self.logger.debug(f"Order Book {order_book}")
 
         self.tick_queue_processor.submit(order_book)
         if self.is_quest_db_enabled:
@@ -73,3 +79,13 @@ class MarketDataConnection:
     def _handle_mark_price(self, mark_price: MarkPrice):
         """Handle MarkPrice events sequentially"""
         self.tick_executor.submit(self.market_data_server.send_to_all,mark_price)
+
+
+    def get_historical_candle(self, ident:str, historical_candle_request:HistoricalCandleRequest):
+        self.logger.info("Received Historical Candle Request %s" % historical_candle_request)
+        interval = historical_candle_request.interval
+        symbol = historical_candle_request.symbol
+        interval_unit = historical_candle_request.interval_unit
+        candles = self.gateway.get_klines(symbol=symbol,interval_unit=interval_unit,past_interval=interval)
+        historical_candles = historical_candle_request.handle(candles)
+        self.market_data_server.send(ident, historical_candles)

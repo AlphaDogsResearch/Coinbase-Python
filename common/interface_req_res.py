@@ -5,6 +5,7 @@ from typing import Dict
 from common.interface_reference_data import ReferenceData
 from common.seriallization import Serializable
 from common.time_utils import current_milli_time
+from engine.market_data.candle import MidPriceCandle, HistoricalMidPriceCandle
 
 
 class WalletResponse(Serializable):
@@ -81,6 +82,22 @@ class AccountRequest(Serializable):
         return AccountResponse(wallet_balance, margin_balance, unrealised_pnl, maint_margin)
 
 
+class AccountBalanceResponse(Serializable):
+    def __init__(self, balances: list[dict]):
+        self.balances = balances
+
+    def __str__(self):
+        return "AccountBalances=" + str(self.balances)
+
+
+class AccountBalanceRequest(Serializable):
+    def __init__(self):
+        self.time = current_milli_time()
+
+    def handle(self, balances: list[dict]) -> AccountBalanceResponse:
+        return AccountBalanceResponse(balances)
+
+
 class CommissionRateResponse(Serializable):
     def __init__(self, symbol: str, maker_trading_cost: float,taker_trading_cost:float):
         self.symbol = symbol
@@ -136,6 +153,30 @@ class ReferenceDataRequest(Serializable):
 
     def handle(self, reference_data: Dict[str, ReferenceData]) -> ReferenceDataResponse:
         return ReferenceDataResponse(reference_data)
+
+
+class HistoricalCandleResponse(Serializable):
+    def __init__(self,symbol:str,interval_unit:str, candles: list[HistoricalMidPriceCandle]):
+        self.symbol = symbol
+        self.candles = candles
+        self.interval_unit = interval_unit
+
+    def __str__(self):
+        return (
+                "Symbol=" + self.symbol +
+                ", Interval Unit=" + self.interval_unit +
+            ", Candles=" + str(self.candles))
+
+
+class HistoricalCandleRequest(Serializable):
+    def __init__(self, symbol: str, interval: int, interval_unit:str= "1h"):
+        self.time = current_milli_time()
+        self.symbol = symbol
+        self.interval = interval
+        self.interval_unit = interval_unit
+
+    def handle(self, candles: list[HistoricalMidPriceCandle]) -> HistoricalCandleResponse:
+        return HistoricalCandleResponse(self.symbol,self.interval_unit,candles)
 
 
 

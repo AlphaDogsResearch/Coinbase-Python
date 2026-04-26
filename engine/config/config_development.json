@@ -14,8 +14,12 @@
       "database_path": "trading.db",
       "endpoint_host": "0.0.0.0",
       "endpoint_port": 8888,
-      "remote_db_api_port": 8889
-
+      "remote_db_api_port": 8889,
+      "preload_candles": {
+        "ETHUSDT": {
+          "1h": 10
+        }
+      }
     }
   },
   "database_manager": {

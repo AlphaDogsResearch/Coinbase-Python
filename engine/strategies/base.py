@@ -120,6 +120,7 @@ class Strategy:
         self._order_manager = None  # Reference to order manager
         self._strategy_id = None  # Strategy ID set by main
         self._symbol = None  # Symbol set by main
+        self._is_started:bool = False
 
     def set_order_manager(self, order_manager, strategy_id: str, symbol: str):
         """Set the order manager and strategy metadata."""
@@ -127,12 +128,17 @@ class Strategy:
         self._strategy_id = strategy_id
         self._symbol = symbol
 
+    def is_started(self):
+        return self._is_started
+
     def on_start(self):
         """Called when strategy starts. Override in subclasses."""
+        self._is_started = True
         ...
 
     def on_stop(self):
         """Called when strategy stops. Override in subclasses."""
+        self._is_started = False
         ...
 
     def on_candle_created(self, candle: MidPriceCandle):

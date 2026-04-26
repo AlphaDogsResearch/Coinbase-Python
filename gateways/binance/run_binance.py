@@ -29,14 +29,16 @@ from gateways.binance.order_connection import OrderConnection
 from common.config_symbols import TRADING_SYMBOLS
 
 if __name__ == '__main__':
-    to_stdout_and_daily_file(log_dir="logs", log_prefix="binance")
-    logging.info("Running Binance Gateway...")
-
     # read key and secret from environment variable file
     base_dir = os.path.dirname(os.path.abspath(__file__))  # directory where this script is located
     dotenv_path = os.path.join(base_dir, 'vault', 'binance_keys')  # adjust '..' if needed
     load_dotenv(dotenv_path=dotenv_path)
-    print("Loading env from:", dotenv_path)
+
+    # init logger after logging dot env to take in logging level
+    to_stdout_and_daily_file(log_dir="logs", log_prefix="binance")
+    logging.info("Running Binance Gateway...")
+    logging.info(f"Loading env from: {dotenv_path}")
+
     API_KEY = os.getenv('BINANCE_API_KEY')
     API_SECRET = os.getenv('BINANCE_API_SECRET')
 

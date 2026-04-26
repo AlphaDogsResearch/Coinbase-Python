@@ -175,7 +175,7 @@ class DealerClient:
                 logging.info(f"[{self.name}] [Client] Waiting for LOGON_RESPONSE before sending…")
                 return
             self.socket.send_multipart([b"", data])
-            logging.info(f"[Client] Send: {data}")
+            logging.info(f"[{self.name}] [Client] Send: {data}")
             # self.last_contact = time.time()
 
     def stop(self):

@@ -1,6 +1,11 @@
 import logging
 import re
+import time
+from collections import defaultdict
 from typing import Dict, Optional
+
+from common.interface_req_res import HistoricalCandleResponse
+from common.utils.synchronization import SharedLock
 from engine.market_data.candle import CandleAggregator
 from engine.position.position_manager import PositionManager
 from engine.remote.remote_market_data_client import RemoteMarketDataClient
@@ -52,6 +57,35 @@ def parse_interval_from_bar_type(bar_type: str) -> Optional[float]:
     return float(value * unit_multipliers.get(unit, 1))
 
 
+def format_seconds_to_interval(seconds: float) -> Optional[str]:
+    """
+    Convert seconds back into a short interval string.
+
+    Examples:
+        3600.0  -> "1h"
+        60.0    -> "1m"
+        300.0   -> "5m"
+        86400.0 -> "1d"
+    """
+    if seconds is None or seconds <= 0:
+        return None
+
+    # Define units from largest to smallest
+    units = [
+        ("d", 86400),
+        ("h", 3600),
+        ("m", 60),
+        ("s", 1),
+    ]
+
+    for unit_char, multiplier in units:
+        # Check if the seconds can be represented as a whole number of this unit
+        if seconds % multiplier == 0:
+            value = int(seconds // multiplier)
+            return f"{value}{unit_char}"
+
+    return f"{int(seconds)}s"
+
 class StrategyManager:
     """
     Lightweight StrategyManager that handles strategy wiring and lifecycle.
@@ -63,19 +97,23 @@ class StrategyManager:
     - Manages strategy lifecycle (start/stop)
     """
 
-    def __init__(
-        self,
-        order_manager: OrderManager,
-        position_manager: PositionManager,
-        remote_market_data_client: RemoteMarketDataClient,
-    ):
+    def __init__(self, order_manager: OrderManager, position_manager: PositionManager,
+                 remote_market_data_client: RemoteMarketDataClient, preload_candles:dict):
         self.order_manager = order_manager
         self.position_manager = position_manager
         self.remote_market_data_client = remote_market_data_client
 
         # Track strategies and their metadata
         self.strategies: Dict[str, dict] = {}  # strategy_id -> {strategy, symbol, candle_agg}
-        self.candle_aggregators: Dict[str, CandleAggregator] = {}  # interval_key -> aggregator
+        # Level 1 Key: Symbol (str) -> Level 2 Key: Interval (float) -> Value: Aggregator
+        self.candle_aggregators: Dict[str, Dict[float, CandleAggregator]] = {}
+
+        self.historical_request_lock = SharedLock(initially_locked=True)
+        self.replay_times = defaultdict(dict) # symbol -> {replay_unit, times}
+        if preload_candles:
+            self.replay_times=preload_candles
+
+        self.remote_market_data_client.add_historical_price_listener(self.on_historical_candle)
 
     def add_strategy(self, strategy, strategy_id: str, symbol: str) -> bool:
         """
@@ -114,18 +152,13 @@ class StrategyManager:
                 return False
 
             # Get or create candle aggregator for this specific interval
-            candle_agg = self._get_or_create_candle_aggregator(interval_seconds)
+            candle_agg = self._get_or_create_candle_aggregator(symbol,interval_seconds)
 
             # Wire CandleAggregator to strategy's on_candle_created method
             candle_callback = self._make_candle_callback(strategy, strategy_id)
             candle_agg.add_candle_created_listener(candle_callback)
 
-            # Wire market data to candle aggregator
-            self.remote_market_data_client.add_order_book_listener(symbol, candle_agg.on_order_book)
-            logging.info(
-                f"[StrategyManager] Registered order book listener for {symbol} "
-                f"(total listeners: {len(self.remote_market_data_client.order_book_listeners.get(symbol, []))})"
-            )
+
 
             # Store strategy metadata
             self.strategies[strategy_id] = {
@@ -199,6 +232,78 @@ class StrategyManager:
             logging.error(f"Error removing strategy {strategy_id}: {e}", exc_info=True)
             return False
 
+    def on_historical_candle(self, historical_candle_response: HistoricalCandleResponse):
+        symbol = historical_candle_response.symbol
+        interval_unit = historical_candle_response.interval_unit
+        candles = historical_candle_response.candles
+
+        # 1. Direct lookup for the symbol
+        symbol_aggregators = self.candle_aggregators.get(symbol)
+        if not symbol_aggregators:
+            logging.warning(f"Received historical candles for unknown symbol: {symbol}")
+            return
+
+        # 2. Iterate through intervals for this specific symbol
+        for interval, candle_agg in symbol_aggregators.items():
+            # Match the interval unit (e.g., '1m') to the numeric interval (e.g., 60.0)
+            if interval_unit == format_seconds_to_interval(interval):
+                logging.info(f"Loading candles for {symbol} {interval_unit} total {len(candles)} candles")
+
+                count = len(candles)
+                if count == 0:
+                    return
+
+                if count == 1:
+                    item = candles[0]
+                    logging.debug(f"Loading single item: {item}")
+                    candle_agg.pre_load_current_candle(item)
+                else:
+                    # Replay all except the last, then pre-load the last one
+                    for i, item in enumerate(candles):
+                        if i < count - 1:
+                            candle_agg.replay_candles(item)
+                        else:
+                            logging.info(f"Loading last item into current candle: {item}")
+                            candle_agg.pre_load_current_candle(item)
+
+                # Since we found the specific aggregator, we can break the interval loop
+                break
+
+        self.historical_request_lock.release()
+        logging.info("Release Lock after historical candles")
+
+
+    def pre_start_check(self):
+
+        if self.replay_times:
+
+            logging.info("Attempting to replay candles....")
+            for symbol, intervals in self.replay_times.items():
+                logging.info(f"Symbol: {symbol}")
+                for interval, times in intervals.items():
+                    logging.info(f"  - Replaying {interval} interval with {times} times")
+                    self.remote_market_data_client.request_for_historical_candle(symbol, interval, times)
+
+            logging.info("Locking For Replay....")
+            self.historical_request_lock.acquire(timeout=3)
+
+        for symbol, intervals in self.candle_aggregators.items():
+            for interval, candle_agg in intervals.items():
+                # Wire market data to candle aggregator
+                self.remote_market_data_client.add_order_book_listener(
+                    candle_agg.symbol,
+                    candle_agg.on_order_book
+                )
+
+                # Calculate current listeners for logging
+                current_listeners = len(self.remote_market_data_client.order_book_listeners.get(candle_agg.symbol, []))
+
+                logging.info(
+                    f"[StrategyManager] Registered order book listener for {symbol} at {interval}s "
+                    f"(total listeners for {symbol}: {current_listeners})"
+                )
+
+
     def start_all(self) -> None:
         """Start all strategies by calling their on_start() method."""
         for strategy_id, strategy_data in self.strategies.items():
@@ -221,6 +326,13 @@ class StrategyManager:
             except Exception as e:
                 logging.error(f"Error stopping strategy {strategy_id}: {e}", exc_info=True)
 
+
+    def get_bar_type(self,strategy):
+        return self.get_strategy_config(strategy, "bar_type")
+
+    def get_strategy_config(self, strategy, config_name:str):
+        return getattr(strategy, config_name, None)
+
     def _get_strategy_interval(self, strategy) -> Optional[float]:
         """
         Get interval in seconds from strategy's bar_type or config.
@@ -235,7 +347,7 @@ class StrategyManager:
             Interval in seconds, or None if not found
         """
         # Try to get from strategy's bar_type attribute
-        bar_type = getattr(strategy, "bar_type", None)
+        bar_type = self.get_bar_type(strategy)
         if bar_type:
             interval = parse_interval_from_bar_type(bar_type)
             if interval:
@@ -259,27 +371,31 @@ class StrategyManager:
 
         return None
 
-    def _get_or_create_candle_aggregator(self, interval_seconds: float) -> CandleAggregator:
+    def _get_or_create_candle_aggregator(self, symbol: str, interval_seconds: float) -> CandleAggregator:
         """
-        Get or create a candle aggregator for the specified interval.
-
-        Aggregators are shared across strategies that use the same interval.
+        Get or create a candle aggregator for the specified symbol and interval.
 
         Args:
+            symbol: The trading pair symbol (e.g., 'BTCUSDT')
             interval_seconds: Interval in seconds for the candle aggregator
 
         Returns:
-            CandleAggregator instance for the specified interval
+            CandleAggregator instance
         """
-        interval_key = f"{interval_seconds}s"
+        # Ensure the symbol level exists in the dictionary
+        symbol_aggregators = self.candle_aggregators.setdefault(symbol, {})
 
-        if interval_key not in self.candle_aggregators:
-            self.candle_aggregators[interval_key] = CandleAggregator(
+        if interval_seconds not in symbol_aggregators:
+            symbol_aggregators[interval_seconds] = CandleAggregator(
+                symbol=symbol,
                 interval_seconds=interval_seconds
             )
-            logging.info(f"[StrategyManager] Created candle aggregator for interval {interval_key}")
+            logging.info(
+                f"[StrategyManager] Created candle aggregator for "
+                f"symbol {symbol} at interval {interval_seconds}s"
+            )
 
-        return self.candle_aggregators[interval_key]
+        return symbol_aggregators[interval_seconds]
 
     def _sync_portfolio(self, strategy_id: str, symbol: str, strategy) -> None:
         """Sync strategy portfolio with position manager."""
@@ -312,6 +428,7 @@ class StrategyManager:
 
     def _make_candle_callback(self, strategy, strategy_id: str):
         """Create a callback to forward candles to strategy."""
+        logging.info("Attaching candle callback for strategy %s", strategy_id)
 
         def on_candle_created(candle):
             try:

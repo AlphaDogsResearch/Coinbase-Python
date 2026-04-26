@@ -43,7 +43,7 @@ class SelfMonitoringQueueProcessor:
         self._processing_thread: Optional[threading.Thread] = None
         self._monitoring_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
-
+        self.logger = logging.getLogger(self.__class__.__name__)
         # Event handling
         self._event_handlers: Dict[type, List[Callable]] = {}
         self._lock = threading.Lock()
@@ -91,7 +91,7 @@ class SelfMonitoringQueueProcessor:
             if event_type not in self._event_handlers:
                 self._event_handlers[event_type] = []
             self._event_handlers[event_type].append(handler)
-        logging.info(f"{self.name} Registered handler for {event_type.__name__}")
+        self.logger.info(f"{self.name} Registered handler for {event_type.__name__}")
 
     def unregister_handler(self, event_type: type, handler: Callable[[Any], None]):
         """Unregister a handler for specific event types"""
@@ -99,12 +99,12 @@ class SelfMonitoringQueueProcessor:
             if event_type in self._event_handlers:
                 if handler in self._event_handlers[event_type]:
                     self._event_handlers[event_type].remove(handler)
-                    logging.info(f"{self.name} Unregistered handler for {event_type.__name__}")
+                    self.logger.info(f"{self.name} Unregistered handler for {event_type.__name__}")
 
     def start(self):
         """Start the sequential processing and monitoring threads"""
         if self._processing_thread is not None:
-            logging.warning(f"{self.name} processor already started")
+            self.logger.warning(f"{self.name} processor already started")
             return
 
         self._stop_event.clear()
@@ -127,7 +127,7 @@ class SelfMonitoringQueueProcessor:
         self._monitoring_thread.start()
         self._current_health = HealthStatus.HEALTHY
         self._last_logged_health = HealthStatus.HEALTHY
-        logging.info(f"{self.name} sequential event processor started with max_queue_size={self._event_queue.maxsize}")
+        self.logger.info(f"{self.name} sequential event processor started with max_queue_size={self._event_queue.maxsize}")
 
     def stop(self):
         """Stop the processor gracefully"""
@@ -137,16 +137,16 @@ class SelfMonitoringQueueProcessor:
         if self._processing_thread:
             self._processing_thread.join(timeout=5.0)
             if self._processing_thread.is_alive():
-                logging.warning(f"{self.name} Processing thread did not stop gracefully")
+                self.logger.warning(f"{self.name} Processing thread did not stop gracefully")
             self._processing_thread = None
 
         if self._monitoring_thread:
             self._monitoring_thread.join(timeout=5.0)
             if self._monitoring_thread.is_alive():
-                logging.warning(f"{self.name} Monitoring thread did not stop gracefully")
+                self.logger.warning(f"{self.name} Monitoring thread did not stop gracefully")
             self._monitoring_thread = None
 
-        logging.info(f"{self.name} sequential event processor stopped")
+        self.logger.info(f"{self.name} sequential event processor stopped")
 
     def submit(self, obj: Any) -> bool:
         """
@@ -159,7 +159,7 @@ class SelfMonitoringQueueProcessor:
             # Check if CRITICAL is actually due to queue being full
             queue_utilization = self.get_queue_utilization()
             if queue_utilization >= self.health_config['critical_queue_utilization']:
-                logging.warning(f"{self.name} rejecting event - queue critically full")
+                self.logger.warning(f"{self.name} rejecting event - queue critically full")
                 self._metrics['events_dropped'] += 1
                 return False
             # If CRITICAL due to other reasons (stuck), still accept
@@ -171,7 +171,7 @@ class SelfMonitoringQueueProcessor:
         except queue.Full:
             # Critical: queue persistently full
             self._metrics['events_dropped'] += 1
-            logging.error(f"{self.name} CRITICAL: Event queue persistently full - blocking indefinitely")
+            self.logger.error(f"{self.name} CRITICAL: Event queue persistently full - blocking indefinitely")
 
             # Last resort - block indefinitely but update health status
             self._current_health = HealthStatus.CRITICAL
@@ -192,7 +192,7 @@ class SelfMonitoringQueueProcessor:
 
     def _process_events_worker(self):
         """Worker thread that processes events sequentially in order"""
-        logging.info(f"{self.name} event processor worker started")
+        self.logger.info(f"{self.name} event processor worker started")
 
         while not self._stop_event.is_set():
             try:
@@ -210,13 +210,13 @@ class SelfMonitoringQueueProcessor:
                     self._metrics['consecutive_empty_cycles'] += 1
                 continue
             except Exception as e:
-                logging.error(f"{self.name} Error processing event: {e}",exc_info=e)
+                self.logger.error(f"{self.name} Error processing event: {e}",exc_info=e)
                 with self._lock:
                     self._metrics['consecutive_empty_cycles'] += 1
 
     def _monitoring_worker(self):
         """Continuous health monitoring and auto-recovery thread"""
-        logging.info(f"{self.name} health monitor started")
+        self.logger.info(f"{self.name} health monitor started")
 
         last_recovery_check = time.time()
 
@@ -237,7 +237,7 @@ class SelfMonitoringQueueProcessor:
                 # Sleep for next check
                 time.sleep(self.health_config['health_check_interval_sec'])
             except Exception as e:
-                logging.error(f"{self.name} Health monitoring error: {e}")
+                self.logger.error(f"{self.name} Health monitoring error: {e}")
 
     def _check_health(self):
         """Perform comprehensive health check with proper state transitions"""
@@ -299,7 +299,7 @@ class SelfMonitoringQueueProcessor:
                 # Stay in DEGRADED until all conditions are healthy
                 pass
 
-        # Update health status with proper logging
+        # Update health status with proper self.logger
         if new_health != self._current_health:
             old_health = self._current_health
             self._current_health = new_health
@@ -309,18 +309,18 @@ class SelfMonitoringQueueProcessor:
 
             # Log health state changes
             if new_health == HealthStatus.CRITICAL:
-                logging.error(f"{self.name} Health degraded to CRITICAL - "
+                self.logger.error(f"{self.name} Health degraded to CRITICAL - "
                               f"queue_utilization={queue_utilization:.1%}, "
                               f"stuck={is_stuck}, avg_processing_time={avg_processing_time_ms:.1f}ms")
             elif new_health == HealthStatus.DEGRADED:
                 if old_health == HealthStatus.CRITICAL:
-                    logging.info(f"{self.name} Health improved from CRITICAL to DEGRADED")
+                    self.logger.info(f"{self.name} Health improved from CRITICAL to DEGRADED")
                 else:
-                    logging.warning(f"{self.name} Health degraded to DEGRADED - "
+                    self.logger.warning(f"{self.name} Health degraded to DEGRADED - "
                                     f"queue_utilization={queue_utilization:.1%}, "
                                     f"avg_processing_time={avg_processing_time_ms:.1f}ms")
             elif new_health == HealthStatus.HEALTHY:
-                logging.info(f"{self.name} Health recovered to HEALTHY - "
+                self.logger.info(f"{self.name} Health recovered to HEALTHY - "
                              f"queue_utilization={queue_utilization:.1%}, "
                              f"avg_processing_time={avg_processing_time_ms:.1f}ms")
 
@@ -339,7 +339,7 @@ class SelfMonitoringQueueProcessor:
         # Check recovery cooldown
         if (self._metrics['recovery_attempts'] >= self.health_config['max_recovery_attempts'] and
                 current_time - self._metrics['last_recovery_time'] < self.health_config['recovery_cooldown_sec']):
-            logging.info(f"{self.name} Recovery cooldown active, skipping recovery attempt")
+            self.logger.info(f"{self.name} Recovery cooldown active, skipping recovery attempt")
             return
 
         # Check current conditions to see if recovery is possible
@@ -379,11 +379,11 @@ class SelfMonitoringQueueProcessor:
                 target_health == HealthStatus.HEALTHY):
             # Need to go through DEGRADED first
             self._current_health = HealthStatus.DEGRADED
-            logging.info(f"{self.name} Auto-recovery: CRITICAL → DEGRADED")
+            self.logger.info(f"{self.name} Auto-recovery: CRITICAL → DEGRADED")
         else:
             # Can transition directly
             self._current_health = target_health
-            logging.info(f"{self.name} Auto-recovery: {old_health.value} → {target_health.value}")
+            self.logger.info(f"{self.name} Auto-recovery: {old_health.value} → {target_health.value}")
 
         with self._lock:
             self._metrics['last_health_transition_time'] = current_time
@@ -394,7 +394,7 @@ class SelfMonitoringQueueProcessor:
         if (old_health == HealthStatus.CRITICAL and
                 self.health_config['auto_reset_metrics_on_recovery']):
             self._reset_health_metrics()
-            logging.info(f"{self.name} Metrics reset after critical recovery")
+            self.logger.info(f"{self.name} Metrics reset after critical recovery")
 
     def _health_status_value(self, status: HealthStatus) -> int:
         """Get numeric value for health status (lower is better)"""
@@ -427,12 +427,12 @@ class SelfMonitoringQueueProcessor:
             self.health_config['max_queue_utilization'] = 0.9
             self.health_config['critical_queue_utilization'] = 0.98
             self.health_config['max_processing_time_ms'] = 200.0
-            logging.debug(f"{self.name} Adjusted thresholds for high load (factor: {load_factor:.2f})")
+            self.logger.debug(f"{self.name} Adjusted thresholds for high load (factor: {load_factor:.2f})")
         elif load_factor > 1.3:  # High load
             self.health_config['max_queue_utilization'] = 0.85
             self.health_config['critical_queue_utilization'] = 0.96
             self.health_config['max_processing_time_ms'] = 150.0
-            logging.debug(f"{self.name} Adjusted thresholds for medium load (factor: {load_factor:.2f})")
+            self.logger.debug(f"{self.name} Adjusted thresholds for medium load (factor: {load_factor:.2f})")
         else:  # Normal or low load
             # Reset to defaults
             self.health_config['max_queue_utilization'] = 0.8
@@ -462,11 +462,11 @@ class SelfMonitoringQueueProcessor:
             metrics = self.get_health_metrics()
 
             if self._current_health == HealthStatus.HEALTHY:
-                logging.info(f"{self.name} Health status: {metrics}")
+                self.logger.info(f"{self.name} Health status: {metrics}")
             elif self._current_health == HealthStatus.DEGRADED:
-                logging.warning(f"{self.name} Health status: {metrics}")
+                self.logger.warning(f"{self.name} Health status: {metrics}")
             else:  # CRITICAL
-                logging.error(f"{self.name} Health status: {metrics}")
+                self.logger.error(f"{self.name} Health status: {metrics}")
 
             with self._lock:
                 self._metrics['last_health_log'] = current_time
@@ -489,11 +489,11 @@ class SelfMonitoringQueueProcessor:
 
                 if handler_time > 0.05:  # Log handlers taking >50ms
                     handler_name = handler.__name__ if hasattr(handler, '__name__') else f'handler_{i}'
-                    logging.debug(f"{self.name} Handler '{handler_name}' for {event_type} "
+                    self.logger.debug(f"{self.name} Handler '{handler_name}' for {event_type} "
                                   f"took {handler_time * 1000:.1f}ms")
 
         except Exception as e:
-            logging.error(f"{self.name} Error processing {event_type}: {e}",exc_info=e)
+            self.logger.error(f"{self.name} Error processing {event_type}: {e}",exc_info=e)
 
         finally:
             total_time = time.time() - processing_start
@@ -507,7 +507,7 @@ class SelfMonitoringQueueProcessor:
 
             # Log if this event was particularly slow
             if total_time > 0.1:  # >100ms
-                logging.debug(f"{self.name} {event_type} processing took {total_time * 1000:.1f}ms")
+                self.logger.debug(f"{self.name} {event_type} processing took {total_time * 1000:.1f}ms")
 
     # Public health interface
     def is_healthy(self) -> bool:
@@ -563,7 +563,7 @@ class SelfMonitoringQueueProcessor:
         Force health recovery check immediately.
         Use only when external intervention is absolutely necessary.
         """
-        logging.info(f"{self.name} Forcing health recovery check")
+        self.logger.info(f"{self.name} Forcing health recovery check")
         self._check_health()
         self._attempt_auto_recovery()
 
@@ -578,7 +578,7 @@ class SelfMonitoringQueueProcessor:
             self._metrics['total_processing_time'] = 0.0
             self._metrics['consecutive_empty_cycles'] = 0
             self._metrics['recovery_attempts'] = 0
-        logging.info(f"{self.name} Health metrics reset")
+        self.logger.info(f"{self.name} Health metrics reset")
 
     # Configuration methods
     def update_health_config(self, **kwargs):
@@ -588,9 +588,9 @@ class SelfMonitoringQueueProcessor:
             if key in valid_keys:
                 self.health_config[key] = value
             else:
-                logging.warning(f"{self.name} Ignoring invalid health config key: {key}")
+                self.logger.warning(f"{self.name} Ignoring invalid health config key: {key}")
 
-        logging.info(f"{self.name} Updated health config: {kwargs}")
+        self.logger.info(f"{self.name} Updated health config: {kwargs}")
 
     # Utility methods
     def wait_until_empty(self, timeout: Optional[float] = None) -> bool:
@@ -608,7 +608,7 @@ class SelfMonitoringQueueProcessor:
                 self._event_queue.task_done()
         except queue.Empty:
             pass
-        logging.warning(f"{self.name} Queue cleared")
+        self.logger.warning(f"{self.name} Queue cleared")
 
     def __enter__(self):
         """Context manager support"""
