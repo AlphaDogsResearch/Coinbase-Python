@@ -8,6 +8,11 @@ import signal
 import uuid
 from pathlib import Path
 
+# Add project root to Python path
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from param.ipython import message
 from xarray.tutorial import external_urls
 
@@ -19,11 +24,6 @@ from engine.remote.remote_database_client import RemoteDatabaseClient
 from engine.external.channel import Channel
 from engine.external.external_publisher import ExternalPublisher
 from engine.external.message_model.json_data_model import JsonDataModel
-
-# Add project root to Python path
-PROJECT_ROOT = Path(__file__).parent.parent.absolute()
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
 
 from dotenv import load_dotenv, find_dotenv
 

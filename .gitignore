@@ -206,3 +206,5 @@ engine/backtest/scheduled/recipients.json
 
 # Position state files
 state/
+
+venv/*

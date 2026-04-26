@@ -17,7 +17,10 @@ https://www.binance.com/en/support/faq/how-to-test-my-functions-on-binance-testn
 
 import logging
 import os
+import sys
 import time
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from dotenv import load_dotenv
 
@@ -44,7 +47,8 @@ if __name__ == '__main__':
     environment = os.getenv("ENVIRONMENT", "development")
     logging.info("Environment: %s", environment)
     environment = os.getenv("ENVIRONMENT", "development")
-    sub_module_path = os.getenv("SUB_MODULE_PATH", "")
+    default_sub_module_path = os.path.dirname(os.path.abspath(__file__))
+    sub_module_path = os.getenv("SUB_MODULE_PATH", default_sub_module_path)
 
     config = basic_config_loader.load_config(environment,sub_module_path)
     logging.info(f"Config loaded. {config}")
