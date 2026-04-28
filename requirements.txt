@@ -6,7 +6,7 @@ attrs==25.3.0
 binance==0.3.45
 ccxt==4.4.86
 certifi==2025.4.26
-cffi==1.17.1
+# cffi==1.17.1
 charset-normalizer==3.4.2
 cryptography==45.0.3
 dateparser==1.2.1
