@@ -39,6 +39,14 @@ class GatewayInterface:
     def register_market_trades_callback(self, callback):
         pass
 
+    """ register a callback for account fills (e.g. OrderEvent from Binance TRADE_LITE); one argument """
+    def register_trades_callback(self, callback):
+        pass
+
+    """ register a callback for account updates (e.g. AccountEvent from Binance ACCOUNT_UPDATE); one argument """
+    def register_account_event_callback(self, callback):
+        pass
+
     """ register a mark price callback function takes 2 argument: 
          (self, symbol: str, price: float) """
     def register_mark_price_callback(self, callback):
@@ -70,6 +78,12 @@ class GatewayInterface:
         pass
 
     def get_commission_rate(self, symbol):
+        pass
+
+    def _get_account_balance(self):
+        pass
+
+    def get_klines(self, symbol:str,interval_unit:str,past_interval:int):
         pass
 
     def _get_all_trades(self, symbol):

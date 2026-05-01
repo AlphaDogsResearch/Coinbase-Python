@@ -93,7 +93,13 @@ class TEMACrossoverStrategy(Strategy):
         self.subscribe_bars(self.bar_type)
         self.log.info(f"[SIGNAL] TEMACrossoverStrategy started for {self.instrument_id}")
 
+        super().on_start()
+
     def on_candle_created(self, candle: MidPriceCandle):
+
+        if not self.is_started():
+            return
+
         """Handle incoming candle data."""
         self.tema_short.handle_bar(candle)
         self.tema_long.handle_bar(candle)

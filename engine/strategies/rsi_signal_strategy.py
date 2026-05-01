@@ -121,10 +121,14 @@ class RSISignalStrategy(Strategy):
             f"[SIGNAL] RSISignalStrategy started for {self.instrument_id} "
             f"(mode={self.signal_mode}, exit={self.exit_mode})"
         )
+        super().on_start()
 
     def on_candle_created(self, candle: MidPriceCandle):
         """Handle incoming candle data."""
         self.rsi.handle_bar(candle)
+        if not self.is_started():
+            return
+
         if not self.rsi.initialized:
             return
 

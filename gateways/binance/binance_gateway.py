@@ -10,8 +10,9 @@ import threading
 import time
 from enum import Enum
 from threading import Thread
+from typing import List
 
-import websocket
+
 from binance import AsyncClient, BinanceSocketManager, DepthCacheManager
 from binance import FuturesDepthCacheManager
 from binance.client import Client
@@ -20,7 +21,19 @@ from binance.enums import FuturesType
 from common.callback_utils import assert_param_counts
 from common.file.file_utils import save_dict_to_file
 from common.interface_book import VenueOrderBook, PriceLevel, OrderBook
-from common.interface_order import Trade, Side, NewOrderSingle, OrderType
+from common.interface_order import (
+    Trade,
+    Side,
+    NewOrderSingle,
+    OrderType,
+    OrderEvent,
+    ExecutionType,
+    OrderStatus,
+    AccountEvent,
+)
+from common.time_utils import current_milli_time, convert_epoch_time_to_datetime_millis, get_past_epoch_milliseconds, \
+    get_past_epoch_milliseconds_offset
+from engine.market_data.candle import MidPriceCandle, HistoricalMidPriceCandle
 from gateways.gateway_interface import GatewayInterface, ReadyCheck
 
 
@@ -68,18 +81,31 @@ def log_session_header(url):
 
 
 class BinanceGateway(GatewayInterface):
-    def __init__(self, symbols, api_key=None, api_secret=None, product_type=ProductType.SPOT, name='Binance',is_production=False,price_depth:int=5):
+    def __init__(
+            self,
+            symbols,
+            api_key=None,
+            api_secret=None,
+            product_type=ProductType.SPOT,
+            name='Binance',
+            is_production=False,
+            price_depth: int = 5,
+            tld: str = "com",
+    ):
         """
         symbols: list of trading pairs (e.g. ["BTCUSDT", "ETHUSDT"])
         """
+        self.logger = logging.getLogger(self.__class__.__name__)
         self._api_key = api_key
         self._api_secret = api_secret
         self._exchange_name = name
         self._symbols = symbols if isinstance(symbols, list) else [symbols]
         self._product_type = product_type
+        self._tld = tld
         self.BASE_URL = 'https://testnet.binancefuture.com'
         self.price_depth = price_depth
         self.api_client = Client(self._api_key, self._api_secret)
+        self.is_production = is_production
         if not is_production:
             self.api_client.FUTURES_URL = 'https://testnet.binancefuture.com/fapi'
 
@@ -91,6 +117,10 @@ class BinanceGateway(GatewayInterface):
         self._dws = {}  # symbol -> depth ws
         self._ts = {}  # symbol -> trade socket
         self._tws = {}  # symbol -> trade ws
+        self._mpws = {} # symbol -> mark price ws
+        self._mps = {} # symbol -> mark price ws
+        self._margin_user_socket = None
+        self._margin_user_ws = None
         self._depth_cache = {}  # symbol -> cache
 
         self._loop = asyncio.new_event_loop()
@@ -102,61 +132,87 @@ class BinanceGateway(GatewayInterface):
         self._depth_callbacks = []
         self._mark_price_callbacks = []
         self._market_trades_callbacks = []
+        self._trades_callbacks = []  # account fills: OrderEvent from TRADE_LITE etc.
+        self._account_event_callbacks = []  # account update event
 
     def connect(self):
-        logging.info('Initializing connection')
+        self.logger.info('Initializing connection')
 
         # get instrument static data
         self._get_static()
 
         self._loop.run_until_complete(self._reconnect_ws())
 
-        logging.info("starting event loop thread")
+        self.logger.info("starting event loop thread")
         self._loop_thread.start()
 
     def _run_async_tasks(self):
         for symbol in self._symbols:
             self._loop.create_task(self._listen_depth_forever(symbol))
-            self._loop.create_task(self._listen_trade_forever(symbol))
+            self._loop.create_task(self._listen_mark_price_forever(symbol))
+            # self._loop.create_task(self._listen_trade_forever(symbol))
         self._loop.create_task(self._listen_private_forever())
         self._loop.run_forever()
 
     def _has_keys(self) -> bool:
         return self._api_key and self._api_secret
 
+    @staticmethod
+    def _order_event_from_trade_lite(data: dict) -> OrderEvent:
+        """Map Binance futures TRADE_LITE user stream event to OrderEvent."""
+        symbol = data["s"]
+        external_order_id = str(data["i"])
+        client_order_id = data["c"]
+        order_event = OrderEvent(
+            symbol,
+            external_order_id,
+            ExecutionType.TRADE,
+            OrderStatus.FILLED,
+            None,
+            client_order_id,
+            OrderType.Market,
+        )
+        order_event.side = data.get("S")
+        order_event.last_filled_time = data.get("T")
+        order_event.last_filled_price = float(data["L"])
+        order_event.last_filled_quantity = float(data["l"])
+        return order_event
+
     async def _reconnect_ws(self):
-        logging.info("reconnecting")
+        self.logger.info("reconnecting")
         self._ready_check = ReadyCheck()
         self._init_cache()
         await self._connect_authenticate_ws()
 
     def _init_cache(self):
-        logging.info("initializing cache")
+        self.logger.info("initializing cache")
         if self._has_keys():
             self._get_positions()
             self._get_wallet_balances()
             self._get_orders()
             self._get_account_info()
+            self._get_account_balance()
             self._get_margin_tier_info()
-            self._start_websocket()
+
             self.get_reference_data()
 
             for symbol in self._symbols:
                 self.get_user_trades(symbol)
                 self.get_commission_rate(symbol)
+                self.get_klines_1h(symbol)
         self._ready_check.snapshot_ready = True
 
     async def _connect_authenticate_ws(self):
-        logging.info("connecting to ws")
-        self._client = await AsyncClient.create(self._api_key, self._api_secret)
+        self.logger.info("connecting to ws")
+        self._client = await AsyncClient.create(self._api_key, self._api_secret, testnet=not self.is_production)
         self._bm = BinanceSocketManager(self._client)
         self._ready_check.ws_connected = True
 
     async def _listen_depth_forever(self, symbol):
-        logging.info(f"start subscribing and listen to depth events for {symbol}")
+        self.logger.info(f"start subscribing and listen to depth events for {symbol}")
         while True:
             if symbol not in self._dws or not self._dws[symbol]:
-                logging.info(f"depth socket not connected for {symbol}, reconnecting")
+                self.logger.info(f"depth socket not connected for {symbol}, reconnecting")
                 if self._product_type == ProductType.SPOT:
                     self._dcm[symbol] = DepthCacheManager(self._client, symbol=symbol, bm=self._bm, ws_interval=100)
                 elif self._product_type == ProductType.FUTURE:
@@ -173,19 +229,21 @@ class BinanceGateway(GatewayInterface):
                     for _cb in self._depth_callbacks:
                         order_book = self._get_order_book(symbol)
                         if order_book is None:
-                            logging.info(f"Unable to get order book for {symbol}")
+                            self.logger.info(f"Unable to get order book for {symbol}")
                             continue
                         _cb(self._exchange_name, VenueOrderBook(self._exchange_name, order_book))
             except Exception as e:
                 await self._handle_exception(e, f'encountered issue in depth processing for {symbol}')
 
+    # aggregated trade stream of the market not the stream of our trade
     async def _listen_trade_forever(self, symbol):
-        logging.info(f"start subscribing and listen to trade events for {symbol}")
+        self.logger.info(f"start subscribing and listen to trade events for {symbol}")
         while True:
             if symbol not in self._tws or not self._tws[symbol]:
-                logging.info(f"trade socket not connected for {symbol}, reconnecting")
+                self.logger.info(f"trade socket not connected for {symbol}, reconnecting")
                 if self._product_type == ProductType.SPOT:
-                    self._ts[symbol] = self._bm.aggtrade_socket(symbol)
+                    # Trade stream for real-time market trade events.
+                    self._ts[symbol] = self._bm.trade_socket(symbol)
                 elif self._product_type == ProductType.FUTURE:
                     self._ts[symbol] = self._bm.aggtrade_futures_socket(symbol=symbol, futures_type=FuturesType.USD_M)
                 else:
@@ -196,12 +254,14 @@ class BinanceGateway(GatewayInterface):
             try:
                 message = await self._tws[symbol].recv()
                 if self._market_trades_callbacks:
-                    data = message['data']
+                    data = message.get('data', message)
+                    self.logger.info(f"Trade Data {data}")
                     trade = Trade(received_time=data['T'],
                                   contract_name=data['s'],
                                   price=float(data['p']),
                                   size=float(data['q']),
                                   side=Side.SELL if data['m'] is True else Side.BUY,
+                                  realized_pnl=0,
                                   liquidation=False)
                     for _cb in self._market_trades_callbacks:
                         _cb([trade])
@@ -210,18 +270,53 @@ class BinanceGateway(GatewayInterface):
 
     async def _listen_private_forever(self):
         if not self._has_keys():
-            logging.info('WS - Not subscribing to user events due to missing keys')
+            self.logger.info('WS - Not subscribing to user events due to missing keys')
             self._ready_check.orders_stream_ready = True
             self._ready_check.position_stream_ready = True
             return
 
         # subscribe to user socket, which provides 3 events - account, order and trade updates
-        self._ready_check.orders_stream_ready = True
-        self._ready_check.position_stream_ready = True
+        self.logger.info("WS - subscribing to private user stream")
+
+        while True:
+            try:
+                if not self._margin_user_ws:
+                    if self._product_type == ProductType.SPOT:
+                        # Spot/cross-margin user data stream.
+                        self._margin_user_socket = self._bm.user_socket()
+                    elif self._product_type == ProductType.FUTURE:
+                        # USD-M futures user data stream (order/trade/account events).
+                        self._margin_user_socket = self._bm.futures_user_socket()
+                    else:
+                        raise RuntimeError(f"Unsupported product type for private stream: {self._product_type}")
+                    self._margin_user_ws = await self._margin_user_socket.__aenter__()
+                    self._ready_check.orders_stream_ready = True
+                    self._ready_check.position_stream_ready = True
+
+                message = await self._margin_user_ws.recv()
+                data = message.get("data", message)
+                self.logger.debug(f"User Data {data}")
+                event = data.get("e")
+                if event == "TRADE_LITE":
+                    self.logger.info("WS user trade event: %s", data)
+                    order_event = self._order_event_from_trade_lite(data)
+                    if self._trades_callbacks:
+                        for _cb in self._trades_callbacks:
+                            _cb(order_event)
+
+                elif event == "ACCOUNT_UPDATE":
+                    self.logger.info("WS user account update: %s", data)
+                    account_event = AccountEvent.from_binance_account_update(data)
+                    if self._account_event_callbacks:
+                        for _cb in self._account_event_callbacks:
+                            _cb(account_event)
+            except Exception as e:
+                self._margin_user_ws = None
+                await self._handle_exception(e, 'encountered issue in private user stream')
 
     async def _handle_exception(self, e: Exception, msg: str):
         self._ready_check.ws_connected = False
-        logging.exception(msg)
+        self.logger.exception(msg)
         # reset all sockets
         self._dws = None
         self._tws = None
@@ -235,12 +330,12 @@ class BinanceGateway(GatewayInterface):
 
             symbol = symbol or (self._symbols[0] if self._symbols else None)
             if symbol not in self._depth_cache or not cache:
-                logging.warning(f'depth socket not found for {symbol}')
+                self.logger.warning(f'depth socket not found for {symbol}')
                 return None
 
             if type(cache) is dict:
                 if cache['e'] == 'error':
-                    logging.error(f"Error while fetching depth for {symbol} probably due to disconnection")
+                    self.logger.error(f"Error while fetching depth for {symbol} probably due to disconnection")
                     return None
 
             # is DepthCache Object
@@ -249,7 +344,7 @@ class BinanceGateway(GatewayInterface):
             return OrderBook(timestamp=cache.update_time, contract_name=symbol, bids=bids,
                              asks=asks)
         except Exception as e:
-            logging.error(f'Failed to get order book for {symbol} cache: {self._depth_cache} error: {e.with_traceback}')
+            self.logger.error(f'Failed to get order book for {symbol} cache: {self._depth_cache} error: {e.with_traceback}')
             return None
 
     """ ----------------------------------- """
@@ -257,10 +352,10 @@ class BinanceGateway(GatewayInterface):
     """ ----------------------------------- """
 
     def _get_static(self):
-        logging.info('REST - Getting static data')
+        self.logger.info('REST - Getting static data')
 
     def _get_positions(self):
-        logging.info('REST - Getting position')
+        self.logger.info('REST - Getting position')
         positions = self.api_client.futures_position_information()
 
         for pos in positions:
@@ -323,17 +418,17 @@ class BinanceGateway(GatewayInterface):
                     data = trade_fee[0] if trade_fee else fees
 
             if not data:
-                logging.warning(f"No commission data returned for {symbol}")
+                self.logger.warning(f"No commission data returned for {symbol}")
                 return None
 
-            logging.info(f"Info {symbol}: {data}")
+            self.logger.info(f"Info {symbol}: {data}")
             target_symbol = data.get('symbol', symbol)
-            logging.info(f"Commission info for {target_symbol}:")
-            logging.info(f"  Maker fee rate: {data.get('makerCommissionRate', data.get('makerCommission'))}")
-            logging.info(f"  Taker fee rate: {data.get('takerCommissionRate', data.get('takerCommission'))}")
+            self.logger.info(f"Commission info for {target_symbol}:")
+            self.logger.info(f"  Maker fee rate: {data.get('makerCommissionRate', data.get('makerCommission'))}")
+            self.logger.info(f"  Taker fee rate: {data.get('takerCommissionRate', data.get('takerCommission'))}")
             return data
         except Exception as e:
-            logging.exception(f"Error fetching commission rate for {symbol}: {e}")
+            self.logger.exception(f"Error fetching commission rate for {symbol}: {e}")
             return None
 
     def get_trades_by_order_id(self, order_id, symbol: str):
@@ -350,11 +445,11 @@ class BinanceGateway(GatewayInterface):
                 print(f"Trade ID: {t.get('id')}, Order ID: {t.get('orderId')}, Price: {t.get('price')}, Qty: {qty}")
             return trades
         except Exception as e:
-            logging.exception(f"Error fetching trades by order id {order_id} for {symbol}: {e}")
+            self.logger.exception(f"Error fetching trades by order id {order_id} for {symbol}: {e}")
             return None
 
     def get_user_trades(self, symbol, limit=10):
-        logging.info(f"Getting All Trades limit: {limit}")
+        self.logger.info(f"Getting All Trades limit: {limit}")
         try:
             if self._product_type == ProductType.FUTURE:
                 trades = self.api_client.futures_account_trades(symbol=symbol, limit=limit)
@@ -376,52 +471,85 @@ class BinanceGateway(GatewayInterface):
                     print(f"  Net PnL: {net_pnl:.4f} {t.get('commissionAsset', '')}")
             return trades
         except Exception as e:
-            logging.exception(f"Error fetching user trades for {symbol}: {e}")
+            self.logger.exception(f"Error fetching user trades for {symbol}: {e}")
             return None
 
-    def _start_websocket(self):
+    # aggregated trade stream of the market not the stream of our trade
+    async def _listen_mark_price_forever(self, symbol):
+        self.logger.info(f"start subscribing and listen to mark price for {symbol}")
+        while True:
+            if symbol not in self._mpws or not self._mpws[symbol]:
+                self.logger.info(f"Mark Price socket not connected for {symbol}, reconnecting")
+                self._mpws[symbol] = self._bm.symbol_mark_price_socket(symbol)
 
-        def on_message(ws, message):
-            data = json.loads(message)
+                await self._mpws[symbol].__aenter__()
+            try:
+                # data information
+                # {
+                #     "p": "Mark Price – used for liquidation and PnL calculation",
+                #     "i": "Index Price – weighted average spot price from multiple exchanges",
+                #     "r": "Funding Rate – interest paid between longs/shorts at the next interval",
+                #     "P": "Estimated Settle Price",
+                #     "T": "Next Funding Time (UNIX ms)",
+                #     "E": "Event timestamp",
+                #     "e": "Event type",
+                #     "s": "Symbol"
+                # }
 
-            # data information
-            # {
-            #     "p": "Mark Price – used for liquidation and PnL calculation",
-            #     "i": "Index Price – weighted average spot price from multiple exchanges",
-            #     "r": "Funding Rate – interest paid between longs/shorts at the next interval",
-            #     "P": "Estimated Settle Price",
-            #     "T": "Next Funding Time (UNIX ms)",
-            #     "E": "Event timestamp",
-            #     "e": "Event type",
-            #     "s": "Symbol"
-            # }
+                message = await self._mpws[symbol].recv()
+                self.logger.debug(f"message {message}")
 
-            symbol = data['s']
-            mark_price = data['p']
+                data = message.get("data", message)
 
-            logging.debug(f"Mark Price: {data['p']}")
+                symbol = data['s']
+                mark_price = data['p']
 
-            if self._mark_price_callbacks:
-                for _cb in self._mark_price_callbacks:
-                    _cb(symbol, mark_price)
+                if self._mark_price_callbacks:
+                    for _cb in self._mark_price_callbacks:
+                        _cb(symbol, mark_price)
 
-        def on_open(ws):
-            print("Web socket connection opened")
+            except Exception as e:
+                await self._handle_exception(e, f'encountered issue in mark price processing for {symbol}')
 
-        def on_close(ws, code, reason):
-            print("Web socket connection closed")
+    def _get_account_balance(self):
+        """
+        Return Futures balances for stable quote assets as a list of objects.
+        Example:
+        [
+            {"asset": "USDT", "balance": 100.0, "availableBalance": 95.0},
+            {"asset": "USDC", "balance": 50.0, "availableBalance": 49.5},
+        ]
+        """
+        try:
+            if self._product_type != ProductType.FUTURE:
+                return []
 
-        for symbol in self._symbols:
-            logging.info(f"Starting Mark Price for Symbol: {symbol}")
-            url = f"wss://fstream.binance.com/ws/{symbol.lower()}@markPrice"
+            futures_balance = self.api_client.futures_account_balance()
+            target_assets = {"USDT", "USDC"}
+            filtered_balances = []
+            for item in futures_balance:
+                asset_name = item.get("asset")
+                if asset_name not in target_assets:
+                    continue
+                filtered_balances.append(
+                    {
+                        "asset": asset_name,
+                        "balance": float(item.get("balance", 0.0)),
+                        "availableBalance": float(item.get("availableBalance", 0.0)),
+                    }
+                )
 
-            ws = websocket.WebSocketApp(url, on_message=on_message, on_open=on_open, on_close=on_close)
-            thread = threading.Thread(target=ws.run_forever, daemon=True)
-            thread.start()
+            self.logger.info("Futures filtered balances: %s", filtered_balances)
+            return filtered_balances
+        except Exception as e:
+            self.logger.exception(f"Error fetching user account balance for {self._product_type}: {e}")
+            return []
 
+    # spot balance use this
     def _get_account_info(self):
-        logging.info('REST - Getting account info')
+        self.logger.info('REST - Getting account info')
         account_info = self.api_client.futures_account()
+        # print(account_info)
         print(f"Total Wallet Balance     : {account_info['totalWalletBalance']}")
         print(f"Total Margin Balance     : {account_info['totalMarginBalance']}")
         print(f"Total Unrealized PnL     : {account_info['totalUnrealizedProfit']}")
@@ -437,18 +565,18 @@ class BinanceGateway(GatewayInterface):
         return None
 
     def _get_futures_exchange_info(self):
-        logging.info('REST - Getting Futures exchange info')
+        self.logger.info('REST - Getting Futures exchange info')
         futures_exchange_info = self.api_client.futures_exchange_info()
 
-        # logging.info(f"Total Futures Exchange Info : {futures_exchange_info}")
+        # self.logger.info(f"Total Futures Exchange Info : {futures_exchange_info}")
         # save_dict_to_file(data=futures_exchange_info,filename="futures_exchange_info.json",method='json')
         return futures_exchange_info
 
     def _get_exchange_info(self):
-        logging.info('REST - Getting exchange info')
+        self.logger.info('REST - Getting exchange info')
         exchange_info = self.api_client.get_exchange_info()
 
-        logging.info(f"Total Exchange Info : {exchange_info}")
+        self.logger.info(f"Total Exchange Info : {exchange_info}")
         save_dict_to_file(data=exchange_info, filename="exchange_info.json", method='json')
         return exchange_info
 
@@ -464,25 +592,59 @@ class BinanceGateway(GatewayInterface):
             print("Error fetching balance:", e)
             return 0.0
 
+    def get_futures_usdc_balance(self):
+        """
+        Fetch current USDT balance from Binance USDⓈ-M Futures account.
+        """
+        try:
+            balances = self.api_client.futures_account_balance()
+            usdc_balance = next((float(b['balance']) for b in balances if b['asset'] == 'USDC'), 0.0)
+            return usdc_balance
+        except Exception as e:
+            print("Error fetching balance:", e)
+            return 0.0
+
+    def get_klines_1h(self,symbol:str,past_interval:int=10)-> List[HistoricalMidPriceCandle]:
+        if past_interval <= 0:
+            raise ValueError("past_interval cannot be 0 or negative")
+
+        return self.get_klines(symbol=symbol, interval_unit="1h", past_interval=past_interval)
+
+
+    def get_klines(self, symbol:str,interval_unit:str,past_interval:int) -> List[HistoricalMidPriceCandle]:
+        start_time = get_past_epoch_milliseconds(past_interval)
+        end_time = current_milli_time()
+        self.logger.info(f"Start time: {start_time} end time: {end_time}")
+        klines = self.api_client.futures_klines(symbol=symbol, interval=interval_unit, start_str=start_time,
+                                                end_str=end_time, limit=past_interval)
+        pretty_data = json.dumps(klines, indent=4)
+        self.logger.info(f"Klines fetched for {symbol} -> \n {pretty_data}")
+
+        preloaded_candles = []
+
+        if klines is not None:
+            for index, candle in enumerate(klines):
+                # Unpack the list into readable variables
+                (open_time, open_p, high_p, low_p, close_p, volume,
+                 close_time, quote_vol, num_trades, _, _, _) = candle
+                candle = HistoricalMidPriceCandle(int(open_time),
+                                                  float(open_p),float(high_p),float(low_p),float(close_p))
+                self.logger.info(f"Klines Candle: {candle}")
+                preloaded_candles.append(candle)
+
+        return preloaded_candles
+
+
     def _get_wallet_balances(self):
-        logging.info('REST - Getting wallet balances')
-        # Fetch account balance (Futures)
-        futures_balance = self.api_client.futures_account_balance()
-
+        self.logger.info('REST - Getting wallet balances')
         wallet = {}
-
-        # Print non-zero balances
-        for asset in futures_balance:
-            asset_name = asset['asset']
-            balance = float(asset['balance'])
-            if balance != 0:
-                print(f"{asset_name}: {balance}")
-                wallet[asset_name] = balance
+        for item in self._get_account_balance():
+            wallet[item["asset"]] = item["balance"]
 
         return wallet
 
     def _get_orders(self):
-        logging.info('REST - Getting open orders')
+        self.logger.info('REST - Getting open orders')
         open_orders = self.api_client.futures_get_open_orders()
 
         for order in open_orders:
@@ -538,6 +700,16 @@ class BinanceGateway(GatewayInterface):
         assert_param_counts(callback, 1)
         self._market_trades_callbacks.append(callback)
 
+    def register_trades_callback(self, callback):
+        """Callback receives one argument: OrderEvent (e.g. from futures TRADE_LITE)."""
+        assert_param_counts(callback, 1)
+        self._trades_callbacks.append(callback)
+
+    def register_account_event_callback(self, callback):
+        """Callback receives one argument: AccountEvent (futures ACCOUNT_UPDATE)."""
+        assert_param_counts(callback, 1)
+        self._account_event_callbacks.append(callback)
+
     def reconnect(self):
         """ A signals to reconnect """
         self._signal_reconnect = True
@@ -576,13 +748,13 @@ class BinanceGateway(GatewayInterface):
         else:
             order_params["type"] = "MARKET"
 
-        logging.info(f"Submitting order with params: {order_params}")
+        self.logger.info(f"Submitting order with params: {order_params}")
         try:
             if self._product_type == ProductType.FUTURE:
                 return self.api_client.futures_create_order(**order_params)
             return self.api_client.create_order(**order_params)
         except Exception as e:
-            logging.exception(f"Failed to send order: {e}")
+            self.logger.exception(f"Failed to send order: {e}")
             return {"error": str(e), "symbol": symbol, "clientOrderId": client_id}
 
     ### not in use
@@ -591,13 +763,13 @@ class BinanceGateway(GatewayInterface):
         symbol = post_response_data['symbol']
         order_id = post_response_data['orderId']
 
-        logging.info(f"Fetching filled price for order {order_id} on {symbol} ")
+        self.logger.info(f"Fetching filled price for order {order_id} on {symbol} ")
         try:
             if self._product_type == ProductType.FUTURE:
                 return self.api_client.futures_get_order(symbol=symbol, orderId=order_id)
             return self.api_client.get_order(symbol=symbol, orderId=order_id)
         except Exception as e:
-            logging.exception(f"Failed to fetch filled price for order {order_id}: {e}")
+            self.logger.exception(f"Failed to fetch filled price for order {order_id}: {e}")
             return {"error": str(e), "symbol": symbol, "orderId": order_id}
 
     def query_order(self, symbol: str, order_id: str):
@@ -608,10 +780,10 @@ class BinanceGateway(GatewayInterface):
         :return: A list of open orders.
         """
         if not self._has_keys():
-            logging.error("Cannot query orders without API keys.")
+            self.logger.error("Cannot query orders without API keys.")
             return []
 
-        logging.info(f"Querying order {order_id} for {symbol} ")
+        self.logger.info(f"Querying order {order_id} for {symbol} ")
         try:
             if self._product_type == ProductType.FUTURE:
                 # Futures endpoint supports filtering open orders by orderId
@@ -621,5 +793,5 @@ class BinanceGateway(GatewayInterface):
             open_orders = self.api_client.get_open_orders(symbol=symbol)
             return [o for o in open_orders if str(o.get("orderId")) == str(order_id)]
         except Exception as e:
-            logging.exception(f"Failed to query order {order_id} on {symbol}: {e}")
+            self.logger.exception(f"Failed to query order {order_id} on {symbol}: {e}")
             return []

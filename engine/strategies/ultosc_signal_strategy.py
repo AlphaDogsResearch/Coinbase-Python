@@ -127,8 +127,14 @@ class ULTOSCSignalStrategy(Strategy):
             f"(mode={self.signal_mode}, exit={self.exit_mode})"
         )
 
+        super().on_start()
+
     def on_candle_created(self, candle: MidPriceCandle):
         self.ultosc.handle_bar(candle)
+
+        if not self.is_started():
+            return
+
         if not self.ultosc.initialized:
             return
 

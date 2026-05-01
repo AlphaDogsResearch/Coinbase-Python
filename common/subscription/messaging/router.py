@@ -18,6 +18,7 @@ from common.time_utils import current_milli_time
 
 class RouterServer:
     def __init__(self, name: str, handler: EventHandler, host: str, port: int):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.name = name
         self.ctx = zmq.Context()
         self.socket = self.ctx.socket(zmq.ROUTER)
@@ -40,19 +41,19 @@ class RouterServer:
         self.bg_thread = threading.Thread(target=self.run, daemon=True)
         self.bg_thread.start()
 
-        logging.info(f"[{self.name} Server] Ready on {self.address}")
+        self.logger.info(f"[{self.name} Server] Ready on {self.address}")
 
         self.clients = {}  # ident -> logon time
 
     def stop(self):
         """Gracefully stop server thread and close resources."""
-        logging.info(f"{self.name}[Server] Stopping...")
+        self.logger.info(f"{self.name}[Server] Stopping...")
         self._running = False
         # allow thread to break recv loop
         self.socket.close(0)
         self.ctx.term()
         self.bg_thread.join(timeout=2.0)  # optional
-        logging.info(f"[{self.name}Server] Stopped.")
+        self.logger.info(f"[{self.name}Server] Stopped.")
 
     def send(self, ident: str, msg: Serializable):
         """Send message to server."""
@@ -63,10 +64,10 @@ class RouterServer:
             try:
                 self.socket.send_multipart([ident, b"", msg])
             except zmq.ZMQError as e:
-                logging.error(f"Failed to send to identity {ident} {msg} ", exc_info=e)
-                logging.info(f"[{self.name} Server] Unable to connect removing {ident} from clients")
+                self.logger.error(f"Failed to send to identity {ident} {msg} ", exc_info=e)
+                self.logger.info(f"[{self.name} Server] Unable to connect removing {ident} from clients")
                 self.clients.pop(ident, None)
-                logging.info(f"Clients {self.clients}")
+                self.logger.info(f"Clients {self.clients}")
 
     '''
     b"" empty bytes delimiter for router only 
@@ -77,16 +78,16 @@ class RouterServer:
 
         if payload == b"LOGON_REQUEST":
             self.socket.send_multipart([ident, b"", b"LOGON_RESPONSE"])
-            logging.info(f"[{self.name} Server] -> LOGON_RESPONSE to {ident}")
+            self.logger.info(f"[{self.name} Server] -> LOGON_RESPONSE to {ident}")
             now = time.time()
             self.clients[ident] = now
 
         elif payload == b"PING":
             self.socket.send_multipart([ident, b"", b"PONG"])
-            logging.debug(f"[{self.name}Server] -> PONG")
+            self.logger.debug(f"[{self.name}Server] -> PONG")
 
         else:
-            logging.info(f"[{self.name} Server] From {ident}: {payload}")
+            self.logger.info(f"[{self.name} Server] From {ident}: {payload}")
             self.handler.handle(ident, payload)
             # TODO do we need the ACK ??
             # self.socket.send_multipart([ident, b"", b"ACK:" + payload])
@@ -114,7 +115,7 @@ class RouterServer:
                 ident, _, payload = parts
                 self.handle_message(ident, payload)
             else:
-                logging.error(f"[{self.name} Server] Invalid message: {parts}")
+                self.logger.error(f"[{self.name} Server] Invalid message: {parts}")
 
 
 if __name__ == "__main__":

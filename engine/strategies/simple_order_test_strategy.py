@@ -54,7 +54,12 @@ class SimpleOrderTestStrategy(Strategy):
             f"🧪 TEST STRATEGY STARTED: Pattern LONG->CLOSE->SHORT->CLOSE every {self.bars_per_trade} bars"
         )
 
+        super().on_start()
+
     def on_candle_created(self, candle: MidPriceCandle):
+        if not self.is_started():
+            return
+
         """Handle incoming candle data."""
         self._bar_counter += 1
 

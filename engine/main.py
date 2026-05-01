@@ -121,6 +121,7 @@ def main():
         os._exit(1)
 
     selected_symbol = default_settings_parameters["selected_symbol"]
+    preload_candles = default_settings_parameters.get("preload_candles")
 
     # Initialize Position and RiskManager
     position = components["position"]
@@ -183,15 +184,19 @@ def main():
     # initialise remote client
     remote_market_data_client = components["remote_market_data_client"]
 
-    # attach position manager listener to remote client
-    remote_market_data_client.add_mark_price_listener(
-        reference_price_manager.on_reference_data_event
-    )
+    if isinstance(remote_market_data_client,RemoteMarketDataClient):
+        # attach position manager listener to remote client
+        remote_market_data_client.add_mark_price_listener(
+            reference_price_manager.on_reference_data_event
+        )
+
+        remote_market_data_client.start()
 
     reference_data_manager = components["reference_data_manager"]
 
     remote_order_client = components["remote_order_client"]
-    remote_order_client.start()
+    if isinstance(remote_order_client, RemoteOrderClient):
+        remote_order_client.start()
 
     # create executor
     executor = components["executor"]
@@ -250,6 +255,7 @@ def main():
         order_manager=order_manager,
         position_manager=position_manager,
         remote_market_data_client=remote_market_data_client,
+        preload_candles=preload_candles
     )
 
     # Add strategies from config
@@ -277,6 +283,7 @@ def main():
                 logging.error(f"[Strategy] Failed to add {strategy_id}")
 
         # Start all strategies
+        strategy_manager.pre_start_check()
         strategy_manager.start_all()
 
         logging.info("========================== Done adding strategies ==========================")
