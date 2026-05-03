@@ -1,4 +1,3 @@
-import inspect
 import logging
 from enum import Enum
 from typing import Type, Dict, Any
@@ -16,7 +15,14 @@ class Serializable:
         # Register the class for future deserialization
         SerializableRegistry.register(self.__class__)
 
+        # Define types that should NEVER be serialized
+        to_skip = (logging.Logger,)
+
         for key, value in self.__dict__.items():
+            # Skip if it's a known non-serializable type
+            # OR if the attribute starts with an underscore (standard Python "internal" convention)
+            if isinstance(value, to_skip) or key.startswith('_'):
+                continue
             if isinstance(value, dict):
                 # Handle dictionary values
                 result["data"][key] = {

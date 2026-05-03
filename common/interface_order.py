@@ -102,6 +102,7 @@ class Order(Serializable, JsonModel, Recyclable, ABC):
 
     def __post_init__(self):
         self.quantity = self.leaves_qty
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     @classmethod
     def create_base_order(cls, order_id: str):
@@ -128,14 +129,14 @@ class Order(Serializable, JsonModel, Recyclable, ABC):
 
     def on_new_event(self):
         if self.is_in_order_done_state:
-            logging.error(f"Order is in done state ,overfilled ?  current order status {self.order_status}")
+            self.logger.error(f"Order is in done state ,overfilled ?  current order status {self.order_status}")
         self.state_changed_to(OrderStatus.NEW)
         self.comment = "Order New"
 
 
     def on_filled_event(self,event_filled_quantity:float,event_filled_price:float) -> None:
         if self.is_in_order_done_state:
-            logging.error(f"Order is in done state ,overfilled ?  current order status {self.order_status}")
+            self.logger.error(f"Order is in done state ,overfilled ?  current order status {self.order_status}")
 
         self.leaves_qty -= event_filled_quantity
         self.filled_qty += event_filled_quantity
@@ -155,7 +156,7 @@ class Order(Serializable, JsonModel, Recyclable, ABC):
             self.state_changed_to(OrderStatus.PARTIALLY_FILLED)
 
         self.comment = "Order Filled"
-        logging.info(f"On Filled Event "
+        self.logger.info(f"On Filled Event "
                      f"leave_qty {self.leaves_qty},"
                      f"filled_qty {self.filled_qty},"
                      f"avg_filled_price {self.avg_filled_price}, "
@@ -165,7 +166,7 @@ class Order(Serializable, JsonModel, Recyclable, ABC):
 
     def on_order_cancel_event(self):
         if self.is_in_order_done_state:
-            logging.error(f"Unable to be cancelled ,Order is in done state , current order status {self.order_status}")
+            self.logger.error(f"Unable to be cancelled ,Order is in done state , current order status {self.order_status}")
 
         self.state_changed_to(OrderStatus.CANCELED)
         self.leaves_qty = 0
@@ -177,9 +178,9 @@ class Order(Serializable, JsonModel, Recyclable, ABC):
         if self.order_status != new_state:
             old_state = self.order_status
             self.order_status = new_state
-            logging.info(f"Order status {old_state} changed to {new_state}")
+            self.logger.info(f"Order status {old_state} changed to {new_state}")
         else:
-            logging.info(f"Ignore Order status changed to {new_state} ,its the same state")
+            self.logger.info(f"Ignore Order status changed to {new_state} ,its the same state")
 
 
     def recycle(self):
@@ -223,6 +224,7 @@ if __name__ == "__main__":
 # Instrument trading rules
 class InstrumentDetails:
     def __init__(self, contract_name, tick_size, quantity_size=0):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.contract_name = contract_name
         self.tick_size = tick_size
         self.quantity_size = quantity_size
@@ -236,6 +238,7 @@ class InstrumentDetails:
 # Order event
 class OrderEvent(Serializable):
     def __init__(self, contract_name: str, order_id: str, execution_type: ExecutionType, status: OrderStatus, canceled_reason=None, client_order_id=None, order_type:OrderType=OrderType.Market):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.contract_name = contract_name
         self.order_id = order_id
         self.client_order_id = client_order_id
@@ -308,6 +311,7 @@ class AccountEvent(Serializable):
 # A trade is an execution/fill by an exchange
 class Trade(Serializable):
     def __init__(self, received_time: float, contract_name: str, price: float, size: float, side: Side,realized_pnl:float, liquidation: False):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.received_time = received_time
         self.contract_name = contract_name
         self.price = price

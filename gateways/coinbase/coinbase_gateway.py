@@ -18,6 +18,7 @@ from gateways.gateway_interface import GatewayInterface, ReadyCheck
 
 class CoinbaseAdvancedGateway(GatewayInterface):
     def __init__(self, symbols, channels=None, name="CoinBase", api_key=None, api_secret=None,key_file=None, base_url=None, is_sand_box=True):
+        self.logger = logging.getLogger(self.__class__.__name__)
         # If keys are not provided, the SDK will read from environment variables
         # todo change key and secret to file
         if channels is None:
@@ -49,13 +50,13 @@ class CoinbaseAdvancedGateway(GatewayInterface):
         self.loop = asyncio.new_event_loop()
         self.order_book_manager = AggregatedOrderBookManager()
 
-        logging.info("Initializing Coinbase Advanced Gateway, Symbols: {}".format(self.symbols) )
+        self.logger.info("Initializing Coinbase Advanced Gateway, Symbols: {}".format(self.symbols) )
 
         if self.is_sand_box:
             if self.base_url is None:
                 # use sandbox url for uat
                 self.base_url = "api-sandbox.coinbase.com"
-                logging.info("No base_url given, using default sandbox uat url {} for REST".format(self.base_url))
+                self.logger.info("No base_url given, using default sandbox uat url {} for REST".format(self.base_url))
             self.rest_client = RESTClient(api_key=api_key, api_secret=api_secret,key_file=key_file, base_url=self.base_url)
         else:
             if self.base_url is None:
@@ -76,13 +77,13 @@ class CoinbaseAdvancedGateway(GatewayInterface):
     # ---- REST methods ----
     def list_products(self):
         if (self.is_sand_box):
-            logging.info("Sandbox mode does not have list_products ")
+            self.logger.info("Sandbox mode does not have list_products ")
             return None
         return self.rest_client.get_products()
 
     def get_product(self,product_id):
         if(self.is_sand_box):
-            logging.info("Sandbox mode does not have get_product ")
+            self.logger.info("Sandbox mode does not have get_product ")
             return None
 
         return self.rest_client.get_product(product_id=product_id)
@@ -116,7 +117,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
         """
         client_id = self.generate_unique_id()
 
-        logging.info(
+        self.logger.info(
             "PLACE_ORDER client_order_id=%s product_id=%s side=%s size=%s order_type=%s price=%s stop_price=%s stop_limit_price=%s time_in_force=%s post_only=%s cancel_after=%s stp=%s",
             client_id, product_id, side, size, order_type, price, stop_price, stop_limit_price, time_in_force, post_only, cancel_after, stp
         )
@@ -131,14 +132,14 @@ class CoinbaseAdvancedGateway(GatewayInterface):
 
         # Handle different order types
         if order_type.upper() == "MARKET":
-            logging.debug("Configuring MARKET order for %s", product_id)
+            self.logger.debug("Configuring MARKET order for %s", product_id)
             order_config["order_configuration"] = {
                 "market_market_ioc": {
                     "base_size": str(size)
                 }
             }
         elif order_type.upper() == "LIMIT":
-            logging.debug("Configuring LIMIT order for %s", product_id)
+            self.logger.debug("Configuring LIMIT order for %s", product_id)
             if not price:
                 raise ValueError("Limit orders require a price parameter")
             limit_config = {
@@ -147,18 +148,18 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             }
             if time_in_force:
                 limit_config["time_in_force"] = time_in_force
-                logging.debug("time_in_force=%s", time_in_force)
+                self.logger.debug("time_in_force=%s", time_in_force)
             if post_only is not None:
                 limit_config["post_only"] = post_only
-                logging.debug("post_only=%s", post_only)
+                self.logger.debug("post_only=%s", post_only)
             if cancel_after:
                 limit_config["cancel_after"] = cancel_after
-                logging.debug("cancel_after=%s", cancel_after)
+                self.logger.debug("cancel_after=%s", cancel_after)
             order_config["order_configuration"] = {
                 "limit_limit_gtc": limit_config
             }
         elif order_type.upper() == "STOP":
-            logging.debug("Configuring STOP order for %s", product_id)
+            self.logger.debug("Configuring STOP order for %s", product_id)
             if not stop_price:
                 raise ValueError("Stop orders require a stop_price parameter")
             order_config["order_configuration"] = {
@@ -169,7 +170,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                 }
             }
         elif order_type.upper() == "STOP_LIMIT":
-            logging.debug("Configuring STOP_LIMIT order for %s", product_id)
+            self.logger.debug("Configuring STOP_LIMIT order for %s", product_id)
             if not stop_price or not (price or stop_limit_price):
                 raise ValueError("STOP_LIMIT orders require stop_price and either price or stop_limit_price")
             order_config["order_configuration"] = {
@@ -185,13 +186,13 @@ class CoinbaseAdvancedGateway(GatewayInterface):
         # Add optional parameters
         if stp:
             order_config["stp"] = stp
-            logging.debug("stp=%s", stp)
+            self.logger.debug("stp=%s", stp)
         # Final configuration log
-        logging.info("Final order configuration: %s", order_config)
+        self.logger.info("Final order configuration: %s", order_config)
 
         try:
             response = self.rest_client.create_order(**order_config)
-            logging.info("Order placed: client_order_id=%s response_status=%s", client_id, response.get('status') if isinstance(response, dict) else 'UNKNOWN')
+            self.logger.info("Order placed: client_order_id=%s response_status=%s", client_id, response.get('status') if isinstance(response, dict) else 'UNKNOWN')
             # map client->server id
             try:
                 if isinstance(response, dict):
@@ -199,19 +200,19 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                     if server_id:
                         self._client_to_server_order_id[client_id] = server_id
             except Exception:
-                logging.debug("Could not map client id %s to server id", client_id)
+                self.logger.debug("Could not map client id %s to server id", client_id)
             return response
         except Exception as e:
-            logging.error("Failed placing order product_id=%s client_order_id=%s error=%s", product_id, client_id, e, exc_info=True)
+            self.logger.error("Failed placing order product_id=%s client_order_id=%s error=%s", product_id, client_id, e, exc_info=True)
             raise
 
     def cancel_order(self, order_id):
         try:
             resp = self.rest_client.cancel_order(order_id)
-            logging.info("Cancel order submitted order_id=%s", order_id)
+            self.logger.info("Cancel order submitted order_id=%s", order_id)
             return resp
         except Exception as e:
-            logging.error("Failed cancelling order_id=%s error=%s", order_id, e, exc_info=True)
+            self.logger.error("Failed cancelling order_id=%s error=%s", order_id, e, exc_info=True)
             return None
 
     def rest_client(self):
@@ -221,13 +222,13 @@ class CoinbaseAdvancedGateway(GatewayInterface):
     # ---- WebSocket ----
 
     def connect(self):
-        logging.info('Initializing connection')
+        self.logger.info('Initializing connection')
         self._loop.create_task(self._reconnect_ws())
         self._loop.run_forever()
 
 
     async def _reconnect_ws(self):
-        logging.info("reconnecting")
+        self.logger.info("reconnecting")
         self._ready_check = ReadyCheck()
         self._init_cache()
         self.start_ws()
@@ -243,7 +244,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
         return self.api_key and self.api_secret
 
     def _init_cache(self):
-        logging.info("initializing cache")
+        self.logger.info("initializing cache")
         if self._has_keys():
             self._get_positions()
             wallet = self._get_wallet_balances()
@@ -261,12 +262,12 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             self.subscribe_all()
             self.ws_client.run_forever_with_exception_check()
         except WSClientConnectionClosedException as e:
-            logging.error("Websocket connection closed retry attempts exhausted error=%s", e, exc_info=True)
+            self.logger.error("Websocket connection closed retry attempts exhausted error=%s", e, exc_info=True)
         except WSClientException as e:
-            logging.error("Websocket client exception encountered error=%s", e, exc_info=True)
+            self.logger.error("Websocket client exception encountered error=%s", e, exc_info=True)
 
     def subscribe_all(self):
-        logging.info("Subscribing all symbols...")
+        self.logger.info("Subscribing all symbols...")
         self.ws_client.subscribe(product_ids=self.symbols, channels=self.channels)
 
     def unsubscribe_all(self):
@@ -275,34 +276,34 @@ class CoinbaseAdvancedGateway(GatewayInterface):
     def register_depth_callback(self, callback):
         assert_param_counts(callback, 2)
         self._depth_callbacks.append(callback)
-        logging.info("Registered depth callback total=%d", len(self._depth_callbacks))
+        self.logger.info("Registered depth callback total=%d", len(self._depth_callbacks))
 
     def register_mark_price_callback(self, callback):
         assert_param_counts(callback, 2)
         self._mark_price_callbacks.append(callback)
-        logging.info("Registered mark price callback total=%d", len(self._mark_price_callbacks))
+        self.logger.info("Registered mark price callback total=%d", len(self._mark_price_callbacks))
 
     # ---- New callback registration methods ----
     def register_wallet_balance_callback(self, callback):
         assert_param_counts(callback, 1)
         self._wallet_balance_callbacks.append(callback)
-        logging.info("Registered wallet balance callback total=%d", len(self._wallet_balance_callbacks))
+        self.logger.info("Registered wallet balance callback total=%d", len(self._wallet_balance_callbacks))
 
     def register_position_callback(self, callback):
         # (symbol, position_dict)
         assert_param_counts(callback, 2)
         self._position_callbacks.append(callback)
-        logging.info("Registered position callback total=%d", len(self._position_callbacks))
+        self.logger.info("Registered position callback total=%d", len(self._position_callbacks))
 
     def register_open_orders_callback(self, callback):
         assert_param_counts(callback, 1)
         self._open_orders_callbacks.append(callback)
-        logging.info("Registered open orders callback total=%d", len(self._open_orders_callbacks))
+        self.logger.info("Registered open orders callback total=%d", len(self._open_orders_callbacks))
 
     def register_fills_callback(self, callback):
         assert_param_counts(callback, 1)
         self._fills_callbacks.append(callback)
-        logging.info("Registered fills callback total=%d", len(self._fills_callbacks))
+        self.logger.info("Registered fills callback total=%d", len(self._fills_callbacks))
 
     # --- Unregister specialized callbacks ---
     def unregister_depth_callback(self, callback):
@@ -350,7 +351,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             raise ValueError(f"Unsupported event_type {event_type}")
         assert_param_counts(callback, self._EVENT_PARAM_COUNTS[event_type])
         self._event_callbacks[event_type].append(callback)
-        logging.info("Registered generic callback type=%s total=%d", event_type, len(self._event_callbacks[event_type]))
+        self.logger.info("Registered generic callback type=%s total=%d", event_type, len(self._event_callbacks[event_type]))
     def unregister_callback(self, event_type: str, callback):
         if event_type not in self._event_callbacks:
             return False
@@ -363,14 +364,14 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             try:
                 cb(*args)
             except Exception as e:
-                logging.debug("Generic event callback error type=%s error=%s", event_type, e)
+                self.logger.debug("Generic event callback error type=%s error=%s", event_type, e)
 
     def on_message(self,msg):
         try:
-            logging.debug("Message \n %s", msg)
+            self.logger.debug("Message \n %s", msg)
             json_message = json.loads(msg)
             if "type" in json_message and json_message["type"] == "error":
-                logging.error("WebSocket error message=%s", json_message.get("message"))
+                self.logger.error("WebSocket error message=%s", json_message.get("message"))
                 return
 
             ws_object = WebsocketResponse(json_message)
@@ -423,7 +424,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                             try:
                                 _cb(self._exchange_name, VenueOrderBook(self._exchange_name, order_book))
                             except Exception:
-                                logging.debug("Depth callback failed symbol=%s", symbol, exc_info=True)
+                                self.logger.debug("Depth callback failed symbol=%s", symbol, exc_info=True)
                     # Generic dispatch
                     self._dispatch_event('depth', self._exchange_name, VenueOrderBook(self._exchange_name, order_book))
                     # Mark / mid price emission
@@ -437,13 +438,13 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                                     try:
                                         _cb(self._exchange_name, mid)
                                     except Exception:
-                                        logging.debug("Mark price callback failed symbol=%s", symbol, exc_info=True)
+                                        self.logger.debug("Mark price callback failed symbol=%s", symbol, exc_info=True)
                             self._last_mid[symbol] = (mid, time.time())
                             self._dispatch_event('mark_price', self._exchange_name, mid)
                     except Exception as e:
-                        logging.debug("Mark price emission failed symbol=%s error=%s", symbol, e)
-                    logging.debug(order_book)
-                    # logging.info("[%s] Best Bid %s Best Ask %s",symbol, self.order_book_manager.best_bid(symbol) , self.order_book_manager.best_ask(symbol))
+                        self.logger.debug("Mark price emission failed symbol=%s error=%s", symbol, e)
+                    self.logger.debug(order_book)
+                    # self.logger.info("[%s] Best Bid %s Best Ask %s",symbol, self.order_book_manager.best_bid(symbol) , self.order_book_manager.best_ask(symbol))
 
         except Exception:
             logging.exception("Coinbase Gateway error occurred during on_message handling")
@@ -471,20 +472,20 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                     except Exception:
                         continue
                     wallet[currency] = bal_float
-                logging.info("Wallet balances=%s", wallet)
+                self.logger.info("Wallet balances=%s", wallet)
                 return wallet
         except Exception as e:
-            logging.error("_get_wallet_balances failed error=%s", e, exc_info=True)
+            self.logger.error("_get_wallet_balances failed error=%s", e, exc_info=True)
         return None
 
     def _get_open_orders(self):
         try:
             if hasattr(self.rest_client, 'list_orders'):
                 orders = self.rest_client.list_orders()
-                logging.info(f"Open orders count=%s", len(orders['orders']) if orders else 0)
+                self.logger.info(f"Open orders count=%s", len(orders['orders']) if orders else 0)
                 return orders
         except Exception as e:
-            logging.error("_get_open_orders failed error=%s", e, exc_info=True)
+            self.logger.error("_get_open_orders failed error=%s", e, exc_info=True)
         return None
 
     # ------------------------------
@@ -495,7 +496,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             try:
                 cb(wallet_snapshot)
             except Exception as e:
-                logging.error("wallet_balance_callback error=%s", e, exc_info=True)
+                self.logger.error("wallet_balance_callback error=%s", e, exc_info=True)
         self._dispatch_event('wallet', wallet_snapshot)
 
     def _emit_position(self, symbol: str, position: dict):
@@ -503,7 +504,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             try:
                 cb(symbol, position)
             except Exception as e:
-                logging.error("position_callback error=%s", e, exc_info=True)
+                self.logger.error("position_callback error=%s", e, exc_info=True)
         self._dispatch_event('position', symbol, position)
 
     def _emit_open_orders(self, orders: list):
@@ -511,7 +512,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             try:
                 cb(orders)
             except Exception as e:
-                logging.error("open_orders_callback error=%s", e, exc_info=True)
+                self.logger.error("open_orders_callback error=%s", e, exc_info=True)
         self._dispatch_event('open_orders', orders)
 
     def _emit_fills(self, fills: list):
@@ -519,7 +520,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             try:
                 cb(fills)
             except Exception as e:
-                logging.error("fills_callback error=%s", e, exc_info=True)
+                self.logger.error("fills_callback error=%s", e, exc_info=True)
         self._dispatch_event('fills', fills)
 
     # ------------------------------
@@ -536,33 +537,33 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                         return o
                     if client_order_id and str(o.get('client_order_id')) == str(client_order_id):
                         return o
-            logging.info("query_order no match order_id=%s client_order_id=%s", order_id, client_order_id)
+            self.logger.info("query_order no match order_id=%s client_order_id=%s", order_id, client_order_id)
         except Exception as e:
-            logging.error("query_order failed order_id=%s client_order_id=%s error=%s", order_id, client_order_id, e, exc_info=True)
+            self.logger.error("query_order failed order_id=%s client_order_id=%s error=%s", order_id, client_order_id, e, exc_info=True)
         return None
 
     def get_fills_for_product(self, product_id: str, limit: int = 50):
         try:
             if hasattr(self.rest_client, 'list_fills'):
                 fills = self.rest_client.list_fills(product_id=product_id, limit=limit) or []
-                logging.info("Fetched fills product_id=%s count=%s", product_id, len(fills))
+                self.logger.info("Fetched fills product_id=%s count=%s", product_id, len(fills))
                 self._log_fee_summary(fills)
                 self._emit_fills(fills)
                 return fills
         except Exception as e:
-            logging.error("get_fills_for_product failed product_id=%s error=%s", product_id, e, exc_info=True)
+            self.logger.error("get_fills_for_product failed product_id=%s error=%s", product_id, e, exc_info=True)
         return []
 
     def get_fills_by_order(self, order_id: str):
         try:
             if hasattr(self.rest_client, 'list_fills'):
                 fills = self.rest_client.list_fills(order_id=order_id) or []
-                logging.info("Fetched fills order_id=%s count=%s", order_id, len(fills))
+                self.logger.info("Fetched fills order_id=%s count=%s", order_id, len(fills))
                 self._log_fee_summary(fills)
                 self._emit_fills(fills)
                 return fills
         except Exception as e:
-            logging.error("get_fills_by_order failed order_id=%s error=%s", order_id, e, exc_info=True)
+            self.logger.error("get_fills_by_order failed order_id=%s error=%s", order_id, e, exc_info=True)
         return []
 
     # ------------------------------
@@ -586,7 +587,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
             if currency is None:
                 currency = f.get('fee_currency') or f.get('commission_currency') or f.get('currency')
         if fills:
-            logging.info("Fee summary fills_count=%s total_fee=%.8f currency=%s", len(fills), total_fee, currency)
+            self.logger.info("Fee summary fills_count=%s total_fee=%.8f currency=%s", len(fills), total_fee, currency)
 
     # ------------------------------
     # Tier 1 helper / accessor methods
@@ -629,7 +630,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                     results[oid] = resp
                 except Exception as e:
                     results[oid] = f"error:{e}"
-        logging.info("cancel_all_orders symbol=%s count=%d", symbol, len(results))
+        self.logger.info("cancel_all_orders symbol=%s count=%d", symbol, len(results))
         return results
 
     def map_client_to_server_id(self, client_id: str):
@@ -644,7 +645,7 @@ class CoinbaseAdvancedGateway(GatewayInterface):
                 self._product_cache[product_id] = data
                 return data
         except Exception as e:
-            logging.debug("_get_product_metadata failed product_id=%s error=%s", product_id, e)
+            self.logger.debug("_get_product_metadata failed product_id=%s error=%s", product_id, e)
         return None
 
     def quantize_price(self, product_id: str, price: float):

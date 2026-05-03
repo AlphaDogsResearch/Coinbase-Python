@@ -11,7 +11,7 @@ class EventHandlerImpl(EventHandler):
     def __init__(self,name:str, callback,*types: Type[Serializable]):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.callback = callback
-        self.name = name+"_HANDLER"
+        self.name = str(name)+"_HANDLER"
         self.register_messages(
             *types
         )

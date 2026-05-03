@@ -14,6 +14,7 @@ from common.subscription.external_transport.base_producer import BaseProducer
 
 class MultiChannelSSE:
     def __init__(self, host: str = "0.0.0.0", port: int = 8888):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.host = host
         self.port = port
         self.channels: Dict[str, Dict] = {}
@@ -48,7 +49,7 @@ class MultiChannelSSE:
         if name in self.channels:
             raise ValueError(f"Channel '{name}' already exists")
         else:
-            logging.info(f"Adding channel '{name}' to subscription")
+            self.logger.info(f"Adding channel '{name}' to subscription")
 
         self.channels[name] = {
             "producer": producer,
@@ -138,7 +139,7 @@ class MultiChannelSSE:
     # Run (background thread safe)
     # --------------------------------------------------
     def run(self):
-        logging.info(f"Starting SSE Server on {self.host}:{self.port}")
+        self.logger.info(f"Starting SSE Server on {self.host}:{self.port}")
 
         config = uvicorn.Config(
             self.app,

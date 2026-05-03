@@ -18,10 +18,11 @@ from common.config_symbols import TRADING_SYMBOLS
 
 class RemoteMarketDataClient(MarketDataClient):
     def __init__(self,port:int,name:str):
+        self.logger = logging.getLogger(self.__class__.__name__)
 
         self.port = port
         self.name = name
-        logging.info(f"[{name}] connecting to port {port}")
+        self.logger.info(f"[{name}] connecting to port {port}")
         self.order_book_listeners: Dict[str, Set[Callable[[OrderBook], None]]] = {}  # list of callbacks
         self.mark_price_listener: List[Callable[[MarkPrice], None]] = []
         self.historical_price_listener : List[Callable[[HistoricalCandleResponse,], None]] = []
@@ -78,21 +79,21 @@ class RemoteMarketDataClient(MarketDataClient):
 
     def update_remote_connection_status(self,is_connected: bool):
         self.is_remote_connected = is_connected
-        logging.info(f"Remote Market Client Connection Status {self.is_remote_connected}")
+        self.logger.info(f"Remote Market Client Connection Status {self.is_remote_connected}")
 
     def start(self):
-        logging.info("Starting Remote Market Client.....")
+        self.logger.info("Starting Remote Market Client.....")
         # init request
         self.init_request()
 
     def send_request(self):
         if not self.is_remote_connected:
-            logging.info("Remote Market Client Connection Not Connected Yet...")
+            self.logger.info("Remote Market Client Connection Not Connected Yet...")
 
     def init_request(self):
         while not self.is_remote_connected:
-            logging.info("Remote Market Client Connection Not Connected Yet...")
-            logging.info("Waiting For 5 seconds for Remote Market Client...")
+            self.logger.info("Remote Market Client Connection Not Connected Yet...")
+            self.logger.info("Waiting For 5 seconds for Remote Market Client...")
             time.sleep(5)
 
     def add_order_book_listener(self,symbol:str, callback: Callable[[OrderBook], None]):
@@ -120,7 +121,7 @@ class RemoteMarketDataClient(MarketDataClient):
             try:
                 listener(order_book)
             except Exception as e:
-                logging.error(
+                self.logger.error(
                     self.name + "[Market Data] Listener raised an exception: %s", e
                 )
     def notify_tick_listeners(self, order_book: OrderBook):
@@ -131,7 +132,7 @@ class RemoteMarketDataClient(MarketDataClient):
             try:
                 listener(dt,mid_price)
             except Exception as e:
-                logging.error(
+                self.logger.error(
                     self.name + "[Market Data] Listener raised an exception: %s", e
                 )
 
@@ -140,7 +141,7 @@ class RemoteMarketDataClient(MarketDataClient):
             try:
                 listener(mark_price)
             except Exception as e:
-                logging.error(
+                self.logger.error(
                     self.name + "[Mark Price] Listener raised an exception: %s", e
                 )
     def request_for_historical_candle(self,symbol:str, interval_unit:str="1h", interval:int=10):
@@ -157,7 +158,7 @@ class RemoteMarketDataClient(MarketDataClient):
 
     # dont block the thread
     def on_event(self, ident:str, obj: object):
-        logging.debug(f"Received {obj}")
+        self.logger.debug(f"Received {obj}")
         if isinstance(obj, OrderBook):
             self.market_data_queue_processor.submit(obj)
         elif isinstance(obj, MarkPrice):
@@ -166,11 +167,11 @@ class RemoteMarketDataClient(MarketDataClient):
             self.received_historical_candle_response(obj)
 
     def received_historical_candle_response(self, historical_candle_response: HistoricalCandleResponse):
-        logging.info("Received Historical Candle Response %s" % historical_candle_response)
+        self.logger.info("Received Historical Candle Response %s" % historical_candle_response)
         for listener in self.historical_price_listener:
             try:
                 listener(historical_candle_response)
             except Exception as e:
-                logging.error(
+                self.logger.error(
                     self.name + "[Historical Candle Price] Listener raised an exception: %s", e
                 )

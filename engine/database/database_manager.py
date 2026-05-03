@@ -36,6 +36,7 @@ class DatabaseManager:
     """
 
     def __init__(self, database_path: str = "trading.db", max_connections: int = 10):
+        self.logger = logging.getLogger(self.__class__.__name__)
         """
         Initialize DatabaseManager with connection pool.
 
@@ -47,7 +48,7 @@ class DatabaseManager:
         self.pool = DatabaseConnectionPool(database_path, max_connections)
         self._current_session_id: Optional[str] = None
         self._initialize_tables()
-        logging.info(f"DatabaseManager initialized with database: {database_path}")
+        self.logger.info(f"DatabaseManager initialized with database: {database_path}")
 
     def _initialize_tables(self):
         """Create all required tables on startup."""
@@ -247,7 +248,7 @@ class DatabaseManager:
             )
 
             conn.commit()
-            logging.info("Database tables and indexes initialized")
+            self.logger.info("Database tables and indexes initialized")
 
     # =========================================================================
     # ENGINE SESSION OPERATIONS
@@ -303,10 +304,10 @@ class DatabaseManager:
                 )
                 conn.commit()
                 self._current_session_id = session_id
-                logging.info(f"Session started: {session_id}")
+                self.logger.info(f"Session started: {session_id}")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to start session: {e}")
+            self.logger.error(f"Failed to start session: {e}")
             return False
 
     def stop_session(self, session_id: str, stop_reason: str = "graceful") -> bool:
@@ -334,10 +335,10 @@ class DatabaseManager:
                     (int(time.time() * 1000), stop_reason, session_id),
                 )
                 conn.commit()
-                logging.info(f"Session stopped: {session_id} ({stop_reason})")
+                self.logger.info(f"Session stopped: {session_id} ({stop_reason})")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to stop session: {e}")
+            self.logger.error(f"Failed to stop session: {e}")
             return False
 
     @property
@@ -420,10 +421,10 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
-                logging.debug(f"Signal recorded: {strategy_id} {signal} {reason}")
+                self.logger.debug(f"Signal recorded: {strategy_id} {signal} {reason}")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to insert signal: {e}")
+            self.logger.error(f"Failed to insert signal: {e}")
             return False
 
     def get_signals_by_strategy(self, strategy_id: str, limit: int = 100) -> List[Dict[str, Any]]:
@@ -504,10 +505,10 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
-                logging.debug(f"Order inserted: {order['order_id']}")
+                self.logger.debug(f"Order inserted: {order['order_id']}")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to insert order: {e}")
+            self.logger.error(f"Failed to insert order: {e}")
             return False
 
     def update_order_status(
@@ -555,10 +556,10 @@ class DatabaseManager:
                     params,
                 )
                 conn.commit()
-                logging.debug(f"Order updated: {order_id} -> {status}")
+                self.logger.debug(f"Order updated: {order_id} -> {status}")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to update order: {e}")
+            self.logger.error(f"Failed to update order: {e}")
             return False
 
     def get_open_orders(self, strategy_id: str = None) -> List[Dict[str, Any]]:
@@ -652,10 +653,10 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
-                logging.debug(f"Order event inserted: {order_id} {event_type}")
+                self.logger.debug(f"Order event inserted: {order_id} {event_type}")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to insert order event: {e}")
+            self.logger.error(f"Failed to insert order event: {e}")
             return False
 
     def get_order_events(self, order_id: str) -> List[Dict[str, Any]]:
@@ -725,12 +726,12 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
-                logging.debug(
+                self.logger.debug(
                     f"Position upserted: {position.get('strategy_id')} {position['symbol']}"
                 )
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to upsert position: {e}")
+            self.logger.error(f"Failed to upsert position: {e}")
             return False
 
     def get_positions(self, strategy_id: str = None) -> List[Dict[str, Any]]:
@@ -820,10 +821,10 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
-                logging.debug(f"Trade inserted: {trade['strategy_id']} {trade['symbol']}")
+                self.logger.debug(f"Trade inserted: {trade['strategy_id']} {trade['symbol']}")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to insert trade: {e}")
+            self.logger.error(f"Failed to insert trade: {e}")
             return False
 
     def get_trades_by_strategy(self, strategy_id: str, limit: int = 100) -> List[Dict[str, Any]]:
@@ -909,10 +910,10 @@ class DatabaseManager:
                     ),
                 )
                 conn.commit()
-                logging.debug(f"Strategy state saved: {strategy_id}")
+                self.logger.debug(f"Strategy state saved: {strategy_id}")
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to save strategy state: {e}")
+            self.logger.error(f"Failed to save strategy state: {e}")
             return False
 
     def load_strategy_state(self, strategy_id: str) -> Optional[Dict[str, Any]]:
@@ -960,7 +961,7 @@ class DatabaseManager:
                 conn.commit()
                 return True
         except sqlite3.Error as e:
-            logging.error(f"Failed to clear strategy state: {e}")
+            self.logger.error(f"Failed to clear strategy state: {e}")
             return False
 
     # =========================================================================
@@ -970,7 +971,7 @@ class DatabaseManager:
     def close(self):
         """Clean shutdown - close all connections."""
         self.pool.close_all()
-        logging.info("DatabaseManager closed")
+        self.logger.info("DatabaseManager closed")
 
     def get_session_summary(self, session_id: str = None) -> Dict[str, Any]:
         """Get summary statistics for a session."""

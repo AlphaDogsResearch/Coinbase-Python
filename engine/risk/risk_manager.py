@@ -30,6 +30,7 @@ class RiskManager:
             max_drawdown: Optional[float] = 1,
     ):
         # Global limits
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.max_order_value = (
             config_risk.MAX_ORDER_VALUE_DEFAULT if max_order_value is None else max_order_value
         )
@@ -81,7 +82,7 @@ class RiskManager:
         self._shock_last_reason = {}          # symbol -> str
 
     def set_aum(self, aum: float):
-        logging.info(f"Updating AUM to {aum}")
+        self.logger.info(f"Updating AUM to {aum}")
         # Record the first observed AUM as initial_aum
         if not self.initial_aum:
             self.initial_aum = aum
@@ -114,11 +115,11 @@ class RiskManager:
     # ------------------------
     def on_wallet_balance_update(self, wallet_balance: float):
         """Listener to receive wallet balance; updates AUM and cache."""
-        logging.info(f"On Wallet Balance Update {wallet_balance}")
+        self.logger.info(f"On Wallet Balance Update {wallet_balance}")
         try:
             self.account_wallet_balance = float(wallet_balance)
         except Exception:
-            logging.error("Failed to get wallet balance", exc_info=True)
+            self.logger.error("Failed to get wallet balance", exc_info=True)
             self.account_wallet_balance = wallet_balance
         self.set_aum(self.account_wallet_balance)
 
@@ -182,7 +183,7 @@ class RiskManager:
             try:
                 self._block_publisher(payload)
             except Exception:
-                logging.debug("Failed to publish trading block event", exc_info=True)
+                self.logger.debug("Failed to publish trading block event", exc_info=True)
 
     # ------------------------
     # Pre-order basic checks
@@ -190,18 +191,18 @@ class RiskManager:
     def validate_preorder(self, order: Order) -> bool:
         symbol = getattr(order, 'symbol', None)
         if not symbol:
-            logging.warning("Preorder rejected: missing symbol")
+            self.logger.warning("Preorder rejected: missing symbol")
             return False
         qty = float(abs(order.quantity)) if getattr(order, 'quantity', None) is not None else 0.0
         if qty <= 0:
-            logging.warning(f"Preorder rejected: non-positive quantity, qty={qty}")
+            self.logger.warning(f"Preorder rejected: non-positive quantity, qty={qty}")
             return False
         # Per-symbol min order size
         min_size = self.min_order_size
         if getattr(self, '_symbol_min_order_size', None) is not None:
             min_size = getattr(self, '_symbol_min_order_size').get(symbol, self.min_order_size)
         if abs(qty) < min_size:
-            logging.warning(f"Preorder rejected: quantity {qty} below minimum {min_size}")
+            self.logger.warning(f"Preorder rejected: quantity {qty} below minimum {min_size}")
             return False
         return True
 
@@ -215,7 +216,7 @@ class RiskManager:
 
         # If previously blocked, short-circuit reject and publish once
         if self.trading_blocked:
-            logging.warning("Order rejected: trading is blocked by risk manager")
+            self.logger.warning("Order rejected: trading is blocked by risk manager")
             self._publish_block_event()
             return False
 
@@ -225,7 +226,7 @@ class RiskManager:
             self.block_reason = (
                 f"drawdown {self._current_drawdown_ratio * 100:.2f}% exceeds max {self.max_drawdown * 100:.2f}%"
             )
-            logging.warning(
+            self.logger.warning(
                 f"Order rejected: {self.block_reason} (peak={self._peak_aum}, aum={self.aum})."
             )
             self._publish_block_event()
@@ -239,7 +240,7 @@ class RiskManager:
     def reset_drawdown(self):
         self._peak_aum = self.aum
         self._current_drawdown_ratio = 0.0
-        logging.info("RiskManager: drawdown reset; peak AUM set to current AUM")
+        self.logger.info("RiskManager: drawdown reset; peak AUM set to current AUM")
         # Reset block state only if block was due to drawdown
         if self.trading_blocked and self.block_reason and "drawdown" in self.block_reason:
             self.trading_blocked = False
@@ -265,7 +266,7 @@ class RiskManager:
         elif self._peak_aum > aum and self._peak_aum > 0:
             dd = (self._peak_aum - aum) / self._peak_aum
             self._current_drawdown_ratio = max(self._current_drawdown_ratio, dd)
-        logging.info(f"Current peak_aum:{self._peak_aum}, current_drawdown_ratio {self._current_drawdown_ratio}")
+        self.logger.info(f"Current peak_aum:{self._peak_aum}, current_drawdown_ratio {self._current_drawdown_ratio}")
 
     # ------------------------
     # VaR matrices (historical and portfolio)
@@ -358,6 +359,7 @@ class LiveWindow:
     Stores a rolling window of mark prices (preferred) to detect shocks.
     """
     def __init__(self, maxlen: int = 5000):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.ts = deque(maxlen=maxlen)
         self.px = deque(maxlen=maxlen)
 

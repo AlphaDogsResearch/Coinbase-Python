@@ -20,6 +20,7 @@ def convert_order_to_new_order_single(order: Order) -> NewOrderSingle:
 
 class OrderConnection:
     def __init__(self,name :str, port: int, gateway: GatewayInterface):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.order_listener_server = PairConnection(port, True, name+" Order Listener")
         self.order_listener_server.start_receiving(self.on_event)
         self.gateway = gateway
@@ -44,12 +45,12 @@ class OrderConnection:
             self.get_reference_data(obj)
 
     def submit_order(self, order: Order):
-        logging.info("Submitted Order %s " % order)
+        self.logger.info("Submitted Order %s " % order)
         new_order_single = convert_order_to_new_order_single(order)
-        logging.info("New Order Single %s" % new_order_single)
+        self.logger.info("New Order Single %s" % new_order_single)
         initial_er = self.gateway.submit_order(new_order_single)
         order_event = self.on_execution_report(initial_er)
-        logging.info("Order Event %s" % order_event)
+        self.logger.info("Order Event %s" % order_event)
         if order_event is not None:
             self.order_listener_server.publish_order_event(order_event)
             if order_event.status == OrderStatus.NEW:
@@ -58,11 +59,11 @@ class OrderConnection:
                 self.order_listener_server.publish_order_event(filled_order_event)
 
     def on_execution_report(self, execution_report: dict) -> OrderEvent:
-        logging.info("Execution Report %s" % execution_report)
+        self.logger.info("Execution Report %s" % execution_report)
         code = execution_report.get('code')
         msg = execution_report.get('msg')
         if code is not None:
-            logging.error("Error Code: %s Message: %s", code, msg)
+            self.logger.error("Error Code: %s Message: %s", code, msg)
 
         status = execution_report.get('status')
         external_order_id = execution_report.get('orderId')
@@ -70,12 +71,12 @@ class OrderConnection:
         symbol = execution_report.get('symbol')
         order_event = None
         if status == 'NEW':
-            logging.info("[NEW] Order Event %s" % order_event)
+            self.logger.info("[NEW] Order Event %s" % order_event)
             order_event = OrderEvent(symbol, external_order_id, ExecutionType.NEW, OrderStatus.NEW, None,
                                      client_order_id)
 
         elif status == 'FILLED':
-            logging.info("[FILLED] Order Event %s" % order_event)
+            self.logger.info("[FILLED] Order Event %s" % order_event)
             last_filled_price = execution_report.get('avgPrice')
             last_filled_quantity = execution_report.get('executedQty')
             last_filled_time = execution_report.get('updateTime')
@@ -94,12 +95,12 @@ class OrderConnection:
             order_event.last_filled_time = last_filled_time
 
         else:
-            logging.error("Unknown status %s", status)
+            self.logger.error("Unknown status %s", status)
 
         return order_event
 
     def on_trade_event(self, trade: Trade):
-        logging.info("Received Trade event %s" % trade)
+        self.logger.info("Received Trade event %s" % trade)
         self.order_listener_server.send_trade(trade)
 
     def get_and_send_wallet(self, wallet_request: WalletRequest):
@@ -108,7 +109,7 @@ class OrderConnection:
         self.order_listener_server.send_wallet_response(wallet_balance)
 
     def get_account_info(self, account_request: AccountRequest):
-        logging.info("Received Account Info Request %s" % account_request)
+        self.logger.info("Received Account Info Request %s" % account_request)
         account_info = self.gateway._get_account_info()
         wallet_balance = account_info['totalWalletBalance']
         margin_balance = account_info['totalMarginBalance']
@@ -119,10 +120,10 @@ class OrderConnection:
 
     def get_reference_data(self, reference_data_request: ReferenceDataRequest):
         global min_price, max_price, price_tick_size, min_lot_size, max_lot_size, lot_step_size, min_market_lot_size, max_market_lot_size, market_lot_step_size, min_notional
-        logging.info("Received Reference Data Request %s" % reference_data_request)
+        self.logger.info("Received Reference Data Request %s" % reference_data_request)
         gateway_reference_data = self.gateway.get_reference_data()
         if gateway_reference_data is None:
-            logging.error("Reference Data Request Error")
+            self.logger.error("Reference Data Request Error")
         else:
             symbols = gateway_reference_data['symbols']
             reference_data_dict = {}
@@ -204,7 +205,7 @@ class OrderConnection:
             self.order_listener_server.send_commission_rate_response(commission_rate)
 
     def get_trades(self, trades_request: TradesRequest):
-        logging.info("Received Trades Request %s" % trades_request)
+        self.logger.info("Received Trades Request %s" % trades_request)
         symbol = trades_request.symbol
         trades = self.gateway._get_all_trades(symbol)
         all_trades = []

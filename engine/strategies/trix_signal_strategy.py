@@ -70,12 +70,12 @@ class TRIXSignalStrategy(Strategy):
         # Signal behavior
         self.signal_mode = config.signal_mode
         if self.signal_mode not in self.VALID_SIGNAL_MODES:
-            logging.warning(f"Invalid signal_mode={self.signal_mode}, defaulting to momentum")
+            self.logger.warning(f"Invalid signal_mode={self.signal_mode}, defaulting to momentum")
             self.signal_mode = "momentum"
 
         self.exit_mode = config.exit_mode
         if self.exit_mode not in self.VALID_EXIT_MODES:
-            logging.warning(f"Invalid exit_mode={self.exit_mode}, defaulting to breakout")
+            self.logger.warning(f"Invalid exit_mode={self.exit_mode}, defaulting to breakout")
             self.exit_mode = "breakout"
 
         # Position Management
@@ -114,10 +114,10 @@ class TRIXSignalStrategy(Strategy):
         """Initialize strategy on start."""
         self.instrument = self.cache.instrument(self.instrument_id)
         if self.instrument is None:
-            self.log.error(f"Instrument {self.instrument_id} not found in cache\n")
+            self.logger.error(f"Instrument {self.instrument_id} not found in cache\n")
 
         self.subscribe_bars(self.bar_type)
-        self.log.info(
+        self.logger.info(
             f"[SIGNAL] TRIXSignalStrategy started for {self.instrument_id} "
             f"(mode={self.signal_mode}, exit={self.exit_mode})"
         )
@@ -346,9 +346,9 @@ class TRIXSignalStrategy(Strategy):
         )
 
         if ok:
-            self.log.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
+            self.logger.info(f"[SIGNAL] LONG ENTRY | {reason} | Price: {close_price:.4f}")
         else:
-            self.log.error("Failed to submit long entry order")
+            self.logger.error("Failed to submit long entry order")
 
     def _enter_short(
         self,
@@ -384,9 +384,9 @@ class TRIXSignalStrategy(Strategy):
         )
 
         if ok:
-            self.log.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
+            self.logger.info(f"[SIGNAL] SHORT ENTRY | {reason} | Price: {close_price:.4f}")
         else:
-            self.log.error("Failed to submit short entry order")
+            self.logger.error("Failed to submit short entry order")
 
     def _reverse_position(
         self,
@@ -421,11 +421,11 @@ class TRIXSignalStrategy(Strategy):
 
         if ok:
             side_label = "LONG" if signal == 1 else "SHORT"
-            self.log.info(
+            self.logger.info(
                 f"[SIGNAL] REVERSAL TO {side_label} | {reason} | Price: {close_price:.4f}"
             )
         else:
-            self.log.error("Failed to submit reversal order")
+            self.logger.error("Failed to submit reversal order")
 
         return ok
 
@@ -451,11 +451,11 @@ class TRIXSignalStrategy(Strategy):
 
         if ok:
             if position.is_long:
-                self.log.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
+                self.logger.info(f"[SIGNAL] LONG EXIT | {reason} | Price: {close_price:.4f}")
             else:
-                self.log.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
+                self.logger.info(f"[SIGNAL] SHORT EXIT | {reason} | Price: {close_price:.4f}")
         else:
-            self.log.error("Failed to submit close order")
+            self.logger.error("Failed to submit close order")
 
         return ok
 

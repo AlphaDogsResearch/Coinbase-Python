@@ -10,6 +10,7 @@ from common.interface_order import Trade
 
 class BinanceFuturesSharpeCalculator:
     def __init__(self, risk_free_rate=0.0):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.starting_capital = 1000
         self.risk_free_rate = risk_free_rate
         self.sharpe = 0.0
@@ -28,7 +29,7 @@ class BinanceFuturesSharpeCalculator:
             try:
                 listener(sharpe)
             except Exception as e:
-                logging.error(self.name + " Listener raised an exception: %s", e)
+                self.logger.error(self.name + " Listener raised an exception: %s", e)
 
     def init_capital(self, starting_capital: float):
         self.starting_capital = starting_capital
@@ -47,7 +48,7 @@ class BinanceFuturesSharpeCalculator:
         - annualized_sharpe (float): Annualized Sharpe ratio
         """
         if not self.initialized:
-            logging.error("Initial Capital not loaded")
+            self.logger.error("Initial Capital not loaded")
             return 0.0, 0.0
 
         # Parse trade data
@@ -60,7 +61,7 @@ class BinanceFuturesSharpeCalculator:
         df = pd.DataFrame(pnl_data)
 
         if df.empty:
-            logging.error("No trades found")
+            self.logger.error("No trades found")
             return 0.0, 0.0
 
         # Ensure timestamp is datetime and set as index
@@ -77,7 +78,7 @@ class BinanceFuturesSharpeCalculator:
         # grouped = grouped[grouped['return'] != 0]
 
         if len(grouped) < 2:
-            logging.error(f"Not enough data points to calculate Sharpe ratio for frequency '{frequency}'")
+            self.logger.error(f"Not enough data points to calculate Sharpe ratio for frequency '{frequency}'")
             return 0.0, 0.0
 
         mean_return = grouped['return'].mean()

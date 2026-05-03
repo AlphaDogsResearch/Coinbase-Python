@@ -12,6 +12,7 @@ from common.seriallization import Serializable
 
 class JsonMessenger:
     def __init__(self, port: int, bind: bool = False, name: str = "Peer"):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.context = zmq.Context()
         self.type = zmq.PAIR
         self.socket = self.context.socket(self.type)
@@ -21,11 +22,11 @@ class JsonMessenger:
         if bind:
             address = f"tcp://*:{port}"
             self.socket.bind(address)
-            logging.info("Created ROUTER")
+            self.logger.info("Created ROUTER")
         else:
             address = f"tcp://localhost:{port}"
             self.socket.connect(address)
-            logging.info("Created DEALER")
+            self.logger.info("Created DEALER")
 
         self.running = False
         self.receiver_thread = None
@@ -53,7 +54,7 @@ class JsonMessenger:
                             obj = data  # generic dict
                     except (json.JSONDecodeError, KeyError, TypeError):
                         obj = msg  # plain string fallback
-                    logging.info("%s Received %s"%self.name %obj)
+                    self.logger.info("%s Received %s"%self.name %obj)
 
                     callback(obj)
 

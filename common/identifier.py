@@ -6,6 +6,7 @@ import uuid
 # A class to generate unique identifier of an order
 class IdGenerator:
     def __init__(self, prefix: str):
+        self.logger = logging.getLogger(self.__class__.__name__)
         if len(prefix) > 4:
             raise ValueError("prefix cannot be more than 4 characters long")
         self._prefix = prefix
@@ -16,7 +17,7 @@ class IdGenerator:
     def next(self) -> str:
         random_id = uuid.uuid4().hex
         generated_id = self._prefix + str(random_id)
-        logging.info(f"Generated order id: {generated_id}")
+        self.logger.info(f"Generated order id: {generated_id}")
         return generated_id
 
     def match(self, client_id: str) -> bool:

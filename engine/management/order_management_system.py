@@ -41,6 +41,7 @@ class FCFSOrderManager(OrderManager, ABC):
         self.executor = executor
         # Single queue for ALL strategies - true FCFS
         self.name = "FCFSOrderManager"
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.order_queue = Queue()
         self.orders: Dict[str, Order] = {}
         self.lock = threading.RLock()
@@ -75,7 +76,7 @@ class FCFSOrderManager(OrderManager, ABC):
             external_publisher.register_channel_with_json_formatter(self.order_channel)
 
     # def add_position_by_strategy(self, strategy_id: str, position: float, side: Side) -> None:
-    #     logging.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
+    #     self.logger.info(f"New Position for Strategy:{strategy_id}:{side}: {position} ")
     #     actual_position = position
     #     if side == Side.BUY:
     #         actual_position = actual_position * 1
@@ -115,7 +116,7 @@ class FCFSOrderManager(OrderManager, ABC):
         try:
             order = self.order_pool.acquire()
             order.initialize(self.id_generator.next())
-            logging.info(f"Order ID from object Pool {order.order_id}")
+            self.logger.info(f"Order ID from object Pool {order.order_id}")
             side = None
             side_str = "UNKNOWN"
             if signal == 1:
@@ -126,11 +127,11 @@ class FCFSOrderManager(OrderManager, ABC):
                 side_str = "SELL"
 
             # Log signal and tags
-            logging.info(
+            self.logger.info(
                 f"Signal: {signal} ({side_str}) for {strategy_id} {symbol} at price {price}"
             )
             if tags:
-                logging.info(f"Tags: {tags}")
+                self.logger.info(f"Tags: {tags}")
 
             # Persist signal to database if context provided
             if self.database_manager and signal_context:
@@ -148,7 +149,7 @@ class FCFSOrderManager(OrderManager, ABC):
                         order_id=order.order_id,
                     )
                 except Exception as e:
-                    logging.error(f"Failed to persist signal: {e}")
+                    self.logger.error(f"Failed to persist signal: {e}")
 
             order_quantity = 0
             if strategy_order_mode.get_order_mode() == OrderSizeMode.NOTIONAL:
@@ -160,22 +161,22 @@ class FCFSOrderManager(OrderManager, ABC):
                     self.executor.order_type, symbol, strategy_order_mode.quantity
                 )
             if order_quantity == 0:
-                logging.error(f"Something went wrong order_quantity:{order_quantity}")
+                self.logger.error(f"Something went wrong order_quantity:{order_quantity}")
 
             if strategy_actions == StrategyAction.POSITION_REVERSAL:
                 current_pos = self.position_manager.get_abs_current_position_amount(symbol,strategy_id)
-                logging.info(f"Current position: {current_pos} strategy_id {strategy_id}")
+                self.logger.info(f"Current position: {current_pos} strategy_id {strategy_id}")
                 if current_pos != 0:
                     order_quantity = order_quantity + convert_to_decimal(abs(current_pos))
-                    logging.info(f"Final Quantity: {order_quantity}")
+                    self.logger.info(f"Final Quantity: {order_quantity}")
             elif strategy_actions == StrategyAction.OPEN_CLOSE_POSITION:
                 # normal do nothing since already calculated
                 pass
             else:
                 # default to OPEN_CLOSE_POSITION
-                logging.info("Strategy Action Not Implemented , do nothing")
+                self.logger.info("Strategy Action Not Implemented , do nothing")
 
-            logging.info(
+            self.logger.info(
                 f"Symbol {symbol} with  "
                 f"quantity {strategy_order_mode.quantity} "
                 f"notional {strategy_order_mode.notional_value}, "
@@ -205,7 +206,7 @@ class FCFSOrderManager(OrderManager, ABC):
 
             return self.submit_order_internal(order)
         except Exception as e:
-            logging.error("Error Submitting Order on Signal:  %s", exc_info=e)
+            self.logger.error("Error Submitting Order on Signal:  %s", exc_info=e)
             return False
 
     # ===== New explicit submission APIs =====
@@ -249,7 +250,7 @@ class FCFSOrderManager(OrderManager, ABC):
 
             return self.submit_order_internal(order)
         except Exception as e:
-            logging.error("Error submit_market_order: %s", exc_info=e)
+            self.logger.error("Error submit_market_order: %s", exc_info=e)
             return False
 
     def submit_stop_market_order(
@@ -298,7 +299,7 @@ class FCFSOrderManager(OrderManager, ABC):
                     "trigger_price": trigger_price,
                     "tags": tags,
                 }
-                logging.info(f"Pending StopMarket recorded for key={key} trigger={trigger_price}")
+                self.logger.info(f"Pending StopMarket recorded for key={key} trigger={trigger_price}")
                 return True
 
             # Submit immediately
@@ -318,7 +319,7 @@ class FCFSOrderManager(OrderManager, ABC):
 
             return self.submit_order_internal(order)
         except Exception as e:
-            logging.error("Error submit_stop_market_order: %s", exc_info=e)
+            self.logger.error("Error submit_stop_market_order: %s", exc_info=e)
             return False
 
     def submit_market_entry(
@@ -356,7 +357,7 @@ class FCFSOrderManager(OrderManager, ABC):
             }
             return self.submit_order_internal(order)
         except Exception as e:
-            logging.error("Error submit_market_entry: %s", exc_info=e)
+            self.logger.error("Error submit_market_entry: %s", exc_info=e)
             return False
 
     def submit_market_close(
@@ -371,7 +372,7 @@ class FCFSOrderManager(OrderManager, ABC):
         if hasattr(self, "position_manager"):
             pos = self.position_manager.get_position(symbol, strategy_id)
         if pos is None or not hasattr(pos, "position_amount") or abs(pos.position_amount) < 1e-8:
-            logging.info(f"No open position to close for {strategy_id} {symbol}")
+            self.logger.info(f"No open position to close for {strategy_id} {symbol}")
             return True
         qty = abs(pos.position_amount)
         if pos.position_amount > 0:
@@ -413,14 +414,14 @@ class FCFSOrderManager(OrderManager, ABC):
         # Immediate queue insertion - no per-strategy queues
 
         if not order.is_id_init:
-            logging.error(f"Order id not initialized ,unable to submit {order}")
+            self.logger.error(f"Order id not initialized ,unable to submit {order}")
             order.comment = "Order Not Initialized"
             self.publish_data_external(order, "Order Not Initialized")
             self.order_pool.release(order)
             return False
 
         if self.risk_manager and not self.risk_manager.validate_order(order):
-            logging.info(f"Order blocked by risk manager: {order}")
+            self.logger.info(f"Order blocked by risk manager: {order}")
             order.comment = "Order blocked by risk manager"
             self.publish_data_external(order, "Order Blocked by Risk Manager")
             self.order_pool.release(order)
@@ -441,7 +442,7 @@ class FCFSOrderManager(OrderManager, ABC):
                 self.stats["by_strategy"][strategy_id] = 0
             self.stats["by_strategy"][strategy_id] += 1
 
-        logging.info(f"Order {order.order_id} from {strategy_id} submitted at {order.timestamp}")
+        self.logger.info(f"Order {order.order_id} from {strategy_id} submitted at {order.timestamp}")
 
         # Persist order to database
         if self.database_manager:
@@ -464,12 +465,12 @@ class FCFSOrderManager(OrderManager, ABC):
                     }
                 )
             except Exception as e:
-                logging.error(f"Failed to persist order: {e}")
+                self.logger.error(f"Failed to persist order: {e}")
 
         return True
 
     def on_order_event(self, order_event: OrderEvent):
-        logging.info(f"Order event received {order_event}")
+        self.logger.info(f"Order event received {order_event}")
         status = order_event.status
 
         order = self.orders[order_event.client_order_id]
@@ -502,7 +503,7 @@ class FCFSOrderManager(OrderManager, ABC):
                             avg_price=order.avg_filled_price,
                         )
                     except Exception as e:
-                        logging.error(f"Failed to persist order event: {e}")
+                        self.logger.error(f"Failed to persist order event: {e}")
 
                 # Handle entry fill -> auto-place stop by signal_id if pending
                 meta = self.order_meta.get(order.order_id)
@@ -561,7 +562,7 @@ class FCFSOrderManager(OrderManager, ABC):
                             exchange_order_id=order_event.order_id,
                         )
                     except Exception as e:
-                        logging.error(f"Failed to persist cancel event: {e}")
+                        self.logger.error(f"Failed to persist cancel event: {e}")
             elif status == OrderStatus.NEW:
                 order.on_new_event()
                 # Persist new order acknowledgement to database
@@ -579,34 +580,34 @@ class FCFSOrderManager(OrderManager, ABC):
                             exchange_order_id=order_event.order_id,
                         )
                     except Exception as e:
-                        logging.error(f"Failed to persist new event: {e}")
+                        self.logger.error(f"Failed to persist new event: {e}")
             else:
-                logging.error(
+                self.logger.error(
                     f"Unknown order status: {order_event.status} {type(order_event.status)}"
                 )
 
         self.publish_data_external(order, "Order Status Update")
         if order.is_in_order_done_state:
             order = self.orders.pop(order_event.client_order_id, None)
-            logging.info(f"Order is done: {order}")
+            self.logger.info(f"Order is done: {order}")
             if order is not None:
                 self.order_pool.release(order)
 
-        logging.info(f"Normal Stats {self.get_stats()}")
+        self.logger.info(f"Normal Stats {self.get_stats()}")
         self.log_order_stats()
 
     def start(self):
         """Start order processing"""
         self.running = True
         self.process_thread.start()
-        logging.info("FCFS Order Manager started")
+        self.logger.info("FCFS Order Manager started")
 
     def stop(self):
         """Stop order processing"""
         self.running = False
         if self.process_thread.is_alive():
             self.process_thread.join(timeout=5)
-        logging.info("FCFS Order Manager stopped")
+        self.logger.info("FCFS Order Manager stopped")
 
     def _process_orders(self):
         """Process orders in strict FCFS order"""
@@ -615,10 +616,10 @@ class FCFSOrderManager(OrderManager, ABC):
                 # Block until order arrives - maintains strict ordering
                 order = self.order_queue.get(timeout=0.5)
                 if order is None:
-                    logging.info("Order is None")
+                    self.logger.info("Order is None")
                     break
 
-                logging.info(
+                self.logger.info(
                     f"Processing order {order.order_id} from {order.strategy_id} "
                     f"(wait time: {current_milli_time() - order.timestamp:.3f}s)"
                 )
@@ -630,12 +631,12 @@ class FCFSOrderManager(OrderManager, ABC):
             except queue.Empty:
                 pass
             except Exception as e:
-                logging.error(
+                self.logger.error(
                     "Exception processing order {order.id} from {order.strategy_id} ", exc_info=e
                 )
                 # Timeout is expected, other errors should be handled
                 if not isinstance(e, Exception):  # Queue.Empty
-                    logging.info(f"Order processing error: {e}")
+                    self.logger.info(f"Order processing error: {e}")
 
     def get_order_status(self, order_id: str) -> Optional[str]:
         """Get order status - thread safe"""
@@ -656,7 +657,7 @@ class FCFSOrderManager(OrderManager, ABC):
         """Log order statistics"""
         orders_stats = self.get_orders_stats()
         for order_id, order in orders_stats.items():
-            logging.info(f"Order ID {order_id} : {order}")
+            self.logger.info(f"Order ID {order_id} : {order}")
 
     def get_orders_stats(self):
         """Get current orders statistics - thread safe"""

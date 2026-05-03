@@ -43,6 +43,7 @@ class Position(JsonModel):
         self.open_orders: int = 0
         self.position_pnl: float = 0.0
         self.storage_path = storage_path
+        self.logger = logging.getLogger(self.__class__.__name__)
         # remove file loading for now
         # self._load_state()
 
@@ -65,7 +66,7 @@ class Position(JsonModel):
             with open(self.storage_path, "w") as f:
                 json.dump(state, f)
         except Exception as e:
-            logging.error(f"Failed to save position state: {e}")
+            self.logger.error(f"Failed to save position state: {e}")
 
     def _load_state(self):
         try:
@@ -86,7 +87,7 @@ class Position(JsonModel):
         except FileNotFoundError:
             pass
         except Exception as e:
-            logging.error(f"Failed to load position state: {e}")
+            self.logger.error(f"Failed to load position state: {e}")
 
     def get_notional_amount(self, mark_price: float):
         return abs(self.position_amount) * mark_price
@@ -100,7 +101,7 @@ class Position(JsonModel):
             self.unrealised_pnl = 0
         self.unrealised_pnl = round(self.unrealised_pnl, self.unrealised_pnl_decimal_place)
         self._save_state()
-        logging.debug("Updated Unrealized Pnl for %s: %s", self.symbol, self)
+        self.logger.debug("Updated Unrealized Pnl for %s: %s", self.symbol, self)
         return self.unrealised_pnl
 
     def update_maintenance_margin(
@@ -110,7 +111,7 @@ class Position(JsonModel):
         self.maint_margin = (notional_value * maint_margin_rate) + maint_amount
         self.maint_margin = round(self.maint_margin, self.maint_margin_decimal_place)
         self._save_state()
-        logging.debug("Updated Maint Margin for %s: %s", self.symbol, self)
+        self.logger.debug("Updated Maint Margin for %s: %s", self.symbol, self)
         return self.maint_margin
 
     def add_trade(self, trade_qty: float, trade_price: float, is_taker):
@@ -120,7 +121,7 @@ class Position(JsonModel):
         fee_rate = self.taker_fee if is_taker else self.maker_fee
         trading_cost = round(executed_notional * fee_rate, 9)
         self.total_trading_cost += trading_cost
-        logging.info(
+        self.logger.info(
             "Trading Cost for %s, qty %s , price %s , fee %s -> %s",
             self.symbol,
             trade_qty,
@@ -135,7 +136,7 @@ class Position(JsonModel):
                 realized_pnl *= -1
             net_pnl = realized_pnl - trading_cost
             self.net_cumulative_realized_pnl += net_pnl
-            logging.info("Realized PNL for %s: %s", self.symbol, net_pnl)
+            self.logger.info("Realized PNL for %s: %s", self.symbol, net_pnl)
             # published net_pnl instead of cumulative
             self.realized_pnl_listener(self.symbol, net_pnl)
 
@@ -150,7 +151,7 @@ class Position(JsonModel):
                 new_qty = remaining_qty
         self.position_amount = round(new_qty, 7)
         self._save_state()
-        logging.info("Updated Position Amount: %s", self)
+        self.logger.info("Updated Position Amount: %s", self)
 
     def set_open_orders(self, count: int):
         self.open_orders = count

@@ -46,6 +46,7 @@ class TelegramNotifier:
         self.exchange_env = exchange_env.upper() if exchange_env else "TESTNET"
         self.account = account
         self.position_manager = position_manager
+        self.logger = logging.getLogger(self.__class__.__name__)
 
         # Enable flag - if Telegram fails to initialize, disable all operations
         self.enabled = False
@@ -62,10 +63,10 @@ class TelegramNotifier:
         try:
             self.bot = telegram.Bot(token=self.api_key)
             self.enabled = True
-            logging.info("✅ Telegram bot initialized successfully")
+            self.logger.info("✅ Telegram bot initialized successfully")
         except Exception as e:
-            logging.error(f"❌ Failed to initialize Telegram bot: {e}")
-            logging.warning("⚠️ Telegram notifications DISABLED - trading will continue normally")
+            self.logger.error(f"❌ Failed to initialize Telegram bot: {e}")
+            self.logger.warning("⚠️ Telegram notifications DISABLED - trading will continue normally")
             self.bot = None
 
         # Bot application for commands
@@ -88,7 +89,7 @@ class TelegramNotifier:
             self.message_queue.put_nowait(message)
         except Exception as e:
             # Queue is full or other error - log but don't fail
-            logging.warning(f"Failed to queue Telegram message (queue full or error): {e}")
+            self.logger.warning(f"Failed to queue Telegram message (queue full or error): {e}")
 
     def _message_sender_worker(self) -> None:
         """
@@ -124,21 +125,21 @@ class TelegramNotifier:
                         loop.run_until_complete(send_with_timeout())
 
                     except asyncio.TimeoutError:
-                        logging.warning("⚠️ Telegram message send timeout (10s) - skipping")
+                        self.logger.warning("⚠️ Telegram message send timeout (10s) - skipping")
                     except Exception as e:
-                        logging.error(f"❌ Error sending Telegram message: {e}")
+                        self.logger.error(f"❌ Error sending Telegram message: {e}")
                         # If we get multiple consecutive errors, consider disabling
 
                 except Empty:
                     # No message in queue, continue waiting
                     continue
                 except Exception as e:
-                    logging.error(
+                    self.logger.error(
                         f"❌ Unexpected error in Telegram sender thread: {e}", exc_info=True
                     )
 
         except Exception as e:
-            logging.error(f"❌ Error in message sender worker: {e}", exc_info=True)
+            self.logger.error(f"❌ Error in message sender worker: {e}", exc_info=True)
         finally:
             # Clean up the event loop
             if loop and not loop.is_closed():
@@ -152,7 +153,7 @@ class TelegramNotifier:
                         loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
                     loop.close()
                 except Exception as e:
-                    logging.debug(f"Error closing event loop: {e}")
+                    self.logger.debug(f"Error closing event loop: {e}")
 
     def on_order_submitted(self, order: Order) -> None:
         """
@@ -179,7 +180,7 @@ class TelegramNotifier:
             message = self.format_order_submitted_message(order)
             self.send_message(message)
         except Exception as e:
-            logging.error(f"Error in on_order_submitted: {e}", exc_info=True)
+            self.logger.error(f"Error in on_order_submitted: {e}", exc_info=True)
 
     def on_order_event(self, order_event: OrderEvent) -> None:
         """
@@ -217,7 +218,7 @@ class TelegramNotifier:
                 self.send_message(message)
 
         except Exception as e:
-            logging.error(f"Error in on_order_event: {e}", exc_info=True)
+            self.logger.error(f"Error in on_order_event: {e}", exc_info=True)
 
     def on_margin_warning(self, message: str) -> None:
         """
@@ -233,7 +234,7 @@ class TelegramNotifier:
 
             self.send_message(message)
         except Exception as e:
-            logging.error(f"Error in on_margin_warning: {e}", exc_info=True)
+            self.logger.error(f"Error in on_margin_warning: {e}", exc_info=True)
 
     def on_strategy_order_submitted(
         self,
@@ -306,7 +307,7 @@ class TelegramNotifier:
             )
             self.send_message(message)
         except Exception as e:
-            logging.error(f"Error in on_strategy_order_submitted: {e}", exc_info=True)
+            self.logger.error(f"Error in on_strategy_order_submitted: {e}", exc_info=True)
 
     def on_unrealized_pnl_update(self, unrealized_pnl: float) -> None:
         """Handle unrealized PnL updates."""
@@ -316,7 +317,7 @@ class TelegramNotifier:
                 message = self.format_unrealized_pnl_message(unrealized_pnl)
                 self.send_message(message)
         except Exception as e:
-            logging.error(f"Error in on_unrealized_pnl_update: {e}", exc_info=True)
+            self.logger.error(f"Error in on_unrealized_pnl_update: {e}", exc_info=True)
 
     def on_realized_pnl_update(self, realized_pnl: float) -> None:
         """Handle realized PnL updates."""
@@ -325,7 +326,7 @@ class TelegramNotifier:
             message = self.format_realized_pnl_message(realized_pnl)
             self.send_message(message)
         except Exception as e:
-            logging.error(f"Error in on_realized_pnl_update: {e}", exc_info=True)
+            self.logger.error(f"Error in on_realized_pnl_update: {e}", exc_info=True)
 
     def _clean_strategy_name(self, strategy_id: str) -> str:
         """
@@ -584,7 +585,7 @@ class TelegramNotifier:
             await update.message.reply_text(message, parse_mode="HTML")
 
         except Exception as e:
-            logging.error(f"Error in cmd_orders: {e}", exc_info=True)
+            self.logger.error(f"Error in cmd_orders: {e}", exc_info=True)
             await update.message.reply_text(f"Error retrieving orders: {str(e)}")
 
     async def cmd_signals(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -630,7 +631,7 @@ class TelegramNotifier:
             await update.message.reply_text(message, parse_mode="HTML")
 
         except Exception as e:
-            logging.error(f"Error in cmd_signals: {e}", exc_info=True)
+            self.logger.error(f"Error in cmd_signals: {e}", exc_info=True)
             await update.message.reply_text(f"Error retrieving signals: {str(e)}")
 
     def start_bot_listener(self) -> None:
@@ -645,7 +646,7 @@ class TelegramNotifier:
             )
             self.sender_thread.start()
         except Exception as e:
-            logging.error(f"❌ Failed to start Telegram sender thread: {e}")
+            self.logger.error(f"❌ Failed to start Telegram sender thread: {e}")
             self.enabled = False
             return
 
@@ -687,19 +688,19 @@ class TelegramNotifier:
                             await asyncio.sleep(0.1)  # Check shutdown every 100ms
 
                     except Exception as e:
-                        logging.error(f"❌ Error in polling loop: {e}")
+                        self.logger.error(f"❌ Error in polling loop: {e}")
                     finally:
                         # Stop the application
                         try:
                             await self.application.stop()
                         except Exception as e:
-                            logging.debug(f"Error stopping application: {e}")
+                            self.logger.debug(f"Error stopping application: {e}")
 
                 # Run the polling loop
                 loop.run_until_complete(polling_loop())
 
             except Exception as e:
-                logging.error(f"❌ Error in Telegram bot listener: {e}", exc_info=True)
+                self.logger.error(f"❌ Error in Telegram bot listener: {e}", exc_info=True)
                 # Even if bot listener fails, keep sender thread running for notifications
             finally:
                 # Clean up the event loop
@@ -716,19 +717,19 @@ class TelegramNotifier:
                             )
                         loop.close()
                     except Exception as e:
-                        logging.debug(f"Error closing bot event loop: {e}")
+                        self.logger.debug(f"Error closing bot event loop: {e}")
 
         # Start bot thread
         try:
             self.bot_thread = threading.Thread(target=run_bot, daemon=True, name="TelegramBot")
             self.bot_thread.start()
         except Exception as e:
-            logging.error(f"❌ Failed to start Telegram bot thread: {e}")
+            self.logger.error(f"❌ Failed to start Telegram bot thread: {e}")
             # Don't disable - sender thread can still work for notifications
 
     def stop_bot_listener(self) -> None:
         """Stop the Telegram bot listener and message sender threads."""
-        logging.info("🛑 Stopping Telegram notifier...")
+        self.logger.info("🛑 Stopping Telegram notifier...")
 
         # Signal shutdown first
         self.shutdown_event.set()
@@ -736,42 +737,42 @@ class TelegramNotifier:
         # Stop message sender thread
         if self.sender_thread and self.sender_thread.is_alive():
             try:
-                logging.info("🛑 Stopping Telegram sender thread...")
+                self.logger.info("🛑 Stopping Telegram sender thread...")
                 self.sender_thread.join(timeout=3.0)
                 if self.sender_thread.is_alive():
-                    logging.warning("⚠️ Telegram sender thread did not stop gracefully")
+                    self.logger.warning("⚠️ Telegram sender thread did not stop gracefully")
                 else:
-                    logging.info("✅ Telegram sender thread stopped")
+                    self.logger.info("✅ Telegram sender thread stopped")
             except Exception as e:
-                logging.error(f"❌ Error stopping sender thread: {e}")
+                self.logger.error(f"❌ Error stopping sender thread: {e}")
 
         # Stop bot application
         if self.application:
             try:
                 # Check if application is actually running before stopping
                 if hasattr(self.application, "running") and self.application.running:
-                    logging.info("🛑 Stopping Telegram bot command listener...")
+                    self.logger.info("🛑 Stopping Telegram bot command listener...")
                     # Use a new event loop for shutdown to avoid conflicts
                     try:
                         loop = asyncio.new_event_loop()
                         asyncio.set_event_loop(loop)
                         loop.run_until_complete(self.application.stop())
                         loop.close()
-                        logging.info("✅ Telegram bot stopped")
+                        self.logger.info("✅ Telegram bot stopped")
                     except Exception as e:
-                        logging.warning(f"⚠️ Error stopping bot application: {e}")
+                        self.logger.warning(f"⚠️ Error stopping bot application: {e}")
                 else:
-                    logging.debug("Telegram bot application already stopped")
+                    self.logger.debug("Telegram bot application already stopped")
             except Exception as e:
-                logging.warning(f"⚠️ Error stopping Telegram bot: {e}")
+                self.logger.warning(f"⚠️ Error stopping Telegram bot: {e}")
 
         # Wait for bot thread
         if self.bot_thread and self.bot_thread.is_alive():
             try:
-                logging.info("🛑 Stopping Telegram bot thread...")
+                self.logger.info("🛑 Stopping Telegram bot thread...")
                 self.bot_thread.join(timeout=1.0)  # Reduced timeout
                 if self.bot_thread.is_alive():
-                    logging.warning(
+                    self.logger.warning(
                         "⚠️ Telegram bot thread did not stop gracefully - forcing shutdown"
                     )
                     # Force stop by setting daemon thread (will be killed when main thread exits)
@@ -786,9 +787,9 @@ class TelegramNotifier:
                     except Exception:
                         pass  # Ignore if we can't interrupt
                 else:
-                    logging.info("✅ Telegram bot thread stopped")
+                    self.logger.info("✅ Telegram bot thread stopped")
             except Exception as e:
-                logging.error(f"❌ Error joining bot thread: {e}")
+                self.logger.error(f"❌ Error joining bot thread: {e}")
 
         # Clear the message queue to prevent any remaining messages
         try:
@@ -797,7 +798,7 @@ class TelegramNotifier:
         except Exception:
             pass
 
-        logging.info("✅ Telegram notifier stopped")
+        self.logger.info("✅ Telegram notifier stopped")
 
     def is_enabled(self) -> bool:
         """

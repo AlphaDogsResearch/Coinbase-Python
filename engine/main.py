@@ -122,6 +122,7 @@ def main():
 
     selected_symbol = default_settings_parameters["selected_symbol"]
     preload_candles = default_settings_parameters.get("preload_candles")
+    telegram_enabled = default_settings_parameters.get("telegram_enabled", False)
 
     # Initialize Position and RiskManager
     position = components["position"]
@@ -216,37 +217,39 @@ def main():
     # Initialize telegram notifier and wire as listener (non-blocking)
     # DISABLED: Telegram causing connection issues
     telegram_notifier = None
-    try:
-        telegram_notifier = TelegramNotifier(
-            api_key=telegram_api_key,
-            user_id=telegram_user_id,
-            exchange_env=telegram_exchange_env,
-            account=account,
-            position_manager=position_manager,
-        )
-    
-        # Register telegram notifier as listener for all events
-        remote_order_client.add_order_event_listener(telegram_notifier.on_order_event)
-        account.add_margin_warning_listener(telegram_notifier.on_margin_warning)
-    
-        # Register PnL listeners for profit/loss notifications
-        position_manager.add_unrealized_pnl_listener(telegram_notifier.on_unrealized_pnl_update)
-        position_manager.add_realized_pnl_listener(telegram_notifier.on_realized_pnl_update)
-    
-        # Start telegram bot command listener (starts message sender + bot threads)
-        telegram_notifier.start_bot_listener()
-    
-        if telegram_notifier.is_enabled():
-            logging.info("✅ Telegram notifier initialized and listeners registered")
-        else:
-            logging.warning(
-                "⚠️ Telegram notifier created but disabled - trading will continue normally"
+    if telegram_enabled:
+        try:
+            telegram_notifier = TelegramNotifier(
+                api_key=telegram_api_key,
+                user_id=telegram_user_id,
+                exchange_env=telegram_exchange_env,
+                account=account,
+                position_manager=position_manager,
             )
-    except Exception as e:
-        logging.error(f"❌ Failed to initialize Telegram notifier: {e}", exc_info=True)
-        logging.warning("⚠️ Trading will continue without Telegram notifications")
-        telegram_notifier = None
-    logging.info("📱 Telegram notifier disabled (skipped initialization)")
+
+            # Register telegram notifier as listener for all events
+            remote_order_client.add_order_event_listener("TELEGRAM_LISTENER",telegram_notifier.on_order_event)
+            account.add_margin_warning_listener(telegram_notifier.on_margin_warning)
+
+            # Register PnL listeners for profit/loss notifications
+            position_manager.add_unrealized_pnl_listener(telegram_notifier.on_unrealized_pnl_update)
+            position_manager.add_realized_pnl_listener(telegram_notifier.on_realized_pnl_update)
+
+            # Start telegram bot command listener (starts message sender + bot threads)
+            telegram_notifier.start_bot_listener()
+
+            if telegram_notifier.is_enabled():
+                logging.info("✅ Telegram notifier initialized and listeners registered")
+            else:
+                logging.warning(
+                    "⚠️ Telegram notifier created but disabled - trading will continue normally"
+                )
+        except Exception as e:
+            logging.error(f"❌ Failed to initialize Telegram notifier: {e}", exc_info=True)
+            logging.warning("⚠️ Trading will continue without Telegram notifications")
+            telegram_notifier = None
+    else:
+        logging.info("📱 Telegram notifier disabled (skipped initialization)")
 
     # ===== Strategy Manager Setup =====
 

@@ -113,6 +113,7 @@ class StrategyManager:
         if preload_candles:
             self.replay_times=preload_candles
 
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.remote_market_data_client.add_historical_price_listener(self.on_historical_candle)
 
     def add_strategy(self, strategy, strategy_id: str, symbol: str) -> bool:
@@ -128,7 +129,7 @@ class StrategyManager:
             True if successful, False otherwise
         """
         if strategy_id in self.strategies:
-            logging.warning(f"Strategy {strategy_id} already exists")
+            self.logger.warning(f"Strategy {strategy_id} already exists")
             return False
 
         try:
@@ -145,7 +146,7 @@ class StrategyManager:
             # Get interval from strategy's bar_type or config
             interval_seconds = self._get_strategy_interval(strategy)
             if interval_seconds is None:
-                logging.error(
+                self.logger.error(
                     f"Could not determine interval for strategy {strategy_id}. "
                     f"Strategy must have bar_type attribute or interval_seconds in config."
                 )
@@ -170,14 +171,14 @@ class StrategyManager:
                 "interval_seconds": interval_seconds,
             }
 
-            logging.info(
-                f"[StrategyManager] Added strategy {strategy_id} for symbol {symbol} "
+            self.logger.info(
+                f"Added strategy {strategy_id} for symbol {symbol} "
                 f"with interval {interval_seconds}s"
             )
             return True
 
         except Exception as e:
-            logging.error(f"Error adding strategy {strategy_id}: {e}", exc_info=True)
+            self.logger.error(f"Error adding strategy {strategy_id}: {e}", exc_info=True)
             return False
 
     def remove_strategy(self, strategy_id: str) -> bool:
@@ -191,7 +192,7 @@ class StrategyManager:
             True if successful, False otherwise
         """
         if strategy_id not in self.strategies:
-            logging.warning(f"Strategy {strategy_id} not found")
+            self.logger.warning(f"Strategy {strategy_id} not found")
             return False
 
         try:
@@ -207,7 +208,7 @@ class StrategyManager:
                 try:
                     strategy.on_stop()
                 except Exception as e:
-                    logging.error(
+                    self.logger.error(
                         f"Error calling strategy.on_stop for {strategy_id}: {e}",
                         exc_info=True,
                     )
@@ -225,11 +226,11 @@ class StrategyManager:
             # Remove from strategies dict
             del self.strategies[strategy_id]
 
-            logging.info(f"[StrategyManager] Removed strategy {strategy_id}")
+            self.logger.info(f"Removed strategy {strategy_id}")
             return True
 
         except Exception as e:
-            logging.error(f"Error removing strategy {strategy_id}: {e}", exc_info=True)
+            self.logger.error(f"Error removing strategy {strategy_id}: {e}", exc_info=True)
             return False
 
     def on_historical_candle(self, historical_candle_response: HistoricalCandleResponse):
@@ -240,14 +241,14 @@ class StrategyManager:
         # 1. Direct lookup for the symbol
         symbol_aggregators = self.candle_aggregators.get(symbol)
         if not symbol_aggregators:
-            logging.warning(f"Received historical candles for unknown symbol: {symbol}")
+            self.logger.warning(f"Received historical candles for unknown symbol: {symbol}")
             return
 
         # 2. Iterate through intervals for this specific symbol
         for interval, candle_agg in symbol_aggregators.items():
             # Match the interval unit (e.g., '1m') to the numeric interval (e.g., 60.0)
             if interval_unit == format_seconds_to_interval(interval):
-                logging.info(f"Loading candles for {symbol} {interval_unit} total {len(candles)} candles")
+                self.logger.info(f"Loading candles for {symbol} {interval_unit} total {len(candles)} candles")
 
                 count = len(candles)
                 if count == 0:
@@ -255,7 +256,7 @@ class StrategyManager:
 
                 if count == 1:
                     item = candles[0]
-                    logging.debug(f"Loading single item: {item}")
+                    self.logger.debug(f"Loading single item: {item}")
                     candle_agg.pre_load_current_candle(item)
                 else:
                     # Replay all except the last, then pre-load the last one
@@ -263,28 +264,28 @@ class StrategyManager:
                         if i < count - 1:
                             candle_agg.replay_candles(item)
                         else:
-                            logging.info(f"Loading last item into current candle: {item}")
+                            self.logger.info(f"Loading last item into current candle: {item}")
                             candle_agg.pre_load_current_candle(item)
 
                 # Since we found the specific aggregator, we can break the interval loop
                 break
 
         self.historical_request_lock.release()
-        logging.info("Release Lock after historical candles")
+        self.logger.info("Release Lock after historical candles")
 
 
     def pre_start_check(self):
 
         if self.replay_times:
 
-            logging.info("Attempting to replay candles....")
+            self.logger.info("Attempting to replay candles....")
             for symbol, intervals in self.replay_times.items():
-                logging.info(f"Symbol: {symbol}")
+                self.logger.info(f"Symbol: {symbol}")
                 for interval, times in intervals.items():
-                    logging.info(f"  - Replaying {interval} interval with {times} times")
+                    self.logger.info(f"  - Replaying {interval} interval with {times} times")
                     self.remote_market_data_client.request_for_historical_candle(symbol, interval, times)
 
-            logging.info("Locking For Replay....")
+            self.logger.info("Locking For Replay....")
             self.historical_request_lock.acquire(timeout=3)
 
         for symbol, intervals in self.candle_aggregators.items():
@@ -298,8 +299,8 @@ class StrategyManager:
                 # Calculate current listeners for logging
                 current_listeners = len(self.remote_market_data_client.order_book_listeners.get(candle_agg.symbol, []))
 
-                logging.info(
-                    f"[StrategyManager] Registered order book listener for {symbol} at {interval}s "
+                self.logger.info(
+                    f"Registered order book listener for {symbol} at {interval}s "
                     f"(total listeners for {symbol}: {current_listeners})"
                 )
 
@@ -311,9 +312,9 @@ class StrategyManager:
             try:
                 if hasattr(strategy, "on_start"):
                     strategy.on_start()
-                    logging.info(f"[StrategyManager] Started strategy {strategy_id}")
+                    self.logger.info(f"Started strategy {strategy_id}")
             except Exception as e:
-                logging.error(f"Error starting strategy {strategy_id}: {e}", exc_info=True)
+                self.logger.error(f"Error starting strategy {strategy_id}: {e}", exc_info=True)
 
     def stop_all(self) -> None:
         """Stop all strategies by calling their on_stop() method."""
@@ -322,9 +323,9 @@ class StrategyManager:
             try:
                 if hasattr(strategy, "on_stop"):
                     strategy.on_stop()
-                    logging.info(f"[StrategyManager] Stopped strategy {strategy_id}")
+                    self.logger.info(f"Stopped strategy {strategy_id}")
             except Exception as e:
-                logging.error(f"Error stopping strategy {strategy_id}: {e}", exc_info=True)
+                self.logger.error(f"Error stopping strategy {strategy_id}: {e}", exc_info=True)
 
 
     def get_bar_type(self,strategy):
@@ -390,8 +391,8 @@ class StrategyManager:
                 symbol=symbol,
                 interval_seconds=interval_seconds
             )
-            logging.info(
-                f"[StrategyManager] Created candle aggregator for "
+            self.logger.info(
+                f"Created candle aggregator for "
                 f"symbol {symbol} at interval {interval_seconds}s"
             )
 
@@ -428,13 +429,13 @@ class StrategyManager:
 
     def _make_candle_callback(self, strategy, strategy_id: str):
         """Create a callback to forward candles to strategy."""
-        logging.info("Attaching candle callback for strategy %s", strategy_id)
+        self.logger.info("Attaching candle callback for strategy %s", strategy_id)
 
         def on_candle_created(candle):
             try:
                 strategy.on_candle_created(candle)
             except Exception as e:
-                logging.error(
+                self.logger.error(
                     f"Error in strategy.on_candle_created for {strategy_id}: {e}",
                     exc_info=True,
                 )

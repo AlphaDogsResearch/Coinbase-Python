@@ -10,6 +10,7 @@ class Indicator(ABC):
     def __init__(self, params: List[Any] = None):
         self.params = params or []
         self._initialized = False
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     @property
     def initialized(self) -> bool:
@@ -38,7 +39,7 @@ class SimpleMovingAverage(Indicator):
         if len(self.buffer) == self.period:
             self.value = sum(self.buffer) / self.period
             self._initialized = True
-            logging.debug(f"SimpleMovingAverage initialized {self.value}")
+            self.logger.debug(f"SimpleMovingAverage initialized {self.value}")
         else:
             self._initialized = False
             self.value = 0.0  # Or partial average
@@ -79,7 +80,7 @@ class ExponentialMovingAverage(Indicator):
                 self.value = sum(self._sma_buffer) / self.period
                 self._initialized = True
                 self._count = self.period
-                logging.debug(f"ExponentialMovingAverage (SMA seed) initialized {self.value}")
+                self.logger.debug(f"ExponentialMovingAverage (SMA seed) initialized {self.value}")
             else:
                 self.value = (close_price - self.value) * self.alpha + self.value
         else:
@@ -92,7 +93,7 @@ class ExponentialMovingAverage(Indicator):
 
                 if self._count >= self.period:
                     self._initialized = True
-                    logging.debug(f"ExponentialMovingAverage initialized {self.value}")
+                    self.logger.debug(f"ExponentialMovingAverage initialized {self.value}")
             else:
                 self.value = (close_price - self.value) * self.alpha + self.value
 
@@ -131,7 +132,7 @@ class WeightedMovingAverage(Indicator):
             )
             self.value = weighted_sum / self.weight_sum
             self._initialized = True
-            logging.debug(f"WeightedMovingAverage initialized {self.value}")
+            self.logger.debug(f"WeightedMovingAverage initialized {self.value}")
         else:
             self._initialized = False
 
@@ -166,7 +167,7 @@ class DoubleExponentialMovingAverage(Indicator):
             if self.ema2.initialized:
                 self.value = 2 * self.ema1.value - self.ema2.value
                 self._initialized = True
-                logging.debug(
+                self.logger.debug(
                     f"DoubleExponentialMovingAverage initialized {self.value}"
                 )
 
@@ -244,7 +245,7 @@ class DirectionalMovement(Indicator):
                     if self.tr_smooth != 0
                     else 0
                 )
-                logging.debug(f"DirectionalMovement initialized {self.pos}")
+                self.logger.debug(f"DirectionalMovement initialized {self.pos}")
         else:
             # Subsequent values: Smooth = Prev - (Prev/N) + Current
             self.tr_smooth = self.tr_smooth - (self.tr_smooth / self.period) + tr
@@ -326,7 +327,7 @@ class APO(Indicator):
         if self.fast_ma.initialized and self.slow_ma.initialized:
             self.value = self.fast_ma.value - self.slow_ma.value
             self._initialized = True
-            logging.debug(f"APO initialized {self.value}")
+            self.logger.debug(f"APO initialized {self.value}")
 
     def reset(self) -> None:
         self.fast_ma.reset()
@@ -384,7 +385,7 @@ class PPO(Indicator):
                 (self.fast_ma.value - self.slow_ma.value) / self.slow_ma.value
             ) * 100
             self._initialized = True
-            logging.debug(f"PPO initialized {self.value}")
+            self.logger.debug(f"PPO initialized {self.value}")
 
     def reset(self) -> None:
         self.fast_ma.reset()
@@ -435,13 +436,13 @@ class ADX(Indicator):
         if len(self._dx_values) == self.period:
             self._adx_value = sum(self._dx_values) / self.period
             self._initialized = True
-            logging.debug(f"ADX initialized {self.value}")
+            self.logger.debug(f"ADX initialized {self.value}")
         elif len(self._dx_values) > self.period:
             self._adx_value = (
                 self._previous_adx * (self.period - 1) + dx
             ) / self.period
             self._initialized = True
-            logging.debug(f"ADX initialized {self.value}")
+            self.logger.debug(f"ADX initialized {self.value}")
 
         self._previous_adx = self._adx_value
 
@@ -470,7 +471,7 @@ class RateOfChange(Indicator):
             else:
                 self.value = 0.0
             self._initialized = True
-            logging.debug(f"RateOfChange initialized {self.value}")
+            self.logger.debug(f"RateOfChange initialized {self.value}")
         else:
             self.value = 0.0
             self._initialized = False
@@ -522,7 +523,7 @@ class RelativeStrengthIndex(Indicator):
                 self._avg_loss = sum(self._losses) / self.period
                 self.value = self._compute_rsi()
                 self._initialized = True
-                logging.debug(f"RelativeStrengthIndex initialized {self.value}")
+                self.logger.debug(f"RelativeStrengthIndex initialized {self.value}")
             else:
                 self.value = 0.0
         else:
@@ -584,7 +585,7 @@ class TripleExponentialMovingAverage(Indicator):
 
         self.value = 3.0 * (self.ema1.value - self.ema2.value) + self.ema3.value
         self._initialized = True
-        logging.debug(f"TripleExponentialMovingAverage initialized {self.value}")
+        self.logger.debug(f"TripleExponentialMovingAverage initialized {self.value}")
 
     def reset(self) -> None:
         self.ema1.reset()
@@ -629,7 +630,7 @@ class CommodityChannelIndex(Indicator):
             else:
                 self.value = 0.0
             self._initialized = True
-            logging.debug(f"CommodityChannelIndex initialized {self.value}")
+            self.logger.debug(f"CommodityChannelIndex initialized {self.value}")
         else:
             self.value = 0.0
             self._initialized = False
@@ -717,7 +718,7 @@ class BollingerBands(Indicator):
         self.upper = self.middle + self.nbdevup * std
         self.lower = self.middle - self.nbdevdn * std
         self._initialized = True
-        logging.debug(
+        self.logger.debug(
             f"BollingerBands middle={self.middle:.4f} upper={self.upper:.4f} lower={self.lower:.4f}"
         )
 
@@ -768,7 +769,7 @@ class ChandeMomentumOscillator(Indicator):
             else:
                 self.value = 0.0
             self._initialized = True
-            logging.debug(f"ChandeMomentumOscillator initialized {self.value}")
+            self.logger.debug(f"ChandeMomentumOscillator initialized {self.value}")
         else:
             self.value = 0.0
             self._initialized = False
@@ -826,7 +827,7 @@ class ChandeMomentumOscillatorWilder(Indicator):
                 self._avg_loss = sum(self._losses) / self.period
                 self.value = self._compute_cmo()
                 self._initialized = True
-                logging.debug(
+                self.logger.debug(
                     f"ChandeMomentumOscillatorWilder initialized {self.value}"
                 )
             else:
@@ -917,7 +918,7 @@ class TRIX(Indicator):
 
         self._prev_ema3 = current_ema3
         self._initialized = True
-        logging.debug(f"TRIX initialized {self.value}")
+        self.logger.debug(f"TRIX initialized {self.value}")
 
     def reset(self) -> None:
         self._ema1.reset()
@@ -943,7 +944,7 @@ class Momentum(Indicator):
         if len(self.buffer) == self.period + 1:
             self.value = close_price - self.buffer[0]
             self._initialized = True
-            logging.debug(f"Momentum initialized {self.value}")
+            self.logger.debug(f"Momentum initialized {self.value}")
         else:
             self.value = 0.0
             self._initialized = False
@@ -1013,7 +1014,7 @@ class UltimateOscillator(Indicator):
 
         self.value = 100.0 * ((4.0 * avg1) + (2.0 * avg2) + avg3) / 7.0
         self._initialized = True
-        logging.debug(f"UltimateOscillator initialized {self.value}")
+        self.logger.debug(f"UltimateOscillator initialized {self.value}")
 
     def reset(self) -> None:
         self._prev_close = None

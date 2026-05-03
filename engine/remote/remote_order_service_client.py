@@ -29,10 +29,11 @@ class RemoteOrderClient:
                  account: Account,
                  trading_cost_manager: TradingCostManager, trade_manager: TradesManager,
                  reference_data_manager: ReferenceDataManager):
+        self.logger = logging.getLogger(self.__class__.__name__)
         # make port configurable
         self.port = port
         self.name = name
-        logging.info(f"[{name}] connecting to port {port}")
+        self.logger.info(f"[{name}] connecting to port {port}")
         self.order_event_listeners: Dict[str, Callable[[OrderEvent], None]] = {} # dict of callbacks
 
         # self.remote_order_server = PairConnection(self.port, False, self.name)
@@ -74,7 +75,7 @@ class RemoteOrderClient:
 
 
     def start(self):
-        logging.info("Starting Remote Order Client.....")
+        self.logger.info("Starting Remote Order Client.....")
         # init request
         self.init_request()
         # tradable
@@ -89,14 +90,14 @@ class RemoteOrderClient:
 
     def update_remote_connection_status(self,is_connected: bool):
         self.is_remote_connected = is_connected
-        logging.info(f"Remote Order Client Connection Status {self.is_remote_connected}")
+        self.logger.info(f"Remote Order Client Connection Status {self.is_remote_connected}")
 
 
 
     def init_request(self):
         while not self.is_remote_connected:
-            logging.info("Remote Order Client Connection Not Connected Yet...")
-            logging.info("Waiting For 5 seconds for Remote Order Client...")
+            self.logger.info("Remote Order Client Connection Not Connected Yet...")
+            self.logger.info("Waiting For 5 seconds for Remote Order Client...")
             time.sleep(5)
 
         if self.is_remote_connected:
@@ -117,16 +118,16 @@ class RemoteOrderClient:
                 # request for position
                 self.request_for_position()
             except Exception as e:
-                logging.error(f"Error occurred,unable to send request: {e}")
+                self.logger.error(f"Error occurred,unable to send request: {e}")
 
 
     def set_tradable_status(self, new_status):
-        logging.info("Setting Tradable Status OLD=%s NEW=%s", self.tradable, new_status)
+        self.logger.info("Setting Tradable Status OLD=%s NEW=%s", self.tradable, new_status)
         self.tradable = new_status
 
     def submit_order(self, order: Order):
         if not self.tradable:
-            logging.info("Unable to trade, Trading rights is turned off")
+            self.logger.info("Unable to trade, Trading rights is turned off")
         """Add an order to the sending queue."""
         self._order_queue.put(order)
 
@@ -165,7 +166,7 @@ class RemoteOrderClient:
                 continue  # no orders, loop again
 
     def add_order_event_listener(self,listener_name:str, callback: Callable[[OrderEvent], None]):
-        logging.info("Attaching order event listener [%s]", listener_name)
+        self.logger.info("Attaching order event listener [%s]", listener_name)
         """Register a callback to receive OrderBook updates"""
         self.order_event_listeners[listener_name] = callback
 
@@ -190,46 +191,46 @@ class RemoteOrderClient:
             self.received_reference_data_response(obj)
 
     def received_reference_data_response(self, reference_data_response: ReferenceDataResponse):
-        logging.info(f"Received ReferenceDataResponse: {len(reference_data_response.reference_data)} count")
+        self.logger.info(f"Received ReferenceDataResponse: {len(reference_data_response.reference_data)} count")
         self.reference_data_manager.init_reference_data(reference_data_response.reference_data)
 
 
     def received_wallet_response(self, wallet_response: WalletResponse):
-        logging.info("Received Wallet Response %s" % wallet_response)
+        self.logger.info("Received Wallet Response %s" % wallet_response)
 
     def received_account_response(self, account_response: AccountResponse):
-        logging.info("Received Account Response %s" % account_response)
+        self.logger.info("Received Account Response %s" % account_response)
         self.account.init_account(account_response)
 
     def received_account_balance_response(self, account_balance_response: AccountBalanceResponse):
-        logging.info("Received Account Balance Response %s" % account_balance_response)
+        self.logger.info("Received Account Balance Response %s" % account_balance_response)
 
     def received_position_response(self, position_response: PositionResponse):
-        logging.info("Received Position Response %s" % position_response)
+        self.logger.info("Received Position Response %s" % position_response)
         self.position_manager.inital_position(position_response)
 
     def received_margin_info_response(self, margin_info_response: MarginInfoResponse):
-        logging.info("Received Margin Response %s" % margin_info_response)
+        self.logger.info("Received Margin Response %s" % margin_info_response)
         self.margin_manager.update_margin(margin_info_response)
 
     def received_commission_rate_response(self, commission_rate_response: CommissionRateResponse):
-        logging.info("Received Commission Response %s" % commission_rate_response)
+        self.logger.info("Received Commission Response %s" % commission_rate_response)
         self.trading_cost_manager.add_trading_cost(commission_rate_response)
 
     def received_trades_response(self, trades_response: TradesResponse):
-        logging.info("Received Trades Response %s" % trades_response)
+        self.logger.info("Received Trades Response %s" % trades_response)
         symbol = trades_response.symbol
         trades = trades_response.trades
         self.trade_manager.load_trades(symbol,trades)
 
     def received_order_event(self, order_event : OrderEvent):
-        logging.info("[%s] Received %s Order Event: \n %s", self.name,order_event.status, order_event)
+        self.logger.info("[%s] Received %s Order Event: \n %s", self.name,order_event.status, order_event)
 
         for listener_name,oe_listener in self.order_event_listeners.items():
             try:
                 oe_listener(order_event)
             except Exception as e:
-                logging.error( f"[{self.name}] [{listener_name}] Listener raised an exception", exc_info=True)
+                self.logger.error( f"[{self.name}] [{listener_name}] Listener raised an exception", exc_info=True)
 
     def stop(self):
         """Stop the sender thread cleanly."""

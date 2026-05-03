@@ -93,6 +93,7 @@ class SimulatedOrderManager:
         self.strategy_id = strategy_id
         self.symbol = symbol
         self.config = config
+        self.logger = logging.getLogger(self.__class__.__name__)
 
         self.signals: List[BacktestSignalRecord] = []
         self.trades: List[BacktestTradeRecord] = []
@@ -367,7 +368,7 @@ class SimulatedOrderManager:
         signal_context: Any = None,
     ) -> bool:
         if strategy_id != self.strategy_id or symbol != self.symbol:
-            logging.warning(
+            self.logger.warning(
                 "Backtest order manager received mismatched strategy/symbol. "
                 f"expected=({self.strategy_id},{self.symbol}) got=({strategy_id},{symbol})"
             )
@@ -396,12 +397,12 @@ class SimulatedOrderManager:
             price
         )
         if execution_price <= 0:
-            logging.error("Cannot execute signal without valid price")
+            self.logger.error("Cannot execute signal without valid price")
             return False
 
         quantity = self._calculate_order_quantity(strategy_order_mode, execution_price)
         if quantity <= 0:
-            logging.error("Calculated order quantity <= 0, signal ignored")
+            self.logger.error("Calculated order quantity <= 0, signal ignored")
             return False
 
         target_side = PositionSide.LONG if signal == 1 else PositionSide.SHORT
@@ -488,7 +489,7 @@ class SimulatedOrderManager:
         tags: Optional[List[str]] = None,
     ) -> bool:
         if strategy_id != self.strategy_id or symbol != self.symbol:
-            logging.warning(
+            self.logger.warning(
                 "Backtest close request received mismatched strategy/symbol. "
                 f"expected=({self.strategy_id},{self.symbol}) got=({strategy_id},{symbol})"
             )
@@ -517,7 +518,7 @@ class SimulatedOrderManager:
         )
         reason = self._extract_reason(tags=tags, signal_context=None, fallback="CLOSE")
         if execution_price <= 0:
-            logging.error("Cannot close without valid price")
+            self.logger.error("Cannot close without valid price")
             return False
         side_before = self._position_side_text()
         quantity = 0.0
@@ -580,7 +581,7 @@ class SimulatedOrderManager:
             tags=order.tags, signal_context=None, fallback="CLOSE"
         )
         if fill_price <= 0:
-            logging.error("Cannot fill pending close: invalid price")
+            self.logger.error("Cannot fill pending close: invalid price")
             return
         if self._position is None:
             return
@@ -617,15 +618,15 @@ class SimulatedOrderManager:
         signal_context = order.signal_context
 
         if fill_price <= 0:
-            logging.error("Cannot fill pending signal: invalid price")
+            self.logger.error("Cannot fill pending signal: invalid price")
             return
         if strategy_order_mode is None:
-            logging.error("Cannot fill pending signal: missing order mode")
+            self.logger.error("Cannot fill pending signal: missing order mode")
             return
 
         quantity = self._calculate_order_quantity(strategy_order_mode, fill_price)
         if quantity <= 0:
-            logging.error("Calculated order quantity <= 0, pending signal ignored")
+            self.logger.error("Calculated order quantity <= 0, pending signal ignored")
             return
 
         target_side = PositionSide.LONG if signal == 1 else PositionSide.SHORT

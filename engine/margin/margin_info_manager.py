@@ -6,6 +6,7 @@ from typing import Optional
 
 class MarginInfoManager:
     def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.margin_list = {}
 
     def update_margin(self, margin_response:MarginInfoResponse):
@@ -15,7 +16,7 @@ class MarginInfoManager:
             self.margin_list[symbol] = MarginSchedule(brackets)
 
         for symbol,margin in self.margin_list.items():
-            logging.info("Updated Margin %s -> %s",symbol,margin)
+            self.logger.info("Updated Margin %s -> %s",symbol,margin)
 
     def get_margin_brackets(self,symbol:str)->Optional[MarginSchedule]:
         return self.margin_list.get(symbol,None)
@@ -23,7 +24,7 @@ class MarginInfoManager:
     def get_margin_bracket_by_notional(self,symbol:str,notional:float)->Optional[MarginBracket]:
         brackets = self.get_margin_brackets(symbol)
         if brackets is None:
-            logging.error("Unable to find bracket for %s -> %s",symbol,notional)
+            self.logger.error("Unable to find bracket for %s -> %s",symbol,notional)
             return None
         return brackets.get_bracket(notional)
 

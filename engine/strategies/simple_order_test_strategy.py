@@ -1,3 +1,4 @@
+import logging
 from dataclasses import dataclass
 
 from .base import Strategy
@@ -28,7 +29,7 @@ class SimpleOrderTestStrategy(Strategy):
     def __init__(self, config: SimpleOrderTestStrategyConfig):
         """Initialize the test strategy."""
         super().__init__(config)
-
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.config = config
         self.bars_per_trade = config.bars_per_trade
         self.quantity = config.quantity  # Deprecated, kept for backward compatibility
@@ -46,11 +47,11 @@ class SimpleOrderTestStrategy(Strategy):
         """Initialize strategy on start."""
         self.instrument = self.cache.instrument(self.instrument_id)
         if self.instrument is None:
-            self.log.error(f"Instrument {self.instrument_id} not found in cache \n")
+            self.logger.error(f"Instrument {self.instrument_id} not found in cache \n")
             pass
 
         self.subscribe_bars(self.bar_type)
-        self.log.info(
+        self.logger.info(
             f"🧪 TEST STRATEGY STARTED: Pattern LONG->CLOSE->SHORT->CLOSE every {self.bars_per_trade} bars"
         )
 
@@ -64,7 +65,7 @@ class SimpleOrderTestStrategy(Strategy):
         self._bar_counter += 1
 
         # Log every bar
-        self.log.info(f"🧪 TEST - Bar #{self._bar_counter}")
+        self.logger.info(f"🧪 TEST - Bar #{self._bar_counter}")
 
         # Execute trade every N bars
         if self._bar_counter % self.bars_per_trade == 0:
@@ -78,10 +79,10 @@ class SimpleOrderTestStrategy(Strategy):
         if self._trade_counter % 4 == 1:
             # Trade 1, 5, 9, ... -> Open LONG
             if self.cache.is_flat(self.instrument_id):
-                self.log.info(f"🧪 TEST Trade #{self._trade_counter}: Opening LONG position")
+                self.logger.info(f"🧪 TEST Trade #{self._trade_counter}: Opening LONG position")
                 self._enter_long(candle, reason="Test trade - periodic long entry")
             else:
-                self.log.warning(
+                self.logger.warning(
                     f"🧪 TEST Trade #{self._trade_counter}: Skipping LONG - position already exists"
                 )
         elif self._trade_counter % 4 == 2:
@@ -89,19 +90,19 @@ class SimpleOrderTestStrategy(Strategy):
             if not self.cache.is_flat(self.instrument_id) and self.cache.is_net_long(
                 self.instrument_id
             ):
-                self.log.info(f"🧪 TEST Trade #{self._trade_counter}: Closing LONG position")
+                self.logger.info(f"🧪 TEST Trade #{self._trade_counter}: Closing LONG position")
                 self._close_position(candle, reason="Test trade - close long after n bars")
             else:
-                self.log.warning(
+                self.logger.warning(
                     f"🧪 TEST Trade #{self._trade_counter}: Skipping LONG close - no long position"
                 )
         elif self._trade_counter % 4 == 3:
             # Trade 3, 7, 11, ... -> Open SHORT
             if self.cache.is_flat(self.instrument_id):
-                self.log.info(f"🧪 TEST Trade #{self._trade_counter}: Opening SHORT position")
+                self.logger.info(f"🧪 TEST Trade #{self._trade_counter}: Opening SHORT position")
                 self._enter_short(candle, reason="Test trade - periodic short entry")
             else:
-                self.log.warning(
+                self.logger.warning(
                     f"🧪 TEST Trade #{self._trade_counter}: Skipping SHORT - position already exists"
                 )
         else:  # self._trade_counter % 4 == 0
@@ -109,16 +110,16 @@ class SimpleOrderTestStrategy(Strategy):
             if not self.cache.is_flat(self.instrument_id) and self.cache.is_net_short(
                 self.instrument_id
             ):
-                self.log.info(f"🧪 TEST Trade #{self._trade_counter}: Closing SHORT position")
+                self.logger.info(f"🧪 TEST Trade #{self._trade_counter}: Closing SHORT position")
                 self._close_position(candle, reason="Test trade - close short after n bars")
             else:
-                self.log.warning(
+                self.logger.warning(
                     f"🧪 TEST Trade #{self._trade_counter}: Skipping SHORT close - no short position"
                 )
 
     def _enter_long(self, candle: MidPriceCandle, reason: str):
         """Enter a long position."""
-        self.log.info(f"📈 Entering LONG: {reason}")
+        self.logger.info(f"📈 Entering LONG: {reason}")
 
         close_price = candle.close if candle.close is not None else 0.0
         if close_price == 0.0:
@@ -138,11 +139,11 @@ class SimpleOrderTestStrategy(Strategy):
         )
 
         if not ok:
-            self.log.error("Failed to submit long entry order")
+            self.logger.error("Failed to submit long entry order")
 
     def _enter_short(self, candle: MidPriceCandle, reason: str):
         """Enter a short position."""
-        self.log.info(f"📉 Entering SHORT: {reason}")
+        self.logger.info(f"📉 Entering SHORT: {reason}")
 
         close_price = candle.close if candle.close is not None else 0.0
         if close_price == 0.0:
@@ -162,7 +163,7 @@ class SimpleOrderTestStrategy(Strategy):
         )
 
         if not ok:
-            self.log.error("Failed to submit short entry order")
+            self.logger.error("Failed to submit short entry order")
 
     def _close_position(self, candle: MidPriceCandle, reason: str):
         """Close the current position."""
@@ -170,7 +171,7 @@ class SimpleOrderTestStrategy(Strategy):
         if position is None:
             return
 
-        self.log.info(f"🔄 Closing position: {reason}")
+        self.logger.info(f"🔄 Closing position: {reason}")
 
         close_price = candle.close if candle.close is not None else 0.0
         if close_price == 0.0:
@@ -188,4 +189,4 @@ class SimpleOrderTestStrategy(Strategy):
         )
 
         if not ok:
-            self.log.error("Failed to submit close order")
+            self.logger.error("Failed to submit close order")

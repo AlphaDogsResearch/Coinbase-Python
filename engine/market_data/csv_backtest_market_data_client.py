@@ -9,6 +9,7 @@ import logging
 
 class CSVBacktestOrderBook(OrderBook):
     def __init__(self, timestamp: float, price: float):
+        self.logger = logging.getLogger(self.__class__.__name__)
         contract = TRADING_SYMBOLS[0]
         bids = [PriceLevel(price - 0.5, 1.0)]  # mock one level bid/ask depth
         asks = [PriceLevel(price + 0.5, 1.0)]
@@ -17,6 +18,7 @@ class CSVBacktestOrderBook(OrderBook):
 
 class CSVBacktestMarketDataClient(MarketDataClient):
     def __init__(self, csv_path: str):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.listeners: List[Callable[[OrderBook], None]] = []
         self.df = pd.read_csv(csv_path)
         self.df["timestamp"] = (
@@ -24,13 +26,13 @@ class CSVBacktestMarketDataClient(MarketDataClient):
         )  # convert to epoch seconds
 
     def add_order_book_listener(self, callback: Callable[[OrderBook], None]):
-        logging.info("add_order_book_listener added")
+        self.logger.info("add_order_book_listener added")
         self.listeners.append(callback)
 
     def notify_order_book_listeners(self, book: OrderBook):
-        logging.info(book)
+        self.logger.info(book)
         for listener in self.listeners:
-            logging.info("publishing")
+            self.logger.info("publishing")
             listener(book)
 
     def start_publishing(self, frequency_milliseconds: int = 10):

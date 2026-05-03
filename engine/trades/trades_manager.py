@@ -18,12 +18,13 @@ class TradesManager:
         self.trades = {}
         self.sharpe_calculator = sharpe_calculator
         self.database_manager = database_manager
+        self.logger = logging.getLogger(self.__class__.__name__)
         # Track entry orders for PnL calculation
         self._entry_orders = {}  # symbol -> {order_id, price, qty, side, time}
 
     def load_trades(self, symbol: str, trades: list):
         self.trades[symbol] = trades
-        logging.info("Loaded %s trades for %s", len(trades), symbol)
+        self.logger.info("Loaded %s trades for %s", len(trades), symbol)
         self.sharpe_calculator.calculate_sharpe(trades)
 
     def on_order_event(self, order_event: OrderEvent):
@@ -50,7 +51,7 @@ class TradesManager:
                         "entry_order_id": trade.order_id,
                     })
                 except Exception as e:
-                    logging.error(f"Failed to persist trade: {e}")
+                    self.logger.error(f"Failed to persist trade: {e}")
 
     def add_trade(self, symbol: str, trade: Trade):
         if symbol in self.trades:

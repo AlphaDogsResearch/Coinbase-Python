@@ -18,7 +18,7 @@
       "endpoint_port": 8888,
       "preload_candles": {
         "ETHUSDT": {
-          "1h": 10
+          "5m": 10
         }
       }
     }
@@ -161,7 +161,7 @@
     "class": "SimpleOrderTestStrategyConfig",
     "params": {
       "instrument_id": "@default_settings.selected_symbol",
-      "bar_type": "ETHUSDT-1h",
+      "bar_type": "ETHUSDT-1s",
       "bars_per_trade": 20,
       "notional_amount": 500.0
     }
@@ -171,7 +171,7 @@
     "class": "RSISignalStrategyConfig",
     "params": {
       "instrument_id": "@default_settings.selected_symbol",
-      "bar_type": "ETHUSDT-1h",
+      "bar_type": "ETHUSDT-5m",
       "rsi_period": 30,
       "rsi_upper": 67.0,
       "rsi_lower": 33.0,
@@ -194,7 +194,7 @@
     "class": "CCISignalStrategyConfig",
     "params": {
       "instrument_id": "@default_settings.selected_symbol",
-      "bar_type": "ETHUSDT-1h",
+      "bar_type": "ETHUSDT-5m",
       "cci_period": 14,
       "cci_upper": 205.0,
       "cci_lower": -101.0,
@@ -217,7 +217,7 @@
     "class": "CMOSignalStrategyConfig",
     "params": {
       "instrument_id": "@default_settings.selected_symbol",
-      "bar_type": "ETHUSDT-1h",
+      "bar_type": "ETHUSDT-5m",
       "cmo_period": 24,
       "cmo_upper": 39.0,
       "cmo_lower": -33.0,
@@ -236,25 +236,11 @@
     }
   },
   "strategy_map": {
-    "rsi_signal_strategy": {
-      "module": "engine.strategies.rsi_signal_strategy",
-      "class": "RSISignalStrategy",
+    "simple_order_test_strategy": {
+      "module": "engine.strategies.simple_order_test_strategy",
+      "class": "SimpleOrderTestStrategy",
       "params": {
-        "config": "@rsi_strategy_config"
-      }
-    },
-    "cci_signal_strategy": {
-      "module": "engine.strategies.cci_signal_strategy",
-      "class": "CCISignalStrategy",
-      "params": {
-        "config": "@cci_strategy_config"
-      }
-    },
-    "cmo_signal_strategy": {
-      "module": "engine.strategies.cmo_signal_strategy",
-      "class": "CMOSignalStrategy",
-      "params": {
-        "config": "@cmo_strategy_config"
+        "config": "@simple_order_test_strategy_config"
       }
     }
   }

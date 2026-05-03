@@ -10,6 +10,7 @@ from collections import deque
 
 class RealTimePlot:
     def __init__(self, ticker_name="TICKER", max_minutes=60, max_ticks=None, update_interval_ms=100, is_simulation=True):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.app = QtWidgets.QApplication(sys.argv)
 
         # Window setup
@@ -299,7 +300,7 @@ class RealTimePlot:
     def start(self):
         if not self.is_started:
             self.is_started = True
-            logging.info("Starting plotter")
+            self.logger.info("Starting plotter")
             self.win.show()
             sys.exit(self.app.exec())
 

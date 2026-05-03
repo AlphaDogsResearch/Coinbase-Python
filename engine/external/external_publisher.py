@@ -14,6 +14,7 @@ from engine.external.message_model.json_data_model import JsonDataModel
 
 class ExternalPublisher:
     def __init__(self, event_bus:EventBus, websocket:MultiChannelWebSocket, publish_interval_seconds:int=1):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.start =False
         self.publish_interval_seconds = publish_interval_seconds
         self.data_model : Dict[str,JsonModel] = {}
@@ -43,10 +44,10 @@ class ExternalPublisher:
     def publish_data(self,key:str,data:JsonModel,reason:str):
         publisher = self.publisher_map.get(key,None)
         if publisher is not None:
-            logging.debug(f"Publishing event {key} -> {data} | reason {reason}")
+            self.logger.debug(f"Publishing event {key} -> {data} | reason {reason}")
             publisher.publish_event(key, data)
         else:
-            logging.error(f"publisher not registered : {key}")
+            self.logger.error(f"publisher not registered : {key}")
 
     def publish_periodic_data(self):
         while True:

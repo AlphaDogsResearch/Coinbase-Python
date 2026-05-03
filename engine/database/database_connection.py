@@ -7,6 +7,7 @@ from contextlib import contextmanager
 
 class DatabaseConnectionPool:
     def __init__(self, database_path: str, max_connections: int = 10):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.database_path = database_path
         self.max_connections = max_connections
         self._pool = queue.Queue(maxsize=max_connections)
@@ -14,7 +15,7 @@ class DatabaseConnectionPool:
         self._lock = threading.Lock()
 
     def _create_connection(self) -> sqlite3.Connection:
-        logging.info("Creating database connection")
+        self.logger.info("Creating database connection")
         """Create a new database connection"""
         conn = sqlite3.connect(self.database_path, check_same_thread=False)
         self._connections_created += 1

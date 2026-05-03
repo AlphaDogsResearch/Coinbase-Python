@@ -74,6 +74,7 @@ class RemoteDatabaseClient:
         self.database_path = database_path
         self.host = host
         self.port = port
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.app = self._build_app()
 
     # ------------------------------------------------------------------
@@ -334,6 +335,6 @@ class RemoteDatabaseClient:
             daemon=True,
         )
         thread.start()
-        logging.info(
+        self.logger.info(
             f"RemoteDatabaseClient started on http://{self.host}:{self.port}"
         )

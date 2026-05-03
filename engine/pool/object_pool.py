@@ -8,7 +8,8 @@ from common.recycle import Recyclable
 
 class ObjectPool:
     def __init__(self, create_func, size=10):
-        logging.info("Creating object pool with size {}".format(size))
+        self.logger = logging.getLogger(self.__class__.__name__)
+        self.logger.info("Creating object pool with size {}".format(size))
 
         # Validate that create_func returns Recyclable objects
         test_obj = create_func()
@@ -54,15 +55,15 @@ class ObjectPool:
             try:
                 obj.recycle()
             except Exception as e:
-                logging.warning(f"Error calling recycle on object: {e}")
+                self.logger.warning(f"Error calling recycle on object: {e}")
         else:
-            logging.warning("Object does not implement Recyclable interface")
+            self.logger.warning("Object does not implement Recyclable interface")
 
         try:
             self._pool.put_nowait(obj)
         except Full:
             # If pool is full, discard the object
-            logging.debug("Pool is full, discarding object")
+            self.logger.debug("Pool is full, discarding object")
 
     @contextmanager
     def context(self):

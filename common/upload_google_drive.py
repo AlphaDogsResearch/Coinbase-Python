@@ -16,6 +16,7 @@ class DriveAPI:
     SCOPES = ['https://www.googleapis.com/auth/drive']
 
     def __init__(self):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.creds = None
         # Check if file token.pickle exists
         if os.path.exists('token.pickle'):
@@ -63,12 +64,12 @@ class DriveAPI:
             file = self.service.files().create(
                 body=file_metadata, media_body=media, fields='id').execute()
             
-            logging.info("File Uploaded.")
+            self.logger.info("File Uploaded.")
         
         except:
             
             # Raise UploadError if file is not uploaded.
-            logging.error("Can't Upload File.")
+            self.logger.error("Can't Upload File.")
 
 obj = DriveAPI()
 root_path = (pathlib.Path().absolute())

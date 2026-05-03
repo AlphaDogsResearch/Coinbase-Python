@@ -14,6 +14,7 @@ from common.subscription.external_transport.base_producer import BaseProducer
 
 class MultiChannelWebSocket:
     def __init__(self, host: str = "0.0.0.0", port: int = 8888,default_route_name: str = "stream"):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.host = host
         self.port = port
         self.channels: Dict[str, Dict] = {}
@@ -47,7 +48,7 @@ class MultiChannelWebSocket:
         if name in self.channels:
             raise ValueError(f"Channel '{name}' already exists")
         else:
-            logging.info(f"Adding channel '{name}'")
+            self.logger.info(f"Adding channel '{name}'")
 
         self.channels[name] = {
             "producer": producer,
@@ -145,7 +146,7 @@ class MultiChannelWebSocket:
     # --------------------------------------------------
     def run(self):
 
-        logging.info(f"Starting WebSocket Server on {self.host}:{self.port}")
+        self.logger.info(f"Starting WebSocket Server on {self.host}:{self.port}")
 
         config = uvicorn.Config(
             self.app,

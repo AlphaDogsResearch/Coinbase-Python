@@ -34,6 +34,7 @@ class QuestDbWriter:
         self.timeout_seconds = timeout_seconds
 
         self._base_url = f"http://{self.host}:{self.port}"
+        self.logger = logging.getLogger(self.__class__.__name__)
 
     @staticmethod
     def _to_ns(epoch_value: int | float) -> int:
@@ -65,7 +66,7 @@ class QuestDbWriter:
                 pass
             return True
         except (error.URLError, error.HTTPError) as e:
-            logging.error("QuestDB HTTP write failed: %s", e)
+            self.logger.error("QuestDB HTTP write failed: %s", e)
             return False
         except Exception as e:
             logging.exception("QuestDB HTTP write exception: %s", e)

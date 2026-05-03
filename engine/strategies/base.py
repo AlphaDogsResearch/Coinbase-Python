@@ -10,21 +10,6 @@ if TYPE_CHECKING:
     from engine.database.models import SignalContext
 
 
-class Logger:
-    def info(self, msg: str):
-        logging.info(f"{msg}")
-
-    def warning(self, msg: str):
-        logging.warning(f"[WARN] {msg}")
-
-    def error(self, msg: str):
-        logging.error(f"[ERROR] {msg}")
-
-    def debug(self, msg: str):
-        # print(f"[DEBUG] {msg}")
-        pass
-
-
 class StrategyPositionCache:
     """
     Combined cache for strategy positions and instruments.
@@ -115,7 +100,7 @@ class StrategyPositionCache:
 class Strategy:
     def __init__(self, config: Any):
         self.config = config
-        self.log = Logger()
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.cache = StrategyPositionCache()  # Combined position and instrument cache
         self._order_manager = None  # Reference to order manager
         self._strategy_id = None  # Strategy ID set by main
@@ -177,7 +162,7 @@ class Strategy:
             True if order was submitted successfully, False otherwise
         """
         if not self._order_manager:
-            self.log.warning("Order manager not set, order not submitted")
+            self.logger.warning("Order manager not set, order not submitted")
             return False
 
         return self._order_manager.on_signal(
@@ -193,7 +178,7 @@ class Strategy:
 
     def cancel_all_orders(self, instrument_id: str):
         """Cancel all orders for instrument (placeholder - may need implementation)."""
-        self.log.warning("cancel_all_orders not yet implemented")
+        self.logger.warning("cancel_all_orders not yet implemented")
 
     def close_all_positions(self, instrument_id: str):
         """Close all positions for instrument."""

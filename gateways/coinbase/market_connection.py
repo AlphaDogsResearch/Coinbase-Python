@@ -9,6 +9,7 @@ from gateways.gateway_interface import GatewayInterface
 
 class MarketDataConnection:
     def __init__(self,name:str, port: int, gateway: GatewayInterface):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.name = name + " Market Data Connection"
         self.market_data_server = PairConnection(port, True, self.name)
         self.market_data_server.start_receiving(self.on_event)
@@ -17,11 +18,11 @@ class MarketDataConnection:
         self.gateway.register_mark_price_callback(self.publish_mark_price)
 
     def on_event(self, obj: object):
-        logging.info("Received event: {}".format(obj))
+        self.logger.info("Received event: {}".format(obj))
 
 
     def publish_order_book(self, exchange: str, venue_order_book: VenueOrderBook):
-        # logging.info("Exchange %s " % exchange)
+        # self.logger.info("Exchange %s " % exchange)
         order_book = venue_order_book.get_book()
         self.market_data_server.publish_market_data_event(order_book)
 

@@ -9,12 +9,13 @@ from engine.remote.remote_order_service_client import RemoteOrderClient
 
 class Executor(TradeExecution):
     def __init__(self, order_type: OrderType, remote_order_client: RemoteOrderClient):
+        self.logger = logging.getLogger(self.__class__.__name__)
         self.remote_order_client = remote_order_client
 
         self.order_type = order_type
 
     def on_signal(self, order: Order):
-        logging.info(f"TradeExecution Submitted Order {order} ")
+        self.logger.info(f"TradeExecution Submitted Order {order} ")
         #TODO slice order in the future or hit the watched price
         self.place_orders(order)
 
@@ -50,5 +51,5 @@ class Executor(TradeExecution):
         if order_id:
             return self.query_order(symbol, order_id)
         else:
-            logging.error("Order placement failed.")
+            self.logger.error("Order placement failed.")
             return None
